@@ -37,6 +37,7 @@ interface AdminMasterSettingsProps {
   priceBook: ServicePriceItem[];
   bays: WorkshopBay[];
   technicians: Technician[];
+  userRole?: UserRole;
   onUpdateProfile: (profile: WorkshopProfile) => void;
   onUpdateUsers: (users: UserAccount[]) => void;
   onUpdateCustomers: (customers: Customer[]) => void;
@@ -56,6 +57,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   priceBook,
   bays,
   technicians,
+  userRole = 'Admin',
   onUpdateProfile,
   onUpdateUsers,
   onUpdateCustomers,
@@ -82,6 +84,21 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   // Technician edit modal state
   const [editingTech, setEditingTech] = useState<Technician | null>(null);
   const [isNewTechModal, setIsNewTechModal] = useState(false);
+
+  // Non-admin guard
+  if (userRole !== 'Admin') {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-lg mx-auto my-12 shadow-sm">
+        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-900">Admin Privileges Required</h3>
+        <p className="text-xs text-slate-500 mt-2">
+          Master Settings (Staff RBAC, Service Price Book, Workshop Bays, and IRD E-Billing configurations) can only be accessed by the Workshop Administrator. Current Role: <span className="font-semibold text-slate-700">{userRole}</span>.
+        </p>
+      </div>
+    );
+  }
 
   const showNotification = (msg: string) => {
     setSavedSuccess(msg);

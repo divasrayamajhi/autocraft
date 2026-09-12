@@ -18,17 +18,20 @@ export type TabType =
   | 'jobcards' 
   | 'inventory' 
   | 'warranty' 
+  | 'insurance'
   | 'billing' 
   | 'customers' 
   | 'accounting' 
   | 'analytics' 
-  | 'admin_settings';
+  | 'admin_settings'
+  | 'admin';
 
 export interface NavigationBadges {
   lowStockCount?: number;
   activeJobCardsCount?: number;
   pendingWarrantyCount?: number;
   unpaidInvoicesCount?: number;
+  pendingInsuranceCount?: number;
 }
 
 interface NavigationProps {
@@ -58,7 +61,8 @@ export const Navigation: React.FC<NavigationProps> = ({
     lowStockCount, 
     activeJobCardsCount, 
     pendingWarrantyCount, 
-    unpaidInvoicesCount 
+    unpaidInvoicesCount,
+    pendingInsuranceCount 
   } = badges || {};
 
   const allNavItems: NavItemConfig[] = [
@@ -93,6 +97,14 @@ export const Navigation: React.FC<NavigationProps> = ({
       alertColor: 'bg-blue-600 text-white'
     },
     {
+      id: 'insurance',
+      label: 'Cashless Insurance',
+      icon: ShieldCheck,
+      allowedRoles: ['Admin', 'Service Advisor', 'Cashier'],
+      badge: pendingInsuranceCount,
+      alertColor: 'bg-emerald-600 text-white'
+    },
+    {
       id: 'billing',
       label: 'Invoicing & IRD Tax',
       icon: Receipt,
@@ -116,7 +128,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: 'analytics',
       label: 'BI & Performance',
       icon: BarChart3,
-      allowedRoles: ['Admin', 'Cashier']
+      allowedRoles: ['Admin', 'Service Advisor', 'Cashier']
     },
     {
       id: 'admin_settings',

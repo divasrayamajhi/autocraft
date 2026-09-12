@@ -17,6 +17,7 @@ import { BillingManagement } from './components/billing/BillingManagement';
 import { AccountingReports } from './components/accounting/AccountingReports';
 import { WarrantyManagement } from './components/warranty/WarrantyManagement';
 import { AdminMasterSettings } from './components/admin/AdminMasterSettings';
+import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { CloudSyncModal } from './components/common/CloudSyncModal';
 import { PrintInvoiceModal } from './components/common/PrintInvoiceModal';
 import { AuthScreen } from './components/auth/AuthScreen';
@@ -485,19 +486,41 @@ export default function App() {
             />
           )}
 
-          {/* TAB 9: Admin Master Settings (Staff, Rates, Bays, IRD) */}
-          {activeTab === 'admin' && (
+          {/* TAB 9: BI & Performance Analytics */}
+          {activeTab === 'analytics' && (
+            <AnalyticsDashboard
+              jobCards={db.jobCards || []}
+              invoices={db.invoices || []}
+              parts={db.parts || []}
+              technicians={db.technicians || []}
+              bays={db.bays || []}
+              customers={db.customers || []}
+              insuranceClaims={db.insuranceClaims || []}
+              warrantyClaims={db.warrantyClaims || []}
+              profile={db.profile}
+              userRole={currentUser.role}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+            />
+          )}
+
+          {/* TAB 10: Admin Master Settings (Staff, Rates, Bays, IRD) */}
+          {(activeTab === 'admin_settings' || activeTab === 'admin') && (
             <AdminMasterSettings
               profile={db.profile}
-              users={db.users}
-              technicians={db.technicians}
-              servicePriceList={db.servicePriceList}
-              bays={db.bays}
+              users={db.users || []}
+              customers={db.customers || []}
+              parts={db.parts || []}
+              priceBook={db.servicePriceBook || db.servicePriceList || []}
+              bays={db.bays || []}
+              technicians={db.technicians || []}
+              userRole={currentUser.role}
               onUpdateProfile={handleUpdateProfile}
               onUpdateUsers={handleUpdateUsers}
-              onUpdateTechnicians={handleUpdateTechnicians}
-              onUpdateServicePriceList={handleUpdateServicePriceList}
+              onUpdateCustomers={(customers) => updateDb({ customers })}
+              onUpdateParts={(parts) => updateDb({ parts })}
+              onUpdatePriceBook={(priceBook) => updateDb({ servicePriceBook: priceBook, servicePriceList: priceBook })}
               onUpdateBays={handleUpdateBays}
+              onUpdateTechnicians={handleUpdateTechnicians}
             />
           )}
         </main>
