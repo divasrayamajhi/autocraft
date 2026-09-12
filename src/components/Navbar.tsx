@@ -30,7 +30,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   profile,
   currentUser,
-  users,
+  users = [],
   onSwitchUser,
   onLogout,
   onOpenNewAccountModal,
@@ -122,7 +122,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onChange={(e) => onSwitchUser(e.target.value)}
               className="appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs font-semibold rounded-xl pl-3 pr-8 py-2 cursor-pointer shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {users.map((user) => (
+              {(users || []).map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name} ({user.role})
                 </option>

@@ -31,13 +31,14 @@ import {
 
 interface AdminMasterSettingsProps {
   profile: WorkshopProfile;
-  users: UserAccount[];
-  customers: Customer[];
-  parts: SparePart[];
-  priceBook: ServicePriceItem[];
-  bays: WorkshopBay[];
-  technicians: Technician[];
+  users?: UserAccount[];
+  customers?: Customer[];
+  parts?: SparePart[];
+  priceBook?: ServicePriceItem[];
+  bays?: WorkshopBay[];
+  technicians?: Technician[];
   userRole?: UserRole;
+  onSwitchUser?: (userId: string) => void;
   onUpdateProfile: (profile: WorkshopProfile) => void;
   onUpdateUsers: (users: UserAccount[]) => void;
   onUpdateCustomers: (customers: Customer[]) => void;
@@ -51,13 +52,14 @@ type AdminSubTab = 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'pr
 
 export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   profile,
-  users,
-  customers,
-  parts,
-  priceBook,
-  bays,
-  technicians,
+  users = [],
+  customers = [],
+  parts = [],
+  priceBook = [],
+  bays = [],
+  technicians = [],
   userRole = 'Admin',
+  onSwitchUser,
   onUpdateProfile,
   onUpdateUsers,
   onUpdateCustomers,
@@ -66,9 +68,17 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   onUpdateBays,
   onUpdateTechnicians
 }) => {
+  const safeUsers = Array.isArray(users) ? users : [];
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+  const safeParts = Array.isArray(parts) ? parts : [];
+  const safePriceBook = Array.isArray(priceBook) ? priceBook : [];
+  const safeBays = Array.isArray(bays) ? bays : [];
+  const safeTechnicians = Array.isArray(technicians) ? technicians : [];
+
   const [activeSubTab, setActiveSubTab] = useState<AdminSubTab>('staff');
   const [profileForm, setProfileForm] = useState<WorkshopProfile>(profile);
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
+  const [viewReadOnly, setViewReadOnly] = useState(false);
 
   // Staff edit modal state
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
@@ -86,16 +96,37 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   const [isNewTechModal, setIsNewTechModal] = useState(false);
 
   // Non-admin guard
-  if (userRole !== 'Admin') {
+  if (userRole !== 'Admin' && !viewReadOnly) {
+    const adminUser = safeUsers.find(u => u.role === 'Admin') || { id: 'USR-01', name: 'Ramesh Shrestha' };
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-lg mx-auto my-12 shadow-sm">
-        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
           <ShieldAlert className="w-6 h-6" />
         </div>
-        <h3 className="text-lg font-bold text-slate-900">Admin Privileges Required</h3>
-        <p className="text-xs text-slate-500 mt-2">
-          Master Settings (Staff RBAC, Service Price Book, Workshop Bays, and IRD E-Billing configurations) can only be accessed by the Workshop Administrator. Current Role: <span className="font-semibold text-slate-700">{userRole}</span>.
-        </p>
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">Admin Privileges Required</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Master Settings (Staff RBAC, Service Price Book, Workshop Bays, and IRD E-Billing configurations) require Administrator permissions. Current Active Role: <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{userRole}</span>.
+          </p>
+        </div>
+
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+          {onSwitchUser && (
+            <button
+              onClick={() => onSwitchUser(adminUser.id)}
+              className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center space-x-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Switch to Administrator ({adminUser.name})</span>
+            </button>
+          )}
+          <button
+            onClick={() => setViewReadOnly(true)}
+            className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
+          >
+            Preview Settings (Read-Only)
+          </button>
+        </div>
       </div>
     );
   }
@@ -241,7 +272,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {users.map((u) => (
+            {safeUsers.map((u) => (
               <div key={u.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition flex flex-col justify-between">
                 <div>
                   <div className="flex items-start justify-between">
@@ -333,7 +364,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {priceBook.map((srv) => {
+                {safePriceBook.map((srv) => {
                   const vatAmount = srv.isTaxable ? srv.baseLaborRate * 0.13 : 0;
                   const totalWithVat = srv.baseLaborRate + vatAmount;
                   return (
@@ -389,7 +420,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bays.map((bay) => (
+            {safeBays.map((bay) => (
               <div key={bay.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
@@ -453,7 +484,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {technicians.map((t) => (
+            {safeTechnicians.map((t) => (
               <div key={t.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
                 <div className="flex items-start justify-between">
                   <div>
@@ -710,14 +741,16 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
-                const role = (form.elements.namedItem('role') as HTMLSelectElement).value as UserRole;
-                const passwordVal = (form.elements.namedItem('password') as HTMLInputElement)?.value;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+                const role = (getVal('role', 'Technician') as UserRole);
+                const passwordVal = getVal('password');
                 const updated: UserAccount = {
                   id: editingUser?.id || `USR-${Date.now()}`,
-                  name: (form.elements.namedItem('name') as HTMLInputElement).value,
-                  username: (form.elements.namedItem('username') as HTMLInputElement).value.toLowerCase(),
-                  email: (form.elements.namedItem('email') as HTMLInputElement).value,
-                  phone: (form.elements.namedItem('phone') as HTMLInputElement).value,
+                  name: getVal('name', 'Staff Member'),
+                  username: getVal('username', `user.${Date.now().toString().slice(-4)}`).toLowerCase(),
+                  email: getVal('email', 'staff@workshop.np'),
+                  phone: getVal('phone', '+977-9800000000'),
                   role: role,
                   password: passwordVal || editingUser?.password || 'password123',
                   isActive: true,
@@ -831,16 +864,21 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+                const getNum = (name: string, fallback = 0) =>
+                  parseFloat((form.elements.namedItem(name) as HTMLInputElement)?.value || '') || fallback;
+
                 const updated: ServicePriceItem = {
                   id: editingService?.id || `SRV-${Date.now()}`,
-                  code: (form.elements.namedItem('code') as HTMLInputElement).value,
-                  name: (form.elements.namedItem('name') as HTMLInputElement).value,
-                  category: (form.elements.namedItem('category') as HTMLSelectElement).value as any,
-                  standardHours: parseFloat((form.elements.namedItem('hours') as HTMLInputElement).value) || 1,
-                  baseLaborRate: parseFloat((form.elements.namedItem('rate') as HTMLInputElement).value) || 1000,
+                  code: getVal('code', `SRV-${Math.floor(100 + Math.random()*900)}`),
+                  name: getVal('name', 'Service Item'),
+                  category: (getVal('category', 'Mechanical') as any),
+                  standardHours: getNum('hours', 1),
+                  baseLaborRate: getNum('rate', 1000),
                   vatRate: 13,
                   isTaxable: true,
-                  description: (form.elements.namedItem('desc') as HTMLInputElement).value
+                  description: getVal('desc', '')
                 };
                 handleSaveService(updated);
               }}
@@ -950,12 +988,15 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+
                 const updated: WorkshopBay = {
                   ...editingBay,
-                  name: (form.elements.namedItem('name') as HTMLInputElement).value,
-                  type: (form.elements.namedItem('type') as HTMLSelectElement).value as any,
-                  status: (form.elements.namedItem('status') as HTMLSelectElement).value as any,
-                  assignedTechnicianId: (form.elements.namedItem('tech') as HTMLSelectElement).value || undefined
+                  name: getVal('name', editingBay.name),
+                  type: (getVal('type', editingBay.type) as any),
+                  status: (getVal('status', editingBay.status) as any),
+                  assignedTechnicianId: getVal('tech') || undefined
                 };
                 handleSaveBay(updated);
               }}
@@ -1008,7 +1049,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-medium"
                 >
                   <option value="">Unassigned</option>
-                  {technicians.map(t => (
+                  {safeTechnicians.map(t => (
                     <option key={t.id} value={t.id}>{t.name} ({t.specialization})</option>
                   ))}
                 </select>
@@ -1051,15 +1092,22 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+                const getNum = (name: string, fallback = 0) =>
+                  parseFloat((form.elements.namedItem(name) as HTMLInputElement)?.value || '') || fallback;
+                const getInt = (name: string, fallback = 0) =>
+                  parseInt((form.elements.namedItem(name) as HTMLInputElement)?.value || '', 10) || fallback;
+
                 const updated: Technician = {
                   id: editingTech?.id || `TECH-${Date.now()}`,
-                  name: (form.elements.namedItem('name') as HTMLInputElement).value,
-                  phone: (form.elements.namedItem('phone') as HTMLInputElement).value,
-                  specialization: (form.elements.namedItem('spec') as HTMLInputElement).value,
-                  experienceYears: parseInt((form.elements.namedItem('exp') as HTMLInputElement).value) || 3,
-                  commissionPercentage: parseFloat((form.elements.namedItem('comm') as HTMLInputElement).value) || 5,
+                  name: getVal('name', 'Technician'),
+                  phone: getVal('phone', '+977-9800000000'),
+                  specialization: getVal('spec', 'General Maintenance'),
+                  experienceYears: getInt('exp', 3),
+                  commissionPercentage: getNum('comm', 5),
                   isActive: true,
-                  monthlyTargetHours: parseInt((form.elements.namedItem('target') as HTMLInputElement).value) || 160,
+                  monthlyTargetHours: getInt('target', 160),
                   completedHoursThisMonth: editingTech?.completedHoursThisMonth || 0
                 };
                 handleSaveTechnician(updated);

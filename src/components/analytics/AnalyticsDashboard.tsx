@@ -82,50 +82,59 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   userRole,
   onNavigateTab
 }) => {
+  const safeJobCards = Array.isArray(jobCards) ? jobCards : [];
+  const safeInvoices = Array.isArray(invoices) ? invoices : [];
+  const safeParts = Array.isArray(parts) ? parts : [];
+  const safeTechnicians = Array.isArray(technicians) ? technicians : [];
+  const safeBays = Array.isArray(bays) ? bays : [];
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+  const safeInsuranceClaims = Array.isArray(insuranceClaims) ? insuranceClaims : [];
+  const safeWarrantyClaims = Array.isArray(warrantyClaims) ? warrantyClaims : [];
+
   const [period, setPeriod] = useState<PeriodFilter>('month');
   const [activeSubTab, setActiveSubTab] = useState<AnalyticsSubTab>('overview');
 
   // --- KPI CALCULATIONS ---
   const metrics = useMemo(() => {
     // Total Revenue Calculations
-    const totalInvoiced = invoices.reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0);
-    const totalTaxable = invoices.reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
-    const totalVat = invoices.reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0);
-    const totalPaid = invoices.reduce((acc, inv) => acc + (inv.paidAmount ?? inv.amountPaid ?? 0), 0);
-    const totalReceivables = invoices.reduce((acc, inv) => acc + (inv.balanceDue ?? 0), 0);
+    const totalInvoiced = safeInvoices.reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0);
+    const totalTaxable = safeInvoices.reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
+    const totalVat = safeInvoices.reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0);
+    const totalPaid = safeInvoices.reduce((acc, inv) => acc + (inv.paidAmount ?? inv.amountPaid ?? 0), 0);
+    const totalReceivables = safeInvoices.reduce((acc, inv) => acc + (inv.balanceDue ?? 0), 0);
 
     // Job Cards Breakdown
-    const totalJobs = jobCards.length;
-    const completedJobs = jobCards.filter(j => ['Ready', 'Delivered', 'Invoiced'].includes(j.status)).length;
-    const inProgressJobs = jobCards.filter(j => ['Diagnosis', 'Parts Requisition', 'In Repair', 'Quality Check'].includes(j.status)).length;
-    const pendingIntake = jobCards.filter(j => j.status === 'Intake').length;
+    const totalJobs = safeJobCards.length;
+    const completedJobs = safeJobCards.filter(j => ['Ready', 'Delivered', 'Invoiced'].includes(j.status)).length;
+    const inProgressJobs = safeJobCards.filter(j => ['Diagnosis', 'Parts Requisition', 'In Repair', 'Quality Check'].includes(j.status)).length;
+    const pendingIntake = safeJobCards.filter(j => j.status === 'Intake').length;
 
     // Average Order Value (AOV) in NPR
-    const avgOrderValue = invoices.length > 0 ? Math.round(totalInvoiced / invoices.length) : 0;
+    const avgOrderValue = safeInvoices.length > 0 ? Math.round(totalInvoiced / safeInvoices.length) : 0;
 
     // Bay Utilization Calculation
-    const totalBays = bays.length || 6;
-    const occupiedBays = bays.filter(b => b.status === 'Occupied').length;
+    const totalBays = safeBays.length || 6;
+    const occupiedBays = safeBays.filter(b => b.status === 'Occupied').length;
     const bayUtilizationRate = Math.min(100, Math.round((occupiedBays / totalBays) * 100));
 
     // Turnaround Time (Estimated avg turnaround hours)
     const avgTurnaroundHours = 4.8;
 
     // Technician Labor Stats
-    const totalBilledLaborHours = technicians.reduce((acc, t) => acc + (t.completedHoursThisMonth || 0), 0);
-    const totalTargetHours = technicians.reduce((acc, t) => acc + (t.monthlyTargetHours || 160), 0);
+    const totalBilledLaborHours = safeTechnicians.reduce((acc, t) => acc + (t.completedHoursThisMonth || 0), 0);
+    const totalTargetHours = safeTechnicians.reduce((acc, t) => acc + (t.monthlyTargetHours || 160), 0);
     const techProductivityRate = totalTargetHours > 0 ? Math.round((totalBilledLaborHours / totalTargetHours) * 100) : 85;
 
     // Inventory Value
-    const totalStockCost = parts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0);
-    const totalStockSellingValue = parts.reduce((acc, p) => acc + (p.currentStock * p.sellingPrice), 0);
+    const totalStockCost = safeParts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0);
+    const totalStockSellingValue = safeParts.reduce((acc, p) => acc + (p.currentStock * p.sellingPrice), 0);
     const potentialMargin = totalStockSellingValue > 0 ? Math.round(((totalStockSellingValue - totalStockCost) / totalStockSellingValue) * 100) : 28;
 
     // Insurance & Warranty Stats
-    const totalClaims = insuranceClaims.length;
-    const settledClaims = insuranceClaims.filter(c => c.status === 'Settled').length;
+    const totalClaims = safeInsuranceClaims.length;
+    const settledClaims = safeInsuranceClaims.filter(c => c.status === 'Settled').length;
     const claimSettlementRate = totalClaims > 0 ? Math.round((settledClaims / totalClaims) * 100) : 75;
-    const totalOutstandingClaimAmount = insuranceClaims
+    const totalOutstandingClaimAmount = safeInsuranceClaims
       .filter(c => c.status !== 'Settled')
       .reduce((acc, c) => acc + (c.approvedAmount || c.totalClaimAmount || 0), 0);
 
@@ -155,7 +164,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       claimSettlementRate,
       totalOutstandingClaimAmount
     };
-  }, [invoices, jobCards, bays, technicians, parts, insuranceClaims]);
+  }, [safeInvoices, safeJobCards, safeBays, safeTechnicians, safeParts, safeInsuranceClaims]);
 
   // --- REVENUE TREND DATA (Monthly / Quarterly Nepal Context) ---
   const revenueTrendData = useMemo(() => {
@@ -193,8 +202,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
   // --- TECHNICIAN PRODUCTIVITY LEADERBOARD ---
   const technicianLeaderboard = useMemo(() => {
-    return technicians.map((tech, idx) => {
-      const assignedJobs = jobCards.filter(j => j.assignedTechnicianId === tech.id);
+    return safeTechnicians.map((tech, idx) => {
+      const assignedJobs = safeJobCards.filter(j => j.assignedTechnicianId === tech.id);
       const completedJobs = assignedJobs.filter(j => ['Ready', 'Delivered', 'Invoiced'].includes(j.status)).length;
       const target = tech.monthlyTargetHours || 160;
       const billed = tech.completedHoursThisMonth || (120 + idx * 15);
@@ -213,15 +222,15 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
         commission
       };
     });
-  }, [technicians, jobCards]);
+  }, [safeTechnicians, safeJobCards]);
 
   // --- INVENTORY VELOCITY (FMS & ABC) ---
   const inventoryAnalytics = useMemo(() => {
-    const fastMoving = parts.filter(p => p.category === 'Consumables' || p.category === 'Filters' || p.reorderLevel > 5);
-    const mediumMoving = parts.filter(p => p.category === 'Brakes' || p.category === 'Fluids');
-    const slowMoving = parts.filter(p => !fastMoving.includes(p) && !mediumMoving.includes(p));
+    const fastMoving = safeParts.filter(p => p.category === 'Filters & Fluids' || (p.minReorderLevel && p.minReorderLevel > 5));
+    const mediumMoving = safeParts.filter(p => p.category === 'Brakes' || p.category === 'Suspension & Steering');
+    const slowMoving = safeParts.filter(p => !fastMoving.includes(p) && !mediumMoving.includes(p));
 
-    const lowStockParts = parts.filter(p => p.currentStock <= p.minStockLevel);
+    const lowStockParts = safeParts.filter(p => p.currentStock <= (p.minReorderLevel || 5));
 
     return {
       fastMovingCount: fastMoving.length,
@@ -230,7 +239,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       lowStockCount: lowStockParts.length,
       lowStockParts: lowStockParts.slice(0, 5)
     };
-  }, [parts]);
+  }, [safeParts]);
 
   // CSV Export
   const handleExportCSV = () => {
@@ -714,8 +723,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {bays.map((bay) => {
-                const assignedTech = technicians.find(t => t.id === bay.assignedTechnicianId);
+              {safeBays.map((bay) => {
+                const assignedTech = safeTechnicians.find(t => t.id === bay.assignedTechnicianId);
                 const isOccupied = bay.status === 'Occupied';
                 return (
                   <div key={bay.id} className={`rounded-2xl border p-4 transition ${
@@ -875,13 +884,13 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                 {inventoryAnalytics.lowStockParts.map((part) => (
                   <div key={part.id} className="py-2.5 flex items-center justify-between text-xs">
                     <div>
-                      <span className="font-bold text-slate-900">{part.partName}</span>
-                      <span className="text-slate-400 font-mono ml-2">[{part.partNumber}]</span>
-                      <span className="text-slate-500 ml-2 font-medium">({part.brand})</span>
+                      <span className="font-bold text-slate-900">{part.name}</span>
+                      <span className="text-slate-400 font-mono ml-2">[{part.partNumber || part.sku}]</span>
+                      <span className="text-slate-500 ml-2 font-medium">({part.category})</span>
                     </div>
                     <div className="flex items-center space-x-4">
                       <span className="font-mono font-bold text-rose-600">Stock: {part.currentStock} {part.unit}</span>
-                      <span className="font-mono text-slate-500">Min: {part.minStockLevel}</span>
+                      <span className="font-mono text-slate-500">Min: {part.minReorderLevel}</span>
                       <span className="font-mono text-slate-700 font-semibold">Cost: रु. {part.costPrice.toLocaleString()}</span>
                     </div>
                   </div>

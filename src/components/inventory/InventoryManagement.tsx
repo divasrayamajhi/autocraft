@@ -21,7 +21,9 @@ import {
   Filter,
   Sparkles,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  ShoppingBag
 } from 'lucide-react';
 import { 
   SparePart, 
@@ -29,35 +31,43 @@ import {
   PartsSalesOrder, 
   PartsSalesReturn, 
   Customer,
+  PurchaseOrder,
   UserRole 
 } from '../../types';
+import { OtcOrderModal } from './OtcOrderModal';
+import { SalesReturnModal } from './SalesReturnModal';
+import { InventoryDocSlipModal } from './InventoryDocSlipModal';
 
 interface InventoryManagementProps {
   parts: SparePart[];
-  customers: Customer[];
-  quotations: PartsQuotation[];
-  salesOrders: PartsSalesOrder[];
-  salesReturns: PartsSalesReturn[];
+  customers?: Customer[];
+  quotations?: PartsQuotation[];
+  salesOrders?: PartsSalesOrder[];
+  salesReturns?: PartsSalesReturn[];
+  purchaseOrders?: PurchaseOrder[];
   userRole: UserRole;
   onAddPart: (part: SparePart) => void;
   onUpdatePart: (part: SparePart) => void;
-  onCreateQuotation: (quotation: PartsQuotation) => void;
-  onCreateSalesOrder: (order: PartsSalesOrder) => void;
-  onDispatchOrder: (orderId: string, isPartial: boolean) => void;
-  onCreateSalesReturn: (returnData: PartsSalesReturn) => void;
+  onCreatePurchaseOrder?: (po: PurchaseOrder) => void;
+  onCreateQuotation?: (quotation: PartsQuotation) => void;
+  onCreateSalesOrder?: (order: PartsSalesOrder) => void;
+  onDispatchOrder?: (orderId: string, isPartial: boolean) => void;
+  onCreateSalesReturn?: (returnData: PartsSalesReturn) => void;
 }
 
 type InventorySubTab = 'master' | 'replenishment' | 'fms_abc' | 'sales_flow' | 'substitutes' | 'returns';
 
 export const InventoryManagement: React.FC<InventoryManagementProps> = ({
-  parts,
-  customers,
-  quotations,
-  salesOrders,
-  salesReturns,
+  parts = [],
+  customers = [],
+  quotations = [],
+  salesOrders = [],
+  salesReturns = [],
+  purchaseOrders = [],
   userRole,
   onAddPart,
   onUpdatePart,
+  onCreatePurchaseOrder,
   onCreateQuotation,
   onCreateSalesOrder,
   onDispatchOrder,
@@ -81,6 +91,12 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   const [isNewReturnModal, setIsNewReturnModal] = useState(false);
   const [selectedPricingTier, setSelectedPricingTier] = useState<'Retail' | 'Fleet' | 'Insurance' | 'Wholesale'>('Retail');
 
+  // Document Slip Preview Modals
+  const [viewQuotation, setViewQuotation] = useState<PartsQuotation | null>(null);
+  const [viewSalesOrder, setViewSalesOrder] = useState<PartsSalesOrder | null>(null);
+  const [viewSalesReturn, setViewSalesReturn] = useState<PartsSalesReturn | null>(null);
+  const [salesPipelineView, setSalesPipelineView] = useState<'all' | 'orders' | 'quotations'>('all');
+
   const [notification, setNotification] = useState<string | null>(null);
 
   const notify = (msg: string) => {
@@ -88,13 +104,13 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
     setTimeout(() => setNotification(null), 3500);
   };
 
-  const filteredParts = parts.filter(p => {
+  const filteredParts = (parts || []).filter(p => {
     const matchesSearch = 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.partNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.oemNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.compatibleModels.some(m => m.toLowerCase().includes(searchQuery.toLowerCase()));
+      (p.compatibleModels || []).some(m => m.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const matchesCat = categoryFilter === 'All' || p.category === categoryFilter;
     const matchesFms = fmsFilter === 'All' || p.fmsClass === fmsFilter;
@@ -316,7 +332,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
                       <td className="p-3.5 max-w-[200px]">
                         <div className="flex flex-wrap gap-1">
-                          {part.compatibleModels.map((m, idx) => (
+                          {(part.compatibleModels || []).map((m, idx) => (
                             <span key={idx} className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-700 font-medium">
                               {m}
                             </span>
@@ -513,35 +529,301 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
       {/* SUBTAB 4: SALES PIPELINE (QUOTATION -> ORDER -> DISPATCH) */}
       {activeSubTab === 'sales_flow' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+          {/* Header */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Over-the-Counter (OTC) Spares Sales Pipeline</h3>
-                <p className="text-xs text-slate-500">Manage quotation generation, customer-specific pricing tiers, partial dispatches, and invoicing.</p>
+                <p className="text-xs text-slate-500">Manage OTC sales orders, formal customer quotations, stock dispatch, and 13% Nepal VAT invoicing.</p>
               </div>
               <button
                 onClick={() => setIsNewOrderModal(true)}
-                className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center space-x-1.5 shrink-0 transition-colors"
               >
-                + Create Quotation / Order
+                <Plus className="w-4 h-4" />
+                <span>Create Quotation / Order</span>
               </button>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
-              <div className="flex items-center space-x-2">
-                <span className="font-semibold text-slate-700">Active Pricing Tiers:</span>
-                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold">Retail (MRP)</span>
-                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">Fleet (10% Disc)</span>
-                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Insurance (IRDAI)</span>
-                <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-bold">Wholesale (15% Disc)</span>
+            {/* Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Sales Orders</span>
+                <span className="text-base font-extrabold text-slate-900 font-mono">{salesOrders.length}</span>
+                <span className="text-[10px] text-teal-600 block font-semibold">
+                  NPR {salesOrders.reduce((sum, o) => sum + o.grandTotal, 0).toLocaleString()}
+                </span>
               </div>
-              <span className="text-slate-500">VAT: 13% Applied Automatically</span>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Quotations Active</span>
+                <span className="text-base font-extrabold text-slate-900 font-mono">{quotations.length}</span>
+                <span className="text-[10px] text-blue-600 block font-semibold">
+                  NPR {quotations.reduce((sum, q) => sum + q.grandTotal, 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Dispatched Orders</span>
+                <span className="text-base font-extrabold text-emerald-700 font-mono">
+                  {salesOrders.filter(o => o.dispatchStatus === 'Fully Dispatched').length}
+                </span>
+                <span className="text-[10px] text-slate-400 block font-semibold">Stock issued from shelves</span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Nepal VAT (13%)</span>
+                <span className="text-base font-extrabold text-teal-800 font-mono">
+                  NPR {salesOrders.reduce((sum, o) => sum + o.vatAmount, 0).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-400 block font-semibold">IRD Tax Ledger Ready</span>
+              </div>
             </div>
 
-            <div className="mt-4 text-center py-8 text-xs text-slate-400">
-              No pending sales dispatches today. Click "+ Create Quotation / Order" to generate an OTC over-the-counter spare parts sale for walk-in or fleet buyers.
+            {/* Pricing Tiers Ribbon & Pipeline Filter */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+              <div className="flex items-center space-x-1.5 overflow-x-auto py-0.5">
+                <span className="font-semibold text-slate-500 text-[11px] mr-1">Filter View:</span>
+                <button
+                  onClick={() => setSalesPipelineView('all')}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                    salesPipelineView === 'all' ? 'bg-teal-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  All Records ({salesOrders.length + quotations.length})
+                </button>
+                <button
+                  onClick={() => setSalesPipelineView('orders')}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                    salesPipelineView === 'orders' ? 'bg-teal-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Sales Orders ({salesOrders.length})
+                </button>
+                <button
+                  onClick={() => setSalesPipelineView('quotations')}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
+                    salesPipelineView === 'quotations' ? 'bg-teal-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Quotations ({quotations.length})
+                </button>
+              </div>
+
+              <div className="flex items-center space-x-1.5 text-[11px] text-slate-500">
+                <span>Tiers:</span>
+                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">Retail</span>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Fleet (-10%)</span>
+                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">Wholesale (-15%)</span>
+              </div>
             </div>
           </div>
+
+          {/* Sales Orders Table */}
+          {(salesPipelineView === 'all' || salesPipelineView === 'orders') && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <ShoppingBag className="w-4 h-4 text-teal-700" />
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                    Sales Orders & Dispatches ({salesOrders.length})
+                  </h4>
+                </div>
+              </div>
+
+              {salesOrders.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                  No sales orders recorded yet. Click "+ Create Quotation / Order" above to issue spares.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                      <tr>
+                        <th className="p-3">Order # & Date</th>
+                        <th className="p-3">Customer</th>
+                        <th className="p-3">Items Summary</th>
+                        <th className="p-3 text-right">Grand Total</th>
+                        <th className="p-3 text-center">Dispatch Status</th>
+                        <th className="p-3 text-center">Invoice</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {salesOrders.map(order => (
+                        <tr key={order.id} className="hover:bg-slate-50/70">
+                          <td className="p-3">
+                            <span className="font-bold font-mono text-slate-900 block">{order.orderNumber}</span>
+                            <span className="text-[11px] text-slate-400">{order.date}</span>
+                          </td>
+                          <td className="p-3 font-semibold text-slate-800">{order.customerName}</td>
+                          <td className="p-3">
+                            <div className="max-w-xs truncate text-[11px] text-slate-600">
+                              {order.items.map(item => `${item.quantity}x ${item.partName}`).join(', ')}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">({order.items.length} unique parts)</span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <span className="font-mono font-bold text-slate-900 block">
+                              NPR {order.grandTotal.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              (VAT: NPR {order.vatAmount.toLocaleString()})
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              order.dispatchStatus === 'Fully Dispatched'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : order.dispatchStatus === 'Partially Dispatched'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {order.dispatchStatus}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              order.invoiceStatus === 'Invoiced'
+                                ? 'bg-teal-100 text-teal-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {order.invoiceStatus}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              {order.dispatchStatus !== 'Fully Dispatched' && onDispatchOrder && (
+                                <button
+                                  onClick={() => {
+                                    onDispatchOrder(order.id, false);
+                                    notify(`Stock dispatched for order ${order.orderNumber}! Shelves updated.`);
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition-colors"
+                                >
+                                  Dispatch
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setViewSalesOrder(order)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Challan</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quotations Table */}
+          {(salesPipelineView === 'all' || salesPipelineView === 'quotations') && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-4 h-4 text-blue-700" />
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                    Estimates & Quotations ({quotations.length})
+                  </h4>
+                </div>
+              </div>
+
+              {quotations.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                  No pending quotations. Click "+ Create Quotation / Order" above to generate a client quotation.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                      <tr>
+                        <th className="p-3">Quotation # & Date</th>
+                        <th className="p-3">Customer</th>
+                        <th className="p-3">Validity Expiry</th>
+                        <th className="p-3">Items Count</th>
+                        <th className="p-3 text-right">Grand Total (Inc VAT)</th>
+                        <th className="p-3 text-center">Status</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {quotations.map(quot => (
+                        <tr key={quot.id} className="hover:bg-slate-50/70">
+                          <td className="p-3">
+                            <span className="font-bold font-mono text-slate-900 block">{quot.quotationNumber}</span>
+                            <span className="text-[11px] text-slate-400">{quot.date}</span>
+                          </td>
+                          <td className="p-3 font-semibold text-slate-800">{quot.customerName}</td>
+                          <td className="p-3 font-mono text-[11px] text-slate-600">{quot.expiryDate}</td>
+                          <td className="p-3 font-mono text-[11px] text-slate-600">{quot.items.length} parts</td>
+                          <td className="p-3 text-right">
+                            <span className="font-mono font-bold text-slate-900 block">
+                              NPR {quot.grandTotal.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              (Subtotal: NPR {quot.subtotal.toLocaleString()})
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              quot.status === 'Converted to Order'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : quot.status === 'Sent'
+                                ? 'bg-blue-100 text-blue-800'
+                                : quot.status === 'Expired'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {quot.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              {quot.status !== 'Converted to Order' && onCreateSalesOrder && (
+                                <button
+                                  onClick={() => {
+                                    const convertedOrder: PartsSalesOrder = {
+                                      id: `PSO-${Date.now().toString().slice(-4)}`,
+                                      orderNumber: `PSO-81-${Math.floor(1000 + Math.random() * 9000)}`,
+                                      quotationId: quot.id,
+                                      customerId: quot.customerId,
+                                      customerName: quot.customerName,
+                                      date: new Date().toISOString().slice(0, 10),
+                                      items: quot.items,
+                                      subtotal: quot.subtotal,
+                                      vatAmount: quot.vatAmount,
+                                      grandTotal: quot.grandTotal,
+                                      dispatchStatus: 'Fully Dispatched',
+                                      invoiceStatus: 'Invoiced'
+                                    };
+                                    onCreateSalesOrder(convertedOrder);
+                                    notify(`Quotation ${quot.quotationNumber} successfully converted to Order ${convertedOrder.orderNumber}! Stock deducted.`);
+                                  }}
+                                  className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition-colors"
+                                >
+                                  Convert to Order
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setViewQuotation(quot)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Slip</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -575,22 +857,126 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
       {/* SUBTAB 6: SALES RETURNS & CREDIT NOTES */}
       {activeSubTab === 'returns' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Sales Return & Restocking Management</h3>
-              <p className="text-xs text-slate-500">Process returned parts, verify seal integrity, and issue IRD-compliant Credit Notes.</p>
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Sales Return & Restocking Management</h3>
+                <p className="text-xs text-slate-500">Process returned parts, verify seal integrity, replenish inventory counts, and issue IRD-compliant Credit Notes.</p>
+              </div>
+              <button
+                onClick={() => setIsNewReturnModal(true)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center space-x-1.5 shrink-0 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Process Return</span>
+              </button>
             </div>
-            <button
-              onClick={() => notify('Credit Note generator ready for returned invoice matching.')}
-              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold"
-            >
-              Process Return
-            </button>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Returns Processed</span>
+                <span className="text-base font-extrabold text-slate-900 font-mono">{salesReturns.length}</span>
+                <span className="text-[10px] text-rose-600 block font-semibold">Authorized Cases</span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Total Credit Value</span>
+                <span className="text-base font-extrabold text-rose-700 font-mono">
+                  NPR {salesReturns.reduce((sum, r) => sum + r.totalRefundAmount, 0).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-400 block font-semibold">Refunded / Credited</span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Restocked Parts</span>
+                <span className="text-base font-extrabold text-emerald-700 font-mono">
+                  {salesReturns.reduce((sum, r) => sum + r.items.reduce((acc, it) => acc + it.quantity, 0), 0)} pcs
+                </span>
+                <span className="text-[10px] text-emerald-600 block font-semibold">Added to Shelves</span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">IRD Credit Notes</span>
+                <span className="text-base font-extrabold text-slate-800 font-mono">{salesReturns.length}</span>
+                <span className="text-[10px] text-slate-400 block font-semibold">Synced with IRD VAT Portal</span>
+              </div>
+            </div>
           </div>
 
-          <div className="text-center py-8 text-xs text-slate-400">
-            No sales return claims logged for current period.
+          {/* Returns Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              Authorized Returns & Credit Note Ledger ({salesReturns.length})
+            </h4>
+
+            {salesReturns.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                No sales return claims logged for current period. Click "Process Return" above to register a return and restock parts.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                    <tr>
+                      <th className="p-3">Credit Note # & Date</th>
+                      <th className="p-3">Customer & Original Inv</th>
+                      <th className="p-3">Returned Item(s)</th>
+                      <th className="p-3">Inspection Reason</th>
+                      <th className="p-3 text-right">Credit Amount</th>
+                      <th className="p-3 text-center">Status</th>
+                      <th className="p-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {salesReturns.map(ret => (
+                      <tr key={ret.id} className="hover:bg-slate-50/70">
+                        <td className="p-3">
+                          <span className="font-bold font-mono text-rose-700 block">{ret.creditNoteNumber}</span>
+                          <span className="text-[10px] font-mono text-slate-400">{ret.returnNumber} • {ret.date}</span>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-bold text-slate-800 block">{ret.customerName}</span>
+                          <span className="text-[10px] font-mono text-slate-400">Ref: {ret.originalInvoiceNumber}</span>
+                        </td>
+                        <td className="p-3">
+                          {ret.items.map((item, idx) => (
+                            <div key={idx} className="text-[11px] text-slate-700 font-medium">
+                              <span className="font-bold text-slate-900 font-mono">{item.quantity}x</span> {item.partName}
+                            </div>
+                          ))}
+                        </td>
+                        <td className="p-3 max-w-xs text-[11px] text-slate-600">
+                          {ret.reason}
+                        </td>
+                        <td className="p-3 text-right">
+                          <span className="font-mono font-bold text-rose-700 text-sm block">
+                            NPR {ret.totalRefundAmount.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">13% VAT Reversed</span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            ret.status === 'Restocked'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {ret.status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={() => setViewSalesReturn(ret)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 ml-auto transition-colors"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Credit Note</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -673,35 +1059,44 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
-                const cost = parseFloat((form.elements.namedItem('cost') as HTMLInputElement).value) || 0;
-                const selling = parseFloat((form.elements.namedItem('selling') as HTMLInputElement).value) || 0;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+                const getNum = (name: string, fallback = 0) =>
+                  parseFloat((form.elements.namedItem(name) as HTMLInputElement)?.value || '') || fallback;
+                const getInt = (name: string, fallback = 0) =>
+                  parseInt((form.elements.namedItem(name) as HTMLInputElement)?.value || '', 10) || fallback;
+
+                const cost = getNum('cost', 0);
+                const selling = getNum('selling', 0);
+                const modelsStr = getVal('models', 'Creta, Seltos, Venue');
+                const models = modelsStr.split(',').map(m => m.trim()).filter(Boolean);
 
                 const partObj: SparePart = {
                   id: editingPart?.id || `PART-${Date.now().toString().slice(-4)}`,
-                  sku: (form.elements.namedItem('sku') as HTMLInputElement).value,
-                  partNumber: (form.elements.namedItem('partNumber') as HTMLInputElement).value,
-                  oemNumber: (form.elements.namedItem('oemNumber') as HTMLInputElement).value,
-                  name: (form.elements.namedItem('name') as HTMLInputElement).value,
-                  category: (form.elements.namedItem('category') as HTMLSelectElement).value as any,
-                  compatibleModels: (form.elements.namedItem('models') as HTMLInputElement).value.split(',').map(m => m.trim()),
-                  rackLocation: (form.elements.namedItem('rack') as HTMLInputElement).value,
-                  barcode: (form.elements.namedItem('barcode') as HTMLInputElement).value || '8901234' + Math.floor(10000 + Math.random()*90000),
+                  sku: getVal('sku', `SKU-PART-${Math.floor(100 + Math.random()*900)}`),
+                  partNumber: getVal('partNumber', 'GEN-PART'),
+                  oemNumber: getVal('oemNumber', 'OEM-PART'),
+                  name: getVal('name', 'Spare Part'),
+                  category: (getVal('category', 'Filters & Fluids') as any),
+                  compatibleModels: models.length > 0 ? models : ['Universal'],
+                  rackLocation: getVal('rack', 'Bin-A1-01'),
+                  barcode: getVal('barcode', '8901234' + Math.floor(10000 + Math.random()*90000)),
                   costPrice: cost,
                   sellingPrice: selling,
                   vatRate: 13,
-                  hsnSacCode: (form.elements.namedItem('hsn') as HTMLInputElement).value || '87083000',
-                  currentStock: parseInt((form.elements.namedItem('stock') as HTMLInputElement).value) || 10,
-                  minReorderLevel: parseInt((form.elements.namedItem('minLevel') as HTMLInputElement).value) || 5,
-                  maxStockLevel: parseInt((form.elements.namedItem('maxLevel') as HTMLInputElement).value) || 50,
+                  hsnSacCode: getVal('hsn', '87083000'),
+                  currentStock: getInt('stock', 10),
+                  minReorderLevel: getInt('minLevel', 5),
+                  maxStockLevel: getInt('maxLevel', 50),
                   safetyStock: 5,
                   monthlyConsumption: 20,
-                  unit: (form.elements.namedItem('unit') as HTMLSelectElement).value as any,
-                  fmsClass: (form.elements.namedItem('fms') as HTMLSelectElement).value as any,
-                  abcClass: (form.elements.namedItem('abc') as HTMLSelectElement).value as any,
+                  unit: (getVal('unit', 'pcs') as any),
+                  fmsClass: (getVal('fms', 'Fast') as any),
+                  abcClass: (getVal('abc', 'B') as any),
                   substitutePartIds: [],
                   leadTimeDays: 3,
                   lastRestockedDate: new Date().toISOString().slice(0, 10),
-                  preferredVendor: (form.elements.namedItem('vendor') as HTMLInputElement).value || 'Authorized Nepal Distributor'
+                  preferredVendor: getVal('vendor', 'Authorized Nepal Distributor')
                 };
 
                 if (editingPart) {
@@ -789,14 +1184,18 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Initial Stock</label>
                   <input name="stock" type="number" defaultValue={editingPart?.currentStock || 10} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Min Reorder Level</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Min Reorder</label>
                   <input name="minLevel" type="number" defaultValue={editingPart?.minReorderLevel || 5} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Max Level</label>
+                  <input name="maxLevel" type="number" defaultValue={editingPart?.maxStockLevel || 50} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Unit</label>
@@ -809,10 +1208,14 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Nepal HSN / HS Code</label>
                   <input name="hsn" defaultValue={editingPart?.hsnSacCode || '87083000'} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Barcode / EAN</label>
+                  <input name="barcode" defaultValue={editingPart?.barcode || ''} placeholder="890..." className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" />
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Preferred Distributor</label>
@@ -829,71 +1232,40 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL: CREATE OTC ORDER */}
-      {isNewOrderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h4 className="text-sm font-bold text-slate-900">Create OTC Spares Quotation / Order</h4>
-              <button onClick={() => setIsNewOrderModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* MODAL: CREATE OTC ORDER & QUOTATION */}
+      <OtcOrderModal
+        isOpen={isNewOrderModal}
+        onClose={() => setIsNewOrderModal(false)}
+        parts={parts}
+        customers={customers}
+        onCreateQuotation={onCreateQuotation}
+        onCreateSalesOrder={onCreateSalesOrder}
+        onNotify={notify}
+      />
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setIsNewOrderModal(false);
-                notify('OTC Spare Parts Quotation generated with 13% Nepal VAT.');
-              }}
-              className="mt-4 space-y-3 text-xs"
-            >
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Customer Selection</label>
-                <select className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-medium">
-                  {customers.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.pricingTier} Tier)</option>
-                  ))}
-                  <option value="walkin">Walk-in Retail Buyer</option>
-                </select>
-              </div>
+      {/* MODAL: PROCESS SALES RETURN & CREDIT NOTE */}
+      <SalesReturnModal
+        isOpen={isNewReturnModal}
+        onClose={() => setIsNewReturnModal(false)}
+        parts={parts}
+        customers={customers}
+        salesOrders={salesOrders}
+        onCreateSalesReturn={onCreateSalesReturn}
+        onNotify={notify}
+      />
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Pricing Tier</label>
-                <select
-                  value={selectedPricingTier}
-                  onChange={(e) => setSelectedPricingTier(e.target.value as any)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-bold text-slate-800"
-                >
-                  <option value="Retail">Retail (Standard MRP)</option>
-                  <option value="Fleet">Fleet (10% Commercial Discount)</option>
-                  <option value="Insurance">Insurance Surveyor Agreed Rate</option>
-                  <option value="Wholesale">Wholesale Workshop Rate (15% Disc)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Select Spare Part SKU</label>
-                <select className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-mono">
-                  {parts.map(p => (
-                    <option key={p.id} value={p.id}>{p.sku} - {p.name} (Stock: {p.currentStock})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Quantity</label>
-                <input type="number" defaultValue="1" min="1" className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button type="button" onClick={() => setIsNewOrderModal(false)} className="px-4 py-2 border border-slate-300 rounded-xl font-semibold">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold">Generate Quotation</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* MODAL: PRINT / VIEW DOCUMENT SLIP */}
+      <InventoryDocSlipModal
+        isOpen={Boolean(viewQuotation || viewSalesOrder || viewSalesReturn)}
+        onClose={() => {
+          setViewQuotation(null);
+          setViewSalesOrder(null);
+          setViewSalesReturn(null);
+        }}
+        quotation={viewQuotation}
+        salesOrder={viewSalesOrder}
+        salesReturn={viewSalesReturn}
+      />
     </div>
   );
 };

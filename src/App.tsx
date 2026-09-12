@@ -36,7 +36,10 @@ import {
   WorkshopProfile,
   Technician,
   ServicePriceItem,
-  BayArea
+  BayArea,
+  PartsQuotation,
+  PartsSalesOrder,
+  PartsSalesReturn
 } from './types';
 
 export default function App() {
@@ -264,6 +267,166 @@ export default function App() {
     updateDb({ purchaseOrders: updatedPOs });
   };
 
+  const handleCreateQuotation = (quotation: PartsQuotation) => {
+    const updated = [quotation, ...(db.partsQuotations || [])];
+    updateDb({ partsQuotations: updated });
+  };
+
+  const handleCreateSalesOrder = (order: PartsSalesOrder, deductStock: boolean = true) => {
+    const updatedOrders = [order, ...(db.partsSalesOrders || [])];
+    
+    // Deduct stock for immediate dispatch
+    let updatedParts = db.parts || [];
+    if (deductStock || order.dispatchStatus === 'Fully Dispatched') {
+      updatedParts = (db.parts || []).map(p => {
+        const orderItem = order.items.find(item => item.partId === p.id || item.sku === p.sku);
+        if (orderItem) {
+          return {
+            ...p,
+            currentStock: Math.max(0, p.currentStock - orderItem.quantity)
+          };
+        }
+        return p;
+      });
+    }
+
+    // If converted from quotation, update quotation status
+    let updatedQuotations = db.partsQuotations || [];
+    if (order.quotationId) {
+      updatedQuotations = (db.partsQuotations || []).map(q => 
+        q.id === order.quotationId ? { ...q, status: 'Converted to Order' as const } : q
+      );
+    }
+
+    // Automatically generate OTC Invoice in billing
+    const otcInvoice: Invoice = {
+      id: `INV-OTC-${order.id}`,
+      invoiceNumber: `INV-81-OTC-${Math.floor(1000 + Math.random() * 9000)}`,
+      fiscalYear: '2081/82',
+      customerName: order.customerName,
+      customerPhone: '+977-9800000000',
+      vehicleNumber: 'OTC-WALKIN',
+      vehicleModel: 'Direct Spares Sale',
+      date: order.date || new Date().toISOString().slice(0, 10),
+      items: order.items.map(item => ({
+        description: item.partName,
+        type: 'Part',
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxable: true,
+        total: item.total
+      })),
+      laborTotal: 0,
+      partsTotal: order.subtotal,
+      subtotal: order.subtotal,
+      discountAmount: 0,
+      taxableAmount: order.subtotal,
+      vatRate: 13,
+      vatAmount: order.vatAmount,
+      grandTotal: order.grandTotal,
+      paidAmount: order.dispatchStatus === 'Fully Dispatched' ? order.grandTotal : 0,
+      balanceDue: order.dispatchStatus === 'Fully Dispatched' ? 0 : order.grandTotal,
+      status: order.dispatchStatus === 'Fully Dispatched' ? 'Paid' : 'Unpaid',
+      paymentMethod: 'Cash',
+      isIrdSynced: true,
+      qrPayload: `IRD:OTC:${order.orderNumber}:${order.grandTotal}:VAT13%`
+    };
+
+    updateDb({
+      partsSalesOrders: updatedOrders,
+      parts: updatedParts,
+      partsQuotations: updatedQuotations,
+      invoices: [otcInvoice, ...(db.invoices || [])]
+    });
+  };
+
+  const handleDispatchOrder = (orderId: string, isPartial: boolean) => {
+    const targetOrder = (db.partsSalesOrders || []).find(o => o.id === orderId);
+    if (!targetOrder) return;
+    
+    const updatedParts = (db.parts || []).map(p => {
+      const orderItem = targetOrder.items.find(item => item.partId === p.id || item.sku === p.sku);
+      if (orderItem) {
+        return {
+          ...p,
+          currentStock: Math.max(0, p.currentStock - orderItem.quantity)
+        };
+      }
+      return p;
+    });
+
+    const updatedOrders = (db.partsSalesOrders || []).map(o => 
+      o.id === orderId 
+        ? { 
+            ...o, 
+            dispatchStatus: isPartial ? ('Partially Dispatched' as const) : ('Fully Dispatched' as const),
+            invoiceStatus: 'Invoiced' as const
+          } 
+        : o
+    );
+
+    updateDb({
+      partsSalesOrders: updatedOrders,
+      parts: updatedParts
+    });
+  };
+
+  const handleCreateSalesReturn = (returnData: PartsSalesReturn) => {
+    const updatedReturns = [returnData, ...(db.partsSalesReturns || [])];
+
+    // Re-stock inventory items: Add returned quantity back to stock
+    const updatedParts = (db.parts || []).map(p => {
+      const returnItem = returnData.items.find(item => item.partId === p.id || item.partName === p.name);
+      if (returnItem) {
+        return {
+          ...p,
+          currentStock: p.currentStock + returnItem.quantity
+        };
+      }
+      return p;
+    });
+
+    // Create Credit Note Invoice entry in invoices
+    const creditNoteInvoice: Invoice = {
+      id: `CN-${returnData.id}`,
+      invoiceNumber: returnData.creditNoteNumber,
+      fiscalYear: '2081/82',
+      customerName: returnData.customerName,
+      customerPhone: '+977-9800000000',
+      vehicleNumber: 'SALES-RETURN',
+      vehicleModel: `Credit Note for ${returnData.originalInvoiceNumber}`,
+      date: returnData.date || new Date().toISOString().slice(0, 10),
+      items: returnData.items.map(item => ({
+        description: `Credit Note / Restock: ${item.partName}`,
+        type: 'Part',
+        quantity: item.quantity,
+        unitPrice: -item.unitPrice,
+        taxable: true,
+        total: -item.refundAmount
+      })),
+      laborTotal: 0,
+      partsTotal: -Math.round(returnData.totalRefundAmount / 1.13),
+      subtotal: -Math.round(returnData.totalRefundAmount / 1.13),
+      discountAmount: 0,
+      taxableAmount: -Math.round(returnData.totalRefundAmount / 1.13),
+      vatRate: 13,
+      vatAmount: -(returnData.totalRefundAmount - Math.round(returnData.totalRefundAmount / 1.13)),
+      grandTotal: -returnData.totalRefundAmount,
+      paidAmount: -returnData.totalRefundAmount,
+      balanceDue: 0,
+      status: 'Paid',
+      paymentMethod: 'Cash',
+      isIrdSynced: true,
+      qrPayload: `IRD:CREDIT_NOTE:${returnData.creditNoteNumber}:AMOUNT:${returnData.totalRefundAmount}`
+    };
+
+    updateDb({
+      partsSalesReturns: updatedReturns,
+      parts: updatedParts,
+      invoices: [creditNoteInvoice, ...(db.invoices || [])]
+    });
+  };
+
   // --- CUSTOMER HANDLERS ---
   const handleAddCustomer = (customer: Customer) => {
     const updated = [customer, ...(db.customers || [])];
@@ -392,15 +555,23 @@ export default function App() {
             />
           )}
 
-          {/* TAB 2: Spares Inventory (ABC/FMS, Barcode, Reorder) */}
+          {/* TAB 2: Spares Inventory (ABC/FMS, Barcode, Reorder, OTC, Returns) */}
           {activeTab === 'inventory' && (
             <InventoryManagement
-              parts={db.parts}
-              purchaseOrders={db.purchaseOrders}
+              parts={db.parts || []}
+              customers={db.customers || []}
+              quotations={db.partsQuotations || []}
+              salesOrders={db.partsSalesOrders || []}
+              salesReturns={db.partsSalesReturns || []}
+              purchaseOrders={db.purchaseOrders || []}
               userRole={currentUser.role}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
               onCreatePurchaseOrder={handleCreatePurchaseOrder}
+              onCreateQuotation={handleCreateQuotation}
+              onCreateSalesOrder={handleCreateSalesOrder}
+              onDispatchOrder={handleDispatchOrder}
+              onCreateSalesReturn={handleCreateSalesReturn}
             />
           )}
 
@@ -514,6 +685,7 @@ export default function App() {
               bays={db.bays || []}
               technicians={db.technicians || []}
               userRole={currentUser.role}
+              onSwitchUser={handleSwitchUser}
               onUpdateProfile={handleUpdateProfile}
               onUpdateUsers={handleUpdateUsers}
               onUpdateCustomers={(customers) => updateDb({ customers })}

@@ -256,7 +256,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
             </div>
 
             <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-              {claims.map((cl) => {
+              {safeClaims.map((cl) => {
                 const isSelected = selectedClaim?.id === cl.id;
                 return (
                   <div

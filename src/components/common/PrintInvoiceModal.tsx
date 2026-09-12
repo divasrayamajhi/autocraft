@@ -122,7 +122,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {invoice.items.map((item, index) => (
+                {(invoice.items || []).map((item, index) => (
                   <tr key={item.id}>
                     <td className="p-2 border-r border-slate-200 text-center font-mono">{index + 1}</td>
                     <td className="p-2 border-r border-slate-200">

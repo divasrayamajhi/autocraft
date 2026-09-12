@@ -208,7 +208,7 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {BAYS.map((b, i) => {
-              const occupyingJc = activeJobCards.find(j => j.bayNumber.toLowerCase().includes(`bay ${i + 1}`));
+              const occupyingJc = activeJobCards.find(j => (j.bayNumber || '').toLowerCase().includes(`bay ${i + 1}`));
               const isOccupied = !!occupyingJc;
 
               return (

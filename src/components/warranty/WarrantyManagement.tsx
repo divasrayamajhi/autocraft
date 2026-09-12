@@ -477,24 +477,32 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
-                const partsAmt = parseFloat((form.elements.namedItem('partsAmt') as HTMLInputElement).value) || 0;
-                const laborAmt = parseFloat((form.elements.namedItem('laborAmt') as HTMLInputElement).value) || 0;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+                const getNum = (name: string, fallback = 0) =>
+                  parseFloat((form.elements.namedItem(name) as HTMLInputElement)?.value || '') || fallback;
+                const getInt = (name: string, fallback = 0) =>
+                  parseInt((form.elements.namedItem(name) as HTMLInputElement)?.value || '', 10) || fallback;
+
+                const partsAmt = getNum('partsAmt', 0);
+                const laborAmt = getNum('laborAmt', 0);
+                const serialVal = getVal('serial');
 
                 const newClaim: WarrantyClaim = {
                   id: `WCLM-${Date.now().toString().slice(-4)}`,
                   claimNumber: `WCLM-81-${Math.floor(100 + Math.random()*900)}`,
-                  warrantyRecordId: (form.elements.namedItem('recId') as HTMLSelectElement).value || 'WAR-MANUAL',
+                  warrantyRecordId: getVal('recId', 'WAR-MANUAL') || 'WAR-MANUAL',
                   jobCardId: 'JC-81-MANUAL',
-                  jobCardNumber: (form.elements.namedItem('jcNum') as HTMLInputElement).value,
-                  vehicleReg: (form.elements.namedItem('vehReg') as HTMLInputElement).value.toUpperCase(),
-                  customerName: (form.elements.namedItem('custName') as HTMLInputElement).value,
-                  oemManufacturer: (form.elements.namedItem('oem') as HTMLInputElement).value,
-                  defectivePartName: (form.elements.namedItem('partName') as HTMLInputElement).value,
-                  defectivePartSku: (form.elements.namedItem('sku') as HTMLInputElement).value,
-                  serialNumber: (form.elements.namedItem('serial') as HTMLInputElement).value || undefined,
-                  failureMileage: parseInt((form.elements.namedItem('mileage') as HTMLInputElement).value) || 30000,
-                  defectDescription: (form.elements.namedItem('desc') as HTMLTextAreaElement).value,
-                  symptomType: (form.elements.namedItem('symptom') as HTMLSelectElement).value as any,
+                  jobCardNumber: getVal('jcNum', 'JC-81-0021'),
+                  vehicleReg: getVal('vehReg', 'BA 02 CHA 8892').toUpperCase(),
+                  customerName: getVal('custName', 'Valued Customer'),
+                  oemManufacturer: getVal('oem', 'Bosch Automotive Nepal'),
+                  defectivePartName: getVal('partName', 'Defective Part'),
+                  defectivePartSku: getVal('sku', 'SKU-GEN-01'),
+                  serialNumber: serialVal || undefined,
+                  failureMileage: getInt('mileage', 30000),
+                  defectDescription: getVal('desc', 'Defective part under warranty replacement inspection.'),
+                  symptomType: (getVal('symptom', 'Mechanical Failure') as any),
                   claimPartsAmount: partsAmt,
                   claimLaborAmount: laborAmt,
                   totalClaimAmount: partsAmt + laborAmt,
@@ -536,7 +544,7 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
                 <input name="custName" defaultValue="Dr. Rameshwor Pokharel" className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Defective Part Name</label>
                   <input name="partName" placeholder="e.g. Brake Caliper Assembly" className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
@@ -544,6 +552,10 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Part SKU / Code</label>
                   <input name="sku" placeholder="SKU-BRK-CAL-01" className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none font-mono" required />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Serial # (Optional)</label>
+                  <input name="serial" placeholder="SN-..." className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none font-mono" />
                 </div>
               </div>
 
@@ -609,8 +621,13 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
-                const months = parseInt((form.elements.namedItem('duration') as HTMLInputElement).value) || 6;
-                const startRaw = (form.elements.namedItem('start') as HTMLInputElement).value;
+                const getVal = (name: string, fallback = '') =>
+                  ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
+                const getInt = (name: string, fallback = 0) =>
+                  parseInt((form.elements.namedItem(name) as HTMLInputElement)?.value || '', 10) || fallback;
+
+                const months = getInt('duration', 6);
+                const startRaw = getVal('start');
                 const startDateObj = startRaw ? new Date(startRaw) : new Date();
                 const validStart = isNaN(startDateObj.getTime()) ? new Date() : startDateObj;
                 const start = validStart.toISOString().slice(0, 10);
@@ -621,15 +638,15 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
                 const newRec: WarrantyRecord = {
                   id: `WAR-${Date.now().toString().slice(-4)}`,
                   warrantyCode: `WAR-2081-${Math.floor(100 + Math.random()*900)}`,
-                  partName: (form.elements.namedItem('partName') as HTMLInputElement).value,
-                  jobCardNumber: (form.elements.namedItem('jcNum') as HTMLInputElement).value,
-                  vehicleReg: (form.elements.namedItem('vehReg') as HTMLInputElement).value.toUpperCase(),
-                  customerName: (form.elements.namedItem('custName') as HTMLInputElement).value,
+                  partName: getVal('partName', 'Automotive Spare Part'),
+                  jobCardNumber: getVal('jcNum', 'JC-81-0001'),
+                  vehicleReg: getVal('vehReg', 'BA 01 CHA 0001').toUpperCase(),
+                  customerName: getVal('custName', 'Valued Customer'),
                   customerPhone: '+977-9800000000',
                   startDate: start,
                   expiryDate,
                   durationMonths: months,
-                  oemManufacturer: (form.elements.namedItem('oem') as HTMLInputElement).value,
+                  oemManufacturer: getVal('oem', 'OEM Nepal'),
                   terms: 'Standard replacement against premature breakdown.',
                   status: 'Active'
                 };

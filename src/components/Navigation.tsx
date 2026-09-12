@@ -128,13 +128,13 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: 'analytics',
       label: 'BI & Performance',
       icon: BarChart3,
-      allowedRoles: ['Admin', 'Service Advisor', 'Cashier']
+      allowedRoles: ['Admin', 'Service Advisor', 'Technician', 'Inventory Manager', 'Cashier']
     },
     {
       id: 'admin_settings',
       label: 'Master Settings',
       icon: Settings,
-      allowedRoles: ['Admin'],
+      allowedRoles: ['Admin', 'Service Advisor', 'Technician', 'Inventory Manager', 'Cashier'],
       adminOnly: true
     }
   ];

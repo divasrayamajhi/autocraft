@@ -929,6 +929,105 @@ const INITIAL_GL_ACCOUNTS: GLAccount[] = [
   { accountCode: '6010', accountName: 'Workshop Electricity & Rent', category: 'Expense', subCategory: 'Overheads', currentBalance: 85000 }
 ];
 
+const INITIAL_PARTS_QUOTATIONS: PartsQuotation[] = [
+  {
+    id: 'QUOT-01',
+    quotationNumber: 'QTN-81-0012',
+    customerId: 'CUST-02',
+    customerName: 'Yeti Expeditions & Travels Pvt. Ltd.',
+    date: '2026-09-10',
+    expiryDate: '2026-09-24',
+    items: [
+      {
+        partId: 'PART-02',
+        partName: 'Front Ceramic Brake Pad Set (Brembo Spec)',
+        sku: 'SKU-BRK-58101',
+        quantity: 2,
+        unitPrice: 4200,
+        discount: 420,
+        vatRate: 13,
+        total: 7560
+      },
+      {
+        partId: 'PART-03',
+        partName: 'Mobil 1 ESP 5W-30 Full Synthetic Engine Oil',
+        sku: 'SKU-LUB-M1-5W30',
+        quantity: 4,
+        unitPrice: 1650,
+        discount: 165,
+        vatRate: 13,
+        total: 5940
+      }
+    ],
+    subtotal: 13500,
+    vatAmount: 1755,
+    grandTotal: 15255,
+    status: 'Sent'
+  }
+];
+
+const INITIAL_PARTS_SALES_ORDERS: PartsSalesOrder[] = [
+  {
+    id: 'PSO-01',
+    orderNumber: 'PSO-81-0028',
+    customerId: 'CUST-03',
+    customerName: 'Himalayan Logistics Cargo',
+    date: '2026-09-11',
+    items: [
+      {
+        partId: 'PART-01',
+        partName: 'Hyundai OEM Engine Oil Filter Cartridge',
+        sku: 'SKU-FLT-26300',
+        quantity: 4,
+        unitPrice: 650,
+        discount: 65,
+        vatRate: 13,
+        total: 2340
+      },
+      {
+        partId: 'PART-04',
+        partName: 'NGK Iridium Spark Plug Set (Pack of 4)',
+        sku: 'SKU-IGN-ILZKR7B',
+        quantity: 1,
+        unitPrice: 3800,
+        discount: 380,
+        vatRate: 13,
+        total: 3420
+      }
+    ],
+    subtotal: 5760,
+    vatAmount: 748.8,
+    grandTotal: 6508.8,
+    dispatchStatus: 'Fully Dispatched',
+    invoiceStatus: 'Invoiced'
+  }
+];
+
+const INITIAL_PARTS_SALES_RETURNS: PartsSalesReturn[] = [
+  {
+    id: 'RET-01',
+    returnNumber: 'RET-81-0004',
+    originalInvoiceNumber: 'INV-81-0089',
+    customerId: 'CUST-01',
+    customerName: 'Dr. Rameshwor Pokharel',
+    date: '2026-09-08',
+    reason: 'Wrong SKU purchased for Creta 1.4 Turbo instead of 1.5 MPI. Packaging unsealed and verified intact.',
+    items: [
+      {
+        partId: 'PART-04',
+        partName: 'NGK Iridium Spark Plug Set (Pack of 4)',
+        quantity: 1,
+        unitPrice: 3800,
+        vatAmount: 494,
+        refundAmount: 4294
+      }
+    ],
+    totalRefundAmount: 4294,
+    creditNoteNumber: 'CN-81-0005',
+    status: 'Restocked'
+  }
+];
+
 export class StorageService {
   private static instance: StorageService;
   private db: AppDatabase;
@@ -973,9 +1072,9 @@ export class StorageService {
       technicians: INITIAL_TECHNICIANS,
       customers: INITIAL_CUSTOMERS,
       parts: INITIAL_PARTS,
-      partsQuotations: [],
-      partsSalesOrders: [],
-      partsSalesReturns: [],
+      partsQuotations: INITIAL_PARTS_QUOTATIONS,
+      partsSalesOrders: INITIAL_PARTS_SALES_ORDERS,
+      partsSalesReturns: INITIAL_PARTS_SALES_RETURNS,
       jobCards: INITIAL_JOB_CARDS,
       appointments: [],
       invoices: INITIAL_INVOICES,
@@ -1136,9 +1235,9 @@ export class StorageService {
       technicians: Array.isArray(parsed.technicians) && parsed.technicians.length > 0 ? parsed.technicians : fallback.technicians,
       customers,
       parts,
-      partsQuotations: Array.isArray(parsed.partsQuotations) ? parsed.partsQuotations : [],
-      partsSalesOrders: Array.isArray(parsed.partsSalesOrders) ? parsed.partsSalesOrders : [],
-      partsSalesReturns: Array.isArray(parsed.partsSalesReturns) ? parsed.partsSalesReturns : [],
+      partsQuotations: Array.isArray(parsed.partsQuotations) && parsed.partsQuotations.length > 0 ? parsed.partsQuotations : INITIAL_PARTS_QUOTATIONS,
+      partsSalesOrders: Array.isArray(parsed.partsSalesOrders) && parsed.partsSalesOrders.length > 0 ? parsed.partsSalesOrders : INITIAL_PARTS_SALES_ORDERS,
+      partsSalesReturns: Array.isArray(parsed.partsSalesReturns) && parsed.partsSalesReturns.length > 0 ? parsed.partsSalesReturns : INITIAL_PARTS_SALES_RETURNS,
       jobCards,
       appointments: Array.isArray(parsed.appointments) ? parsed.appointments : (fallback.appointments || []),
       invoices,

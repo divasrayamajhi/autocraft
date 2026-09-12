@@ -92,7 +92,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [intakeFuel, setIntakeFuel] = useState(60);
   const [intakeComplaints, setIntakeComplaints] = useState('Periodic 40,000 km general service, brake inspection, engine oil replacement.');
   const [intakeBay, setIntakeBay] = useState('Bay 1 (Mechanical Lift)');
-  const [intakeTechId, setIntakeTechId] = useState(technicians[0]?.id || '');
+  const [intakeTechId, setIntakeTechId] = useState(safeTechnicians[0]?.id || '');
   const [intakeIsCashless, setIntakeIsCashless] = useState(false);
   const [intakeInsuranceCo, setIntakeInsuranceCo] = useState(NEPAL_INSURERS[0]);
 
@@ -481,7 +481,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {appointments.map((apt) => (
+              {safeAppointments.map((apt) => (
                 <tr key={apt.id} className="hover:bg-slate-50 transition">
                   <td className="p-3.5 font-mono font-bold text-indigo-700">{apt.id}</td>
                   <td className="p-3.5">
@@ -609,7 +609,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                     onChange={e => setIntakeTechId(e.target.value)}
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-medium"
                   >
-                    {technicians.map(t => (
+                    {safeTechnicians.map(t => (
                       <option key={t.id} value={t.id}>{t.name} ({t.specialization})</option>
                     ))}
                   </select>

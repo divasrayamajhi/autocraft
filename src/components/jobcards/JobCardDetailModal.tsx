@@ -40,8 +40,8 @@ interface JobCardDetailModalProps {
 
 export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   jobCard,
-  availableParts,
-  technicians,
+  availableParts = [],
+  technicians = [],
   currentUser,
   onClose,
   onUpdateJobCard,
@@ -434,7 +434,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       required
                     >
                       <option value="">-- Choose Stock Part --</option>
-                      {availableParts.map(p => (
+                      {(availableParts || []).map(p => (
                         <option key={p.id} value={p.id}>
                           {p.sku} - {p.name} (Stock: {p.currentStock}) - रु. {p.sellingPrice}
                         </option>
