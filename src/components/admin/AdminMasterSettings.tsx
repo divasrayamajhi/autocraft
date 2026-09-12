@@ -25,7 +25,8 @@ import {
   Technician, 
   Customer, 
   SparePart,
-  UserRole
+  UserRole,
+  getDefaultPermissionsForRole
 } from '../../types';
 
 interface AdminMasterSettingsProps {
@@ -692,23 +693,18 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const form = e.currentTarget;
+                const role = (form.elements.namedItem('role') as HTMLSelectElement).value as UserRole;
+                const passwordVal = (form.elements.namedItem('password') as HTMLInputElement)?.value;
                 const updated: UserAccount = {
                   id: editingUser?.id || `USR-${Date.now()}`,
                   name: (form.elements.namedItem('name') as HTMLInputElement).value,
-                  username: (form.elements.namedItem('username') as HTMLInputElement).value,
+                  username: (form.elements.namedItem('username') as HTMLInputElement).value.toLowerCase(),
                   email: (form.elements.namedItem('email') as HTMLInputElement).value,
                   phone: (form.elements.namedItem('phone') as HTMLInputElement).value,
-                  role: (form.elements.namedItem('role') as HTMLSelectElement).value as UserRole,
+                  role: role,
+                  password: passwordVal || editingUser?.password || 'password123',
                   isActive: true,
-                  permissions: {
-                    canEditMasters: (form.elements.namedItem('role') as HTMLSelectElement).value === 'Admin',
-                    canCreateJobCard: ['Admin', 'Service Advisor'].includes((form.elements.namedItem('role') as HTMLSelectElement).value),
-                    canEditJobCard: ['Admin', 'Service Advisor'].includes((form.elements.namedItem('role') as HTMLSelectElement).value),
-                    canIssueBill: ['Admin', 'Cashier'].includes((form.elements.namedItem('role') as HTMLSelectElement).value),
-                    canManageInventory: ['Admin', 'Inventory Manager'].includes((form.elements.namedItem('role') as HTMLSelectElement).value),
-                    canViewFinancials: ['Admin', 'Cashier'].includes((form.elements.namedItem('role') as HTMLSelectElement).value),
-                    canManageWarranty: ['Admin', 'Service Advisor', 'Inventory Manager'].includes((form.elements.namedItem('role') as HTMLSelectElement).value),
-                  }
+                  permissions: getDefaultPermissionsForRole(role)
                 };
                 handleSaveUser(updated);
               }}
@@ -731,6 +727,17 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                   defaultValue={editingUser?.username || ''}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Password</label>
+                <input
+                  name="password"
+                  type="password"
+                  defaultValue={editingUser?.password || ''}
+                  placeholder={editingUser ? 'Leave blank to keep existing password' : 'Enter password (default: password123)'}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>
 

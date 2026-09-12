@@ -19,6 +19,7 @@ import { WarrantyManagement } from './components/warranty/WarrantyManagement';
 import { AdminMasterSettings } from './components/admin/AdminMasterSettings';
 import { CloudSyncModal } from './components/common/CloudSyncModal';
 import { PrintInvoiceModal } from './components/common/PrintInvoiceModal';
+import { AuthScreen } from './components/auth/AuthScreen';
 import { 
   JobCard, 
   Invoice, 
@@ -39,6 +40,8 @@ import {
 
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => storage.isAuthenticated());
+  const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
@@ -50,6 +53,22 @@ export default function App() {
   };
 
   const currentUser = db.currentUser;
+
+  // --- AUTHENTICATION HANDLERS ---
+  const handleLoginSuccess = (user: UserAccount) => {
+    setIsAuthenticated(true);
+    setIsNewAccountModalOpen(false);
+    setDb(storage.getDatabase());
+  };
+
+  const handleLogout = () => {
+    storage.logout();
+    setIsAuthenticated(false);
+  };
+
+  const handleOpenNewAccountModal = () => {
+    setIsNewAccountModalOpen(true);
+  };
 
   // Badges Calculation for Navigation
   const partsList = db.parts || [];
@@ -312,6 +331,16 @@ export default function App() {
     return ok;
   };
 
+  if (!isAuthenticated) {
+    return (
+      <AuthScreen
+        workshopProfile={db.profile}
+        onLoginSuccess={handleLoginSuccess}
+        initialTab="login"
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900 font-sans pb-24 md:pb-12">
       {/* Top Universal Navbar */}
@@ -320,10 +349,11 @@ export default function App() {
         currentUser={currentUser}
         users={db.users}
         onSwitchUser={handleSwitchUser}
+        onLogout={handleLogout}
+        onOpenNewAccountModal={handleOpenNewAccountModal}
         isCloudSynced={db.isCloudSynced}
         lastSyncTime={db.lastCloudSync}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
-        onQuickIntake={() => setActiveTab('jobcards')}
       />
 
       {/* Main Responsive Layout */}
@@ -492,6 +522,19 @@ export default function App() {
           invoice={printInvoice}
           onClose={() => setPrintInvoice(null)}
         />
+      )}
+
+      {/* Quick Add User Account Modal (with Role Options) */}
+      {isNewAccountModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <AuthScreen
+            workshopProfile={db.profile}
+            onLoginSuccess={handleLoginSuccess}
+            initialTab="signup"
+            isModal={true}
+            onClose={() => setIsNewAccountModalOpen(false)}
+          />
+        </div>
       )}
     </div>
   );

@@ -15,6 +15,7 @@ export interface UserAccount {
   email: string;
   phone: string;
   role: UserRole;
+  password?: string;
   avatarUrl?: string;
   isActive: boolean;
   permissions: {
@@ -26,6 +27,71 @@ export interface UserAccount {
     canViewFinancials: boolean;
     canManageWarranty: boolean;
   };
+}
+
+export function getDefaultPermissionsForRole(role: UserRole): UserAccount['permissions'] {
+  switch (role) {
+    case 'Admin':
+      return {
+        canEditMasters: true,
+        canCreateJobCard: true,
+        canEditJobCard: true,
+        canIssueBill: true,
+        canManageInventory: true,
+        canViewFinancials: true,
+        canManageWarranty: true
+      };
+    case 'Service Advisor':
+      return {
+        canEditMasters: false,
+        canCreateJobCard: true,
+        canEditJobCard: true,
+        canIssueBill: false,
+        canManageInventory: false,
+        canViewFinancials: false,
+        canManageWarranty: true
+      };
+    case 'Technician':
+      return {
+        canEditMasters: false,
+        canCreateJobCard: false,
+        canEditJobCard: false,
+        canIssueBill: false,
+        canManageInventory: false,
+        canViewFinancials: false,
+        canManageWarranty: false
+      };
+    case 'Inventory Manager':
+      return {
+        canEditMasters: false,
+        canCreateJobCard: false,
+        canEditJobCard: false,
+        canIssueBill: false,
+        canManageInventory: true,
+        canViewFinancials: false,
+        canManageWarranty: true
+      };
+    case 'Cashier':
+      return {
+        canEditMasters: false,
+        canCreateJobCard: false,
+        canEditJobCard: false,
+        canIssueBill: true,
+        canManageInventory: false,
+        canViewFinancials: true,
+        canManageWarranty: false
+      };
+    default:
+      return {
+        canEditMasters: false,
+        canCreateJobCard: false,
+        canEditJobCard: false,
+        canIssueBill: false,
+        canManageInventory: false,
+        canViewFinancials: false,
+        canManageWarranty: false
+      };
+  }
 }
 
 export interface WorkshopProfile {

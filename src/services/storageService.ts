@@ -1,5 +1,7 @@
 import { 
   UserAccount,
+  UserRole,
+  getDefaultPermissionsForRole,
   WorkshopProfile,
   ServicePriceItem,
   WorkshopBay,
@@ -23,6 +25,7 @@ import {
 
 const STORAGE_KEY = 'NEPAL_WORKSHOP_ERP_V2';
 const ACTIVE_USER_KEY = 'NEPAL_WORKSHOP_CURRENT_USER';
+const AUTH_SESSION_KEY = 'NEPAL_WORKSHOP_IS_LOGGED_IN';
 
 export interface AppDatabase {
   profile: WorkshopProfile;
@@ -79,6 +82,7 @@ const INITIAL_USERS: UserAccount[] = [
     email: 'suman.admin@sagarmathaauto.com.np',
     phone: '+977-9851011223',
     role: 'Admin',
+    password: 'admin',
     isActive: true,
     permissions: {
       canEditMasters: true,
@@ -97,6 +101,7 @@ const INITIAL_USERS: UserAccount[] = [
     email: 'aayush.thapa@sagarmathaauto.com.np',
     phone: '+977-9841223344',
     role: 'Service Advisor',
+    password: 'password123',
     isActive: true,
     permissions: {
       canEditMasters: false,
@@ -115,6 +120,7 @@ const INITIAL_USERS: UserAccount[] = [
     email: 'bikram.tamang@sagarmathaauto.com.np',
     phone: '+977-9813445566',
     role: 'Technician',
+    password: 'password123',
     isActive: true,
     permissions: {
       canEditMasters: false,
@@ -133,6 +139,7 @@ const INITIAL_USERS: UserAccount[] = [
     email: 'rajan.store@sagarmathaauto.com.np',
     phone: '+977-9801889900',
     role: 'Inventory Manager',
+    password: 'password123',
     isActive: true,
     permissions: {
       canEditMasters: false,
@@ -151,6 +158,7 @@ const INITIAL_USERS: UserAccount[] = [
     email: 'pooja.accounts@sagarmathaauto.com.np',
     phone: '+977-9849778899',
     role: 'Cashier',
+    password: 'password123',
     isActive: true,
     permissions: {
       canEditMasters: false,
@@ -1171,10 +1179,92 @@ export class StorageService {
     return this.switchUser(userId);
   }
 
+  public isAuthenticated(): boolean {
+    const sessionVal = localStorage.getItem(AUTH_SESSION_KEY);
+    if (sessionVal === 'false') {
+      return false;
+    }
+    return true;
+  }
+
+  public login(usernameOrEmail: string, password?: string): { success: boolean; user?: UserAccount; error?: string } {
+    const query = (usernameOrEmail || '').trim().toLowerCase();
+    const user = this.db.users.find(u => 
+      (u.username || '').toLowerCase() === query || (u.email || '').toLowerCase() === query
+    );
+
+    if (!user) {
+      return { success: false, error: 'User account not found with provided username or email' };
+    }
+
+    if (!user.isActive) {
+      return { success: false, error: 'This user account is currently deactivated. Contact admin.' };
+    }
+
+    if (password && user.password && user.password !== password) {
+      return { success: false, error: 'Invalid password. Please check your credentials.' };
+    }
+
+    this.db.currentUser = user;
+    localStorage.setItem(AUTH_SESSION_KEY, 'true');
+    localStorage.setItem(ACTIVE_USER_KEY, user.username);
+    this.saveToStorage(this.db);
+
+    return { success: true, user };
+  }
+
+  public logout(): void {
+    localStorage.setItem(AUTH_SESSION_KEY, 'false');
+    localStorage.removeItem(ACTIVE_USER_KEY);
+  }
+
+  public register(userData: {
+    name: string;
+    username: string;
+    email: string;
+    phone: string;
+    role: UserRole;
+    password?: string;
+  }): { success: boolean; user?: UserAccount; error?: string } {
+    const usernameClean = (userData.username || '').trim().toLowerCase();
+    const emailClean = (userData.email || '').trim().toLowerCase();
+
+    const existing = this.db.users.find(u => 
+      (u.username || '').toLowerCase() === usernameClean || (u.email || '').toLowerCase() === emailClean
+    );
+
+    if (existing) {
+      return { success: false, error: 'An account with this username or email already exists.' };
+    }
+
+    const newUser: UserAccount = {
+      id: `USR-${Date.now().toString().slice(-4)}`,
+      name: userData.name.trim(),
+      username: usernameClean,
+      email: emailClean,
+      phone: userData.phone?.trim() || '+977-9800000000',
+      role: userData.role,
+      password: userData.password || 'password123',
+      isActive: true,
+      permissions: getDefaultPermissionsForRole(userData.role)
+    };
+
+    const updatedUsers = [...this.db.users, newUser];
+    this.db.users = updatedUsers;
+    this.db.currentUser = newUser;
+    localStorage.setItem(AUTH_SESSION_KEY, 'true');
+    localStorage.setItem(ACTIVE_USER_KEY, newUser.username);
+    this.saveToStorage(this.db);
+
+    return { success: true, user: newUser };
+  }
+
   public switchUser(userId: string): UserAccount | null {
     const user = this.db.users.find(u => u.id === userId);
     if (user) {
       this.db.currentUser = user;
+      localStorage.setItem(AUTH_SESSION_KEY, 'true');
+      localStorage.setItem(ACTIVE_USER_KEY, user.username);
       this.saveToStorage(this.db);
       return user;
     }
