@@ -1,0 +1,6 @@
+{
+  "name": "Multi-Brand Workshop DMS & ERP",
+  "description": "Full-featured ERP and Dealer Management System customized for independent auto workshops with Nepal IRD 13% VAT, Fonepay and NepalPay Dynamic QR, Warranty OEM workflows, immutable audit trails, and role-based permissions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
