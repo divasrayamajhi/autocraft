@@ -20,7 +20,8 @@ import {
   GLJournalEntry,
   VatLedgerEntry,
   InsuranceClaim,
-  PurchaseOrder
+  PurchaseOrder,
+  GatePass
 } from '../types';
 
 const STORAGE_KEY = 'NEPAL_WORKSHOP_ERP_V2';
@@ -43,6 +44,7 @@ export interface AppDatabase {
   jobCards: JobCard[];
   appointments: Appointment[];
   invoices: Invoice[];
+  gatePasses: GatePass[];
   warrantyRecords: WarrantyRecord[];
   warrantyClaims: WarrantyClaim[];
   glAccounts: GLAccount[];
@@ -1028,6 +1030,38 @@ const INITIAL_PARTS_SALES_RETURNS: PartsSalesReturn[] = [
   }
 ];
 
+const INITIAL_GATE_PASSES: GatePass[] = [
+  {
+    id: 'GP-01',
+    passNumber: 'GP-81-0194',
+    invoiceId: 'INV-01',
+    invoiceNumber: 'INV-81/82-0194',
+    jobCardId: 'JC-81-0020',
+    jobCardNumber: 'JC-81-0020',
+    vehicleReg: 'BA 18 CHA 1029',
+    vehicleMake: 'Suzuki',
+    vehicleModel: 'Swift ZXi',
+    vinNumber: 'MBHEC414LL8392019',
+    engineNumber: 'K12M-849102',
+    customerName: 'Sunita Pradhan',
+    customerPhone: '+977-9841998877',
+    odometerReading: 21900,
+    arrivalDate: '2026-09-10',
+    entryTime: '09:30 AM',
+    issueDate: '2026-09-10',
+    issueTime: '15:10 PM',
+    exitDate: '2026-09-10',
+    exitTime: '15:25 PM',
+    status: 'Exited',
+    securityOfficerName: 'Bikram Thapa (Gate Security)',
+    authorizedBy: 'Suman Sharma (Admin)',
+    remarks: 'Payment cleared via Fonepay. Final inspection passed. Cleared for exit.',
+    itemsDeliveredCount: 2,
+    totalInvoiceAmount: 4385,
+    paymentStatus: 'Paid'
+  }
+];
+
 export class StorageService {
   private static instance: StorageService;
   private db: AppDatabase;
@@ -1078,6 +1112,7 @@ export class StorageService {
       jobCards: INITIAL_JOB_CARDS,
       appointments: [],
       invoices: INITIAL_INVOICES,
+      gatePasses: INITIAL_GATE_PASSES,
       warrantyRecords: INITIAL_WARRANTY_RECORDS,
       warrantyClaims: INITIAL_WARRANTY_CLAIMS,
       glAccounts: INITIAL_GL_ACCOUNTS,
@@ -1241,6 +1276,7 @@ export class StorageService {
       jobCards,
       appointments: Array.isArray(parsed.appointments) ? parsed.appointments : (fallback.appointments || []),
       invoices,
+      gatePasses: Array.isArray(parsed.gatePasses) && parsed.gatePasses.length > 0 ? parsed.gatePasses : (fallback.gatePasses || INITIAL_GATE_PASSES),
       warrantyRecords: Array.isArray(parsed.warrantyRecords) && parsed.warrantyRecords.length > 0 ? parsed.warrantyRecords : fallback.warrantyRecords,
       warrantyClaims: Array.isArray(parsed.warrantyClaims) && parsed.warrantyClaims.length > 0 ? parsed.warrantyClaims : fallback.warrantyClaims,
       glAccounts: Array.isArray(parsed.glAccounts) && parsed.glAccounts.length > 0 ? parsed.glAccounts : fallback.glAccounts,

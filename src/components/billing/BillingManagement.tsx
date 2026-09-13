@@ -5,7 +5,9 @@ import {
   Customer, 
   SparePart, 
   NepalPaymentMethod,
-  UserRole 
+  UserRole,
+  GatePass,
+  WorkshopProfile
 } from '../../types';
 import { 
   FileText, 
@@ -20,6 +22,7 @@ import {
   DollarSign,
   QrCode,
   ShieldCheck,
+  Shield,
   Zap,
   ArrowUpRight,
   Lock,
@@ -35,9 +38,12 @@ interface BillingManagementProps {
   customers: Customer[];
   availableParts: SparePart[];
   userRole: UserRole;
+  gatePasses?: GatePass[];
+  profile?: WorkshopProfile;
   onCreateInvoice: (newInv: Invoice) => void;
   onUpdateInvoice: (updatedInv: Invoice) => void;
   onRecordPayment: (invoiceId: string, amount: number, method: NepalPaymentMethod, ref: string) => void;
+  onViewGatePass?: (gatePass: GatePass) => void;
 }
 
 export const BillingManagement: React.FC<BillingManagementProps> = ({
@@ -46,9 +52,12 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
   customers,
   availableParts,
   userRole,
+  gatePasses = [],
+  profile,
   onCreateInvoice,
   onUpdateInvoice,
-  onRecordPayment
+  onRecordPayment,
+  onViewGatePass
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Partially Paid' | 'Unpaid'>('All');
@@ -306,6 +315,39 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                       <Printer className="w-3.5 h-3.5" />
                     </button>
 
+                    {onViewGatePass && (
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const pass = gatePasses.find(gp => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id) || {
+                            id: `GP-${Date.now().toString().slice(-6)}`,
+                            passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+                            invoiceId: inv.id,
+                            invoiceNumber: inv.invoiceNumber,
+                            jobCardNumber: inv.jobCardNumber,
+                            vehicleReg: inv.vehicleReg,
+                            vehicleMake: inv.vehicleBrand || 'Multi-Brand',
+                            vehicleModel: inv.vehicleModel,
+                            odometerReading: 0,
+                            customerName: inv.customerName,
+                            customerPhone: inv.customerPhone,
+                            issueDate: now.toISOString().slice(0, 10),
+                            issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            authorizedBy: 'Workshop Billing Desk',
+                            securityOfficerName: 'Main Gate Security',
+                            status: 'Cleared for Exit' as const,
+                            totalInvoiceAmount: inv.grandTotal,
+                            paymentStatus: inv.status
+                          };
+                          onViewGatePass(pass);
+                        }}
+                        className="p-1 text-slate-500 hover:text-emerald-700 rounded"
+                        title="View / Print Vehicle Gate Pass (गेट पास)"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleSendWhatsApp(inv)}
                       className="p-1 text-slate-500 hover:text-emerald-600 rounded"
@@ -490,8 +532,34 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
       {selectedInvoiceForPrint && (
         <PrintInvoiceModal
           invoice={selectedInvoiceForPrint}
+          profile={profile}
           onClose={() => setSelectedInvoiceForPrint(null)}
           onWhatsAppShare={handleSendWhatsApp}
+          onOpenGatePass={onViewGatePass ? (inv) => {
+            const now = new Date();
+            const pass = gatePasses.find(gp => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id) || {
+              id: `GP-${Date.now().toString().slice(-6)}`,
+              passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+              invoiceId: inv.id,
+              invoiceNumber: inv.invoiceNumber,
+              jobCardNumber: inv.jobCardNumber,
+              vehicleReg: inv.vehicleReg,
+              vehicleMake: inv.vehicleBrand || 'Multi-Brand',
+              vehicleModel: inv.vehicleModel,
+              odometerReading: 0,
+              customerName: inv.customerName,
+              customerPhone: inv.customerPhone,
+              issueDate: now.toISOString().slice(0, 10),
+              issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              authorizedBy: 'Workshop Billing Desk',
+              securityOfficerName: 'Main Gate Security',
+              status: 'Cleared for Exit' as const,
+              totalInvoiceAmount: inv.grandTotal,
+              paymentStatus: inv.status
+            };
+            setSelectedInvoiceForPrint(null);
+            onViewGatePass(pass);
+          } : undefined}
         />
       )}
     </div>

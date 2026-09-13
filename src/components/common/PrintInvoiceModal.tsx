@@ -1,20 +1,32 @@
 import React from 'react';
-import { Invoice, JobCard } from '../../types';
+import { Invoice, JobCard, WorkshopProfile } from '../../types';
 import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Lock } from 'lucide-react';
 
 interface PrintInvoiceModalProps {
   invoice: Invoice;
   jobCard?: JobCard;
+  profile?: WorkshopProfile;
   onClose: () => void;
   onWhatsAppShare?: (invoice: Invoice) => void;
+  onOpenGatePass?: (invoice: Invoice) => void;
 }
 
 export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   invoice,
   jobCard,
+  profile,
   onClose,
-  onWhatsAppShare
+  onWhatsAppShare,
+  onOpenGatePass
 }) => {
+  const workshopName = profile?.legalEntityName || profile?.name || 'SAGARMATHA MULTI-CARE AUTO WORKSHOP PVT. LTD.';
+  const workshopAddress = profile?.address 
+    ? `${profile.address}, ${profile.city || ''}, Nepal`
+    : 'Sukedhara-04, Ring Road, Kathmandu, Nepal';
+  const workshopPhone = profile?.contactNumber || '+977-1-4378920, 9851099882';
+  const workshopPan = profile?.panVatNumber || '302849182';
+  const fiscalYear = invoice.fiscalYear || profile?.fiscalYear || '2081/82';
+
   const handlePrint = () => {
     window.print();
   };
@@ -23,7 +35,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
     if (onWhatsAppShare) {
       onWhatsAppShare(invoice);
     } else {
-      const message = `Namaste ${invoice.customerName}! Here is your Tax Invoice ${invoice.invoiceNumber} from Sagarmatha Auto Workshop for vehicle ${invoice.vehicleReg}. Total: NPR रु. ${invoice.grandTotal.toLocaleString()}. Thank you for choosing us!`;
+      const message = `Namaste ${invoice.customerName}! Here is your Tax Invoice ${invoice.invoiceNumber} from ${profile?.name || 'Sagarmatha Auto Workshop'} for vehicle ${invoice.vehicleReg}. Total: NPR रु. ${invoice.grandTotal.toLocaleString()}. Thank you for choosing us!`;
       const cleanPhone = invoice.customerPhone.replace(/[^0-9]/g, '');
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
@@ -44,6 +56,16 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
             </h2>
           </div>
           <div className="flex items-center space-x-2">
+            {onOpenGatePass && (
+              <button
+                onClick={() => onOpenGatePass(invoice)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition"
+                title="View / Print Security Gate Pass"
+              >
+                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Vehicle Gate Pass</span>
+              </button>
+            )}
             <button
               onClick={defaultWhatsApp}
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
@@ -72,13 +94,13 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
           {/* Header */}
           <div className="text-center pb-4 border-b-2 border-slate-900">
             <h1 className="text-lg font-black text-slate-900 tracking-wide uppercase">
-              SAGARMATHA MULTI-CARE AUTO WORKSHOP PVT. LTD.
+              {workshopName}
             </h1>
             <p className="text-xs text-slate-600 mt-0.5">
-              Sukedhara-04, Ring Road, Kathmandu, Nepal | Hotline: +977-1-4378920, 9851099882
+              {workshopAddress} | Hotline: {workshopPhone}
             </p>
             <p className="text-xs font-mono font-bold text-slate-800 mt-0.5">
-              PAN / VAT Registration No.: <span className="text-indigo-800 font-extrabold text-sm">302849182</span>
+              PAN / VAT Registration No.: <span className="text-indigo-800 font-extrabold text-sm">{workshopPan}</span>
             </p>
             <div className="inline-block mt-2 px-4 py-1 border border-slate-800 rounded font-black text-sm uppercase tracking-wider bg-slate-50">
               TAX INVOICE (कर बिजक)
@@ -92,7 +114,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
           <div className="grid grid-cols-2 gap-4 py-4 border-b border-slate-200 text-xs">
             <div>
               <p><strong className="text-slate-500">Invoice No:</strong> <span className="font-mono font-bold text-slate-900">{invoice.invoiceNumber}</span></p>
-              <p><strong className="text-slate-500">Fiscal Year:</strong> <span className="font-mono font-bold">2081/82 B.S.</span></p>
+              <p><strong className="text-slate-500">Fiscal Year:</strong> <span className="font-mono font-bold">{fiscalYear} B.S.</span></p>
               <p><strong className="text-slate-500">Invoice Date:</strong> {invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : (invoice.date || 'N/A')} ({(invoice.createdAt || invoice.date || '').slice(0, 10)})</p>
               <p><strong className="text-slate-500">Job Card No:</strong> <span className="font-mono">{invoice.jobCardNumber}</span></p>
               <p><strong className="text-slate-500">Payment Mode:</strong> <span className="font-bold text-indigo-700">{invoice.paymentMethod || 'Cash'}</span></p>
@@ -202,7 +224,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               <div>
                 <span className="font-bold text-slate-800 text-[11px] block">Fonepay / NepalPay Dynamic QR</span>
                 <span className="text-[10px] text-slate-500 block">Scan using any Nepal mobile banking or wallet (eSewa, Khalti)</span>
-                <span className="font-mono text-[10px] font-bold text-indigo-700">Merchant: SAGARMATHA AUTO KTM</span>
+                <span className="font-mono text-[10px] font-bold text-indigo-700">Merchant: {profile?.name || 'SAGARMATHA AUTO KTM'}</span>
               </div>
             </div>
 
@@ -210,7 +232,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               <div className="h-10"></div>
               <div className="inline-block border-t border-slate-800 pt-1 text-center min-w-[160px]">
                 <p className="font-bold text-slate-900">Authorized Signature</p>
-                <p className="text-[10px] text-slate-500">For Sagarmatha Multi-Care Auto</p>
+                <p className="text-[10px] text-slate-500">For {profile?.name || 'Sagarmatha Multi-Care Auto'}</p>
               </div>
             </div>
           </div>

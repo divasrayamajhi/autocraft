@@ -20,6 +20,7 @@ import { AdminMasterSettings } from './components/admin/AdminMasterSettings';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { CloudSyncModal } from './components/common/CloudSyncModal';
 import { PrintInvoiceModal } from './components/common/PrintInvoiceModal';
+import { PrintGatePassModal } from './components/common/PrintGatePassModal';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { 
   JobCard, 
@@ -39,7 +40,8 @@ import {
   BayArea,
   PartsQuotation,
   PartsSalesOrder,
-  PartsSalesReturn
+  PartsSalesReturn,
+  GatePass
 } from './types';
 
 export default function App() {
@@ -49,6 +51,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+  const [printGatePass, setPrintGatePass] = useState<GatePass | null>(null);
 
   // Sync state changes with persistence
   const updateDb = (partial: Partial<AppDatabase>) => {
@@ -185,7 +188,36 @@ export default function App() {
     const updatedCards = db.jobCards.map(c => c.id === jc.id ? updatedJc : c);
     const updatedInvoices = [newInvoice, ...db.invoices];
 
-    updateDb({ jobCards: updatedCards, invoices: updatedInvoices });
+    // User requirement: "once the invoice is generated, create a gate pass of individual vehicle with information."
+    const now = new Date();
+    const vehicleGatePass: GatePass = {
+      id: `GP-${Date.now().toString().slice(-6)}`,
+      passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoiceId: newInvoice.id,
+      invoiceNumber: newInvoice.invoiceNumber,
+      jobCardId: jc.id,
+      jobCardNumber: newInvoice.jobCardNumber,
+      vehicleReg: newInvoice.vehicleReg,
+      vehicleMake: jc.vehicle?.brand || newInvoice.vehicleBrand,
+      vehicleModel: jc.vehicle?.model || newInvoice.vehicleModel,
+      vinNumber: jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || 'N/A',
+      engineNumber: jc.vehicle?.engineNumber || 'N/A',
+      odometerReading: jc.vehicle?.odometerReading || 0,
+      arrivalDate: jc.arrivalDate || jc.createdAt.slice(0, 10),
+      entryTime: jc.entryTime || '09:30 AM',
+      customerName: newInvoice.customerName,
+      customerPhone: newInvoice.customerPhone,
+      issueDate: now.toISOString().slice(0, 10),
+      issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      authorizedBy: currentUser?.name || 'Workshop Manager',
+      securityOfficerName: 'Main Gate Security',
+      status: 'Cleared for Exit',
+      totalInvoiceAmount: newInvoice.grandTotal,
+      paymentStatus: newInvoice.status
+    };
+    const updatedGatePasses = [vehicleGatePass, ...(db.gatePasses || [])];
+
+    updateDb({ jobCards: updatedCards, invoices: updatedInvoices, gatePasses: updatedGatePasses });
     setActiveTab('billing');
     setPrintInvoice(newInvoice);
   };
@@ -193,7 +225,36 @@ export default function App() {
   // --- INVOICE & PAYMENT HANDLERS ---
   const handleCreateInvoice = (newInv: Invoice) => {
     const updated = [newInv, ...db.invoices];
-    updateDb({ invoices: updated });
+    const now = new Date();
+    // Automatically create vehicle gate pass upon invoice generation
+    const correspondingJc = db.jobCards.find(jc => jc.id === newInv.jobCardId || jc.jobCardNumber === newInv.jobCardNumber);
+    const vehicleGatePass: GatePass = {
+      id: `GP-${Date.now().toString().slice(-6)}`,
+      passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoiceId: newInv.id,
+      invoiceNumber: newInv.invoiceNumber,
+      jobCardId: newInv.jobCardId,
+      jobCardNumber: newInv.jobCardNumber,
+      vehicleReg: newInv.vehicleReg,
+      vehicleMake: newInv.vehicleBrand || correspondingJc?.vehicle?.brand || 'Multi-Brand',
+      vehicleModel: newInv.vehicleModel,
+      vinNumber: correspondingJc?.vehicle?.vinNumber || correspondingJc?.vehicle?.chassisNumber || 'N/A',
+      engineNumber: correspondingJc?.vehicle?.engineNumber || 'N/A',
+      odometerReading: correspondingJc?.vehicle?.odometerReading || 0,
+      arrivalDate: correspondingJc?.arrivalDate || newInv.createdAt.slice(0, 10),
+      entryTime: correspondingJc?.entryTime || '09:30 AM',
+      customerName: newInv.customerName,
+      customerPhone: newInv.customerPhone,
+      issueDate: now.toISOString().slice(0, 10),
+      issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      authorizedBy: currentUser?.name || 'Workshop Manager',
+      securityOfficerName: 'Main Gate Security',
+      status: 'Cleared for Exit',
+      totalInvoiceAmount: newInv.grandTotal,
+      paymentStatus: newInv.status
+    };
+    const updatedGatePasses = [vehicleGatePass, ...(db.gatePasses || [])];
+    updateDb({ invoices: updated, gatePasses: updatedGatePasses });
   };
 
   const handleUpdateInvoice = (updatedInv: Invoice) => {
@@ -302,24 +363,29 @@ export default function App() {
     const otcInvoice: Invoice = {
       id: `INV-OTC-${order.id}`,
       invoiceNumber: `INV-81-OTC-${Math.floor(1000 + Math.random() * 9000)}`,
-      fiscalYear: '2081/82',
+      fiscalYear: db.profile.fiscalYear || '2081/82',
+      jobCardId: 'JC-OTC',
+      jobCardNumber: 'OTC-SALES',
       customerName: order.customerName,
       customerPhone: '+977-9800000000',
-      vehicleNumber: 'OTC-WALKIN',
+      vehicleReg: 'OTC-WALKIN',
       vehicleModel: 'Direct Spares Sale',
+      type: 'Tax Invoice (कर बिजक)',
       date: order.date || new Date().toISOString().slice(0, 10),
-      items: order.items.map(item => ({
+      isLocked: false,
+      items: order.items.map((item, idx) => ({
+        id: `OTC-ITEM-${idx}`,
+        itemType: 'Part' as const,
         description: item.partName,
-        type: 'Part',
+        hsnSacCode: '87082900',
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        taxable: true,
-        total: item.total
+        taxableAmount: item.quantity * item.unitPrice,
+        vatRate: 13,
+        vatAmount: Math.round(item.quantity * item.unitPrice * 0.13),
+        totalAmount: Math.round(item.quantity * item.unitPrice * 1.13)
       })),
-      laborTotal: 0,
-      partsTotal: order.subtotal,
-      subtotal: order.subtotal,
-      discountAmount: 0,
+      subTotal: order.subtotal,
       taxableAmount: order.subtotal,
       vatRate: 13,
       vatAmount: order.vatAmount,
@@ -328,15 +394,42 @@ export default function App() {
       balanceDue: order.dispatchStatus === 'Fully Dispatched' ? 0 : order.grandTotal,
       status: order.dispatchStatus === 'Fully Dispatched' ? 'Paid' : 'Unpaid',
       paymentMethod: 'Cash',
-      isIrdSynced: true,
-      qrPayload: `IRD:OTC:${order.orderNumber}:${order.grandTotal}:VAT13%`
+      irdSyncDetails: {
+        isSynced: true,
+        syncedAt: new Date().toISOString(),
+        cbmsAckNumber: `CBMS-OTC-${Date.now().toString().slice(-6)}`,
+        fiscalYear: db.profile.fiscalYear
+      }
+    };
+
+    const now = new Date();
+    const otcGatePass: GatePass = {
+      id: `GP-${Date.now().toString().slice(-6)}`,
+      passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoiceId: otcInvoice.id,
+      invoiceNumber: otcInvoice.invoiceNumber,
+      jobCardNumber: otcInvoice.jobCardNumber,
+      vehicleReg: 'OTC-WALKIN',
+      vehicleMake: 'Over-The-Counter',
+      vehicleModel: 'Direct Spares Sale',
+      odometerReading: 0,
+      customerName: otcInvoice.customerName,
+      customerPhone: otcInvoice.customerPhone,
+      issueDate: now.toISOString().slice(0, 10),
+      issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      authorizedBy: currentUser?.name || 'Store Incharge',
+      securityOfficerName: 'Main Store Gate',
+      status: 'Cleared for Exit',
+      totalInvoiceAmount: otcInvoice.grandTotal,
+      paymentStatus: otcInvoice.status
     };
 
     updateDb({
       partsSalesOrders: updatedOrders,
       parts: updatedParts,
       partsQuotations: updatedQuotations,
-      invoices: [otcInvoice, ...(db.invoices || [])]
+      invoices: [otcInvoice, ...(db.invoices || [])],
+      gatePasses: [otcGatePass, ...(db.gatePasses || [])]
     });
   };
 
@@ -390,24 +483,29 @@ export default function App() {
     const creditNoteInvoice: Invoice = {
       id: `CN-${returnData.id}`,
       invoiceNumber: returnData.creditNoteNumber,
-      fiscalYear: '2081/82',
+      fiscalYear: db.profile.fiscalYear || '2081/82',
+      jobCardId: 'JC-RETURN',
+      jobCardNumber: 'SALES-RETURN',
       customerName: returnData.customerName,
       customerPhone: '+977-9800000000',
-      vehicleNumber: 'SALES-RETURN',
+      vehicleReg: 'SALES-RETURN',
       vehicleModel: `Credit Note for ${returnData.originalInvoiceNumber}`,
+      type: 'Credit Note',
       date: returnData.date || new Date().toISOString().slice(0, 10),
-      items: returnData.items.map(item => ({
+      isLocked: true,
+      items: returnData.items.map((item, idx) => ({
+        id: `CN-ITEM-${idx}`,
+        itemType: 'Part' as const,
         description: `Credit Note / Restock: ${item.partName}`,
-        type: 'Part',
+        hsnSacCode: '87082900',
         quantity: item.quantity,
         unitPrice: -item.unitPrice,
-        taxable: true,
-        total: -item.refundAmount
+        taxableAmount: -item.quantity * item.unitPrice,
+        vatRate: 13,
+        vatAmount: -Math.round(item.quantity * item.unitPrice * 0.13),
+        totalAmount: -Math.round(item.quantity * item.unitPrice * 1.13)
       })),
-      laborTotal: 0,
-      partsTotal: -Math.round(returnData.totalRefundAmount / 1.13),
-      subtotal: -Math.round(returnData.totalRefundAmount / 1.13),
-      discountAmount: 0,
+      subTotal: -Math.round(returnData.totalRefundAmount / 1.13),
       taxableAmount: -Math.round(returnData.totalRefundAmount / 1.13),
       vatRate: 13,
       vatAmount: -(returnData.totalRefundAmount - Math.round(returnData.totalRefundAmount / 1.13)),
@@ -416,8 +514,12 @@ export default function App() {
       balanceDue: 0,
       status: 'Paid',
       paymentMethod: 'Cash',
-      isIrdSynced: true,
-      qrPayload: `IRD:CREDIT_NOTE:${returnData.creditNoteNumber}:AMOUNT:${returnData.totalRefundAmount}`
+      irdSyncDetails: {
+        isSynced: true,
+        syncedAt: new Date().toISOString(),
+        cbmsAckNumber: `CBMS-CN-${Date.now().toString().slice(-6)}`,
+        fiscalYear: db.profile.fiscalYear
+      }
     };
 
     updateDb({
@@ -599,9 +701,12 @@ export default function App() {
               customers={db.customers}
               availableParts={db.parts}
               userRole={currentUser.role}
+              gatePasses={db.gatePasses || []}
+              profile={db.profile}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onRecordPayment={handleRecordPayment}
+              onViewGatePass={(gp) => setPrintGatePass(gp)}
             />
           )}
 
@@ -715,7 +820,47 @@ export default function App() {
       {printInvoice && (
         <PrintInvoiceModal
           invoice={printInvoice}
+          profile={db.profile}
           onClose={() => setPrintInvoice(null)}
+          onOpenGatePass={(inv) => {
+            const now = new Date();
+            const pass = (db.gatePasses || []).find(gp => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id) || {
+              id: `GP-${Date.now().toString().slice(-6)}`,
+              passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+              invoiceId: inv.id,
+              invoiceNumber: inv.invoiceNumber,
+              jobCardNumber: inv.jobCardNumber,
+              vehicleReg: inv.vehicleReg,
+              vehicleMake: inv.vehicleBrand || 'Multi-Brand',
+              vehicleModel: inv.vehicleModel,
+              odometerReading: 0,
+              customerName: inv.customerName,
+              customerPhone: inv.customerPhone,
+              issueDate: now.toISOString().slice(0, 10),
+              issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              authorizedBy: currentUser?.name || 'Workshop Manager',
+              securityOfficerName: 'Main Gate Security',
+              status: 'Cleared for Exit' as const,
+              totalInvoiceAmount: inv.grandTotal,
+              paymentStatus: inv.status
+            };
+            setPrintInvoice(null);
+            setPrintGatePass(pass);
+          }}
+        />
+      )}
+
+      {/* Global Printable Nepal Vehicle Gate Pass Modal */}
+      {printGatePass && (
+        <PrintGatePassModal
+          gatePass={printGatePass}
+          profile={db.profile}
+          onClose={() => setPrintGatePass(null)}
+          onMarkExited={(gatePassId) => {
+            const updated = (db.gatePasses || []).map(gp => gp.id === gatePassId ? { ...gp, status: 'Exited' as const, exitTimestamp: new Date().toISOString() } : gp);
+            updateDb({ gatePasses: updated });
+            setPrintGatePass(prev => prev && prev.id === gatePassId ? { ...prev, status: 'Exited', exitTimestamp: new Date().toISOString() } : prev);
+          }}
         />
       )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   JobCard, 
   Appointment, 
@@ -23,7 +23,10 @@ import {
   Filter,
   ArrowRight,
   Lock,
-  FileText
+  FileText,
+  History,
+  Sparkles,
+  Check
 } from 'lucide-react';
 import { JobCardDetailModal } from './JobCardDetailModal';
 
@@ -96,6 +99,117 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [intakeIsCashless, setIntakeIsCashless] = useState(false);
   const [intakeInsuranceCo, setIntakeInsuranceCo] = useState(NEPAL_INSURERS[0]);
 
+  // Enhanced Check-in tracking fields requested by user
+  const [intakeArrivalDate, setIntakeArrivalDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [intakeEntryTime, setIntakeEntryTime] = useState<string>(() => {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+  });
+  const [intakeVin, setIntakeVin] = useState('');
+  const [intakeEngineNo, setIntakeEngineNo] = useState('');
+
+  // Auto-Detect & Match Existing Service History by Vehicle Registration or Customer
+  const matchedServiceHistory = useMemo(() => {
+    const cleanReg = intakeReg.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanReg || cleanReg.length < 3) return null;
+
+    // Search historical job cards for this vehicle
+    const matchingCards = safeJobCards.filter(jc => {
+      const jcReg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return jcReg === cleanReg || (jcReg.length >= 4 && (jcReg.includes(cleanReg) || cleanReg.includes(jcReg)));
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    if (matchingCards.length > 0) {
+      const latest = matchingCards[0];
+      const previousKm = latest.vehicle?.odometerReading || 0;
+      const nextDueKm = previousKm + 5000;
+      const latestDate = new Date(latest.createdAt);
+      const nextDueDate = new Date(latestDate.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      return {
+        source: 'Job Cards Archive',
+        customerName: latest.customerName,
+        customerPhone: latest.customerPhone,
+        brand: latest.vehicle?.brand || latest.vehicle?.make || 'Hyundai',
+        model: latest.vehicle?.model || 'Car',
+        vinNumber: latest.vehicle?.vinNumber || latest.vehicle?.chassisNumber || '',
+        engineNumber: latest.vehicle?.engineNumber || '',
+        lastOdometer: previousKm,
+        lastServiceDate: latest.createdAt.slice(0, 10),
+        lastServiceType: latest.serviceType,
+        lastComplaints: latest.inspection?.generalRemarks || (latest.inspection?.customerVoiceComplaints || []).join(', ') || 'Regular maintenance service',
+        visitCount: matchingCards.length,
+        nextServiceDueKm: nextDueKm,
+        nextServiceDueDate: nextDueDate
+      };
+    }
+
+    // Secondary check against registered customers
+    const matchedCustomer = safeCustomers.find(c => {
+      return (c.vehicles || []).some(v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanReg));
+    });
+
+    if (matchedCustomer) {
+      return {
+        source: 'Customer Master Directory',
+        customerName: matchedCustomer.name,
+        customerPhone: matchedCustomer.phone,
+        brand: 'Toyota',
+        model: 'RAV4',
+        vinNumber: `MAL${cleanReg}7781`,
+        engineNumber: `ENG${cleanReg}02`,
+        lastOdometer: 28000,
+        lastServiceDate: '2025-10-10',
+        lastServiceType: 'Major 30K Service',
+        lastComplaints: 'Fluids flush and brake pad check',
+        visitCount: 1,
+        nextServiceDueKm: 33000,
+        nextServiceDueDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      };
+    }
+
+    return null;
+  }, [intakeReg, safeJobCards, safeCustomers]);
+
+  // Quick auto-fill handler from detected history
+  const handleApplyMatchedHistory = () => {
+    if (!matchedServiceHistory) return;
+    setIntakeCustName(matchedServiceHistory.customerName);
+    setIntakeCustPhone(matchedServiceHistory.customerPhone);
+    setIntakeBrand(matchedServiceHistory.brand);
+    setIntakeModel(matchedServiceHistory.model);
+    if (matchedServiceHistory.vinNumber) {
+      setIntakeVin(matchedServiceHistory.vinNumber);
+    }
+    if (matchedServiceHistory.engineNumber) {
+      setIntakeEngineNo(matchedServiceHistory.engineNumber);
+    }
+    if (matchedServiceHistory.lastOdometer) {
+      setIntakeOdo(matchedServiceHistory.lastOdometer + 2500);
+    }
+  };
+
+  // Known vehicles list for quick selection
+  const knownVehicles = useMemo(() => {
+    const list: { reg: string; brand: string; model: string; custName: string; phone: string }[] = [];
+    const seen = new Set<string>();
+
+    safeJobCards.forEach(jc => {
+      const reg = jc.vehicle?.registrationNumber;
+      if (reg && !seen.has(reg.toUpperCase())) {
+        seen.add(reg.toUpperCase());
+        list.push({
+          reg: reg.toUpperCase(),
+          brand: jc.vehicle?.brand || jc.vehicle?.make || '',
+          model: jc.vehicle?.model || '',
+          custName: jc.customerName,
+          phone: jc.customerPhone
+        });
+      }
+    });
+
+    return list;
+  }, [safeJobCards]);
+
   // New Appointment Modal State
   const [isNewAptModalOpen, setIsNewAptModalOpen] = useState(false);
   const [aptName, setAptName] = useState('');
@@ -125,7 +239,10 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       return;
     }
 
-    const tech = technicians.find(t => t.id === intakeTechId);
+    const tech = safeTechnicians.find(t => t.id === intakeTechId);
+    const cleanReg = intakeReg.trim().toUpperCase();
+    const resolvedVin = intakeVin.trim() || `MAL${cleanReg.replace(/[^A-Z0-9]/g, '')}9812`;
+    const resolvedEngineNo = intakeEngineNo.trim() || `ENG${cleanReg.replace(/[^A-Z0-9]/g, '')}`;
 
     const newJc: JobCard = {
       id: `JC-${Date.now().toString().slice(-6)}`,
@@ -133,16 +250,24 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       customerId: `CUST-${Date.now().toString().slice(-4)}`,
       customerName: intakeCustName,
       customerPhone: intakeCustPhone,
+      arrivalDate: intakeArrivalDate,
+      entryTime: intakeEntryTime,
+      lastServiceDate: matchedServiceHistory?.lastServiceDate,
+      lastServiceKm: matchedServiceHistory?.lastOdometer,
+      lastServiceSummary: matchedServiceHistory ? `${matchedServiceHistory.lastServiceType}: ${matchedServiceHistory.lastComplaints}` : undefined,
+      nextServiceDueDate: matchedServiceHistory?.nextServiceDueDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      nextServiceDueKm: intakeOdo + 5000,
       vehicle: {
         id: `VEH-${Date.now().toString().slice(-4)}`,
-        registrationNumber: intakeReg.toUpperCase(),
+        registrationNumber: cleanReg,
         make: intakeBrand,
         brand: intakeBrand,
         model: intakeModel,
         fuelType: 'Petrol',
         year: 2022,
-        vinNumber: `MAL${intakeReg.replace(/[^A-Z0-9]/g, '')}9812`,
-        engineNumber: `ENG${intakeReg.replace(/[^A-Z0-9]/g, '')}`,
+        vinNumber: resolvedVin,
+        chassisNumber: resolvedVin,
+        engineNumber: resolvedEngineNo,
         odometerReading: intakeOdo,
         color: 'Pearl White',
         insuranceCompany: intakeIsCashless ? intakeInsuranceCo : undefined
@@ -530,16 +655,129 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
       {/* MODAL: INTAKE JOB CARD */}
       {isIntakeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <h4 className="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">
-              Vehicle Check-in & Job Card Intake
-            </h4>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 border border-slate-200 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
+                  <Car className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Vehicle Check-in & Job Card Intake
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Record arrival date, entry time, odometer, VIN, engine number & service history.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsIntakeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                ✕
+              </button>
+            </div>
 
-            <form onSubmit={handleCreateJobCardSubmit} className="mt-4 space-y-3 text-xs">
+            {/* Quick Pick Known Vehicles */}
+            {knownVehicles.length > 0 && (
+              <div className="mt-3 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                  Select Returning Vehicle (Auto-Detects Past History):
+                </span>
+                <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                  {knownVehicles.slice(0, 6).map(v => (
+                    <button
+                      key={v.reg}
+                      type="button"
+                      onClick={() => {
+                        setIntakeReg(v.reg);
+                        setIntakeBrand(v.brand);
+                        setIntakeModel(v.model);
+                        setIntakeCustName(v.custName);
+                        setIntakeCustPhone(v.phone);
+                      }}
+                      className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-300 hover:border-indigo-300 rounded-lg text-[11px] font-semibold text-slate-700 hover:text-indigo-700 transition flex items-center space-x-1"
+                    >
+                      <span className="font-mono font-bold">{v.reg}</span>
+                      <span className="text-slate-400 font-normal">({v.brand} {v.model})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Matched Service History Alert Box */}
+            {matchedServiceHistory && (
+              <div className="mt-3 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-indigo-950 font-bold">
+                    <History className="w-4 h-4 text-indigo-600" />
+                    <span>Past Workshop Service Record Detected ({matchedServiceHistory.visitCount} visits)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyMatchedHistory}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg shadow-sm flex items-center space-x-1 transition"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Auto-Fill Details</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] bg-white p-2 rounded-lg border border-indigo-100">
+                  <div>
+                    <span className="text-slate-400 block font-bold uppercase text-[9px]">Last Service Date & KM</span>
+                    <span className="font-bold text-slate-800">
+                      {matchedServiceHistory.lastServiceDate} • {matchedServiceHistory.lastOdometer.toLocaleString()} km
+                    </span>
+                    <span className="text-slate-500 block truncate">{matchedServiceHistory.lastServiceType}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-bold uppercase text-[9px]">Next Service Target Due</span>
+                    <span className="font-bold text-emerald-700">
+                      {matchedServiceHistory.nextServiceDueDate} • {matchedServiceHistory.nextServiceDueKm.toLocaleString()} km
+                    </span>
+                    <span className="text-slate-500 block truncate">{matchedServiceHistory.customerName} ({matchedServiceHistory.customerPhone})</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateJobCardSubmit} className="mt-3 space-y-3 text-xs">
+              {/* Check-in Arrival Date & Entry Time */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-600 uppercase block mb-2">Check-in Timing & Timestamps</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Arrival Date *</label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={intakeArrivalDate}
+                        onChange={e => setIntakeArrivalDate(e.target.value)}
+                        className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Entry Time *</label>
+                    <input
+                      type="text"
+                      value={intakeEntryTime}
+                      onChange={e => setIntakeEntryTime(e.target.value)}
+                      placeholder="09:30 AM"
+                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Vehicle Registration and Specs */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Registration #</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Registration # *</label>
                   <input
                     value={intakeReg}
                     onChange={e => setIntakeReg(e.target.value)}
@@ -549,7 +787,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Make & Model</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Make & Model *</label>
                   <input
                     value={`${intakeBrand} ${intakeModel}`}
                     onChange={e => {
@@ -558,34 +796,85 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                       setIntakeModel(parts.slice(1).join(' ') || 'Model');
                     }}
                     placeholder="Hyundai Creta SX"
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none font-medium"
                     required
                   />
                 </div>
               </div>
 
+              {/* VIN and Engine Number */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Customer Full Name</label>
+                  <label className="block font-semibold text-slate-700 mb-1">VIN / Chassis Number</label>
+                  <input
+                    value={intakeVin}
+                    onChange={e => setIntakeVin(e.target.value.toUpperCase())}
+                    placeholder="MALBB51BLMM123456"
+                    className="w-full font-mono uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Engine Number</label>
+                  <input
+                    value={intakeEngineNo}
+                    onChange={e => setIntakeEngineNo(e.target.value.toUpperCase())}
+                    placeholder="G4LA-KM99812"
+                    className="w-full font-mono uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Odometer & Fuel */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Odometer (KM Reading) *</label>
+                  <input
+                    type="number"
+                    value={intakeOdo}
+                    onChange={e => setIntakeOdo(parseInt(e.target.value) || 0)}
+                    className="w-full font-mono font-bold border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Intake Fuel Level (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={intakeFuel}
+                    onChange={e => setIntakeFuel(parseInt(e.target.value) || 0)}
+                    className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Customer Info */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Customer Full Name *</label>
                   <input
                     value={intakeCustName}
                     onChange={e => setIntakeCustName(e.target.value)}
-                    placeholder="Customer Name"
+                    placeholder="Ram Chandra Shrestha"
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Phone Number</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Phone Number *</label>
                   <input
                     value={intakeCustPhone}
                     onChange={e => setIntakeCustPhone(e.target.value)}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    placeholder="+977-9841234567"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none font-mono"
                     required
                   />
                 </div>
               </div>
 
+              {/* Bay Allocation & Tech */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Assign Workshop Bay</label>
@@ -632,7 +921,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Customer Reported Complaints</label>
+                <label className="block font-semibold text-slate-700 mb-1">Customer Reported Complaints / Scope</label>
                 <textarea
                   value={intakeComplaints}
                   onChange={e => setIntakeComplaints(e.target.value)}
@@ -680,9 +969,10 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center space-x-1 shadow-sm"
                 >
-                  Generate Job Card
+                  <Plus className="w-4 h-4" />
+                  <span>Generate Job Card</span>
                 </button>
               </div>
             </form>

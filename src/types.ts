@@ -353,11 +353,24 @@ export interface JobCard {
   isWarrantyClaim: boolean;
   warrantyClaimId?: string;
   
-  // Immutability Seal
+  // Immutability Seal & Admin Re-open
   isLocked: boolean;
   lockedAt?: string;
   lockedBy?: string;
   lockHash?: string; // SHA/Cryptographic stamp
+  reopenedByAdmin?: boolean;
+  reopenedBy?: string;
+  reopenedAt?: string;
+  reopenReason?: string;
+
+  // Vehicle Check-in Timestamps & Service History Context
+  arrivalDate?: string;
+  entryTime?: string;
+  lastServiceDate?: string;
+  lastServiceKm?: number;
+  lastServiceSummary?: string;
+  nextServiceDueDate?: string;
+  nextServiceDueKm?: number;
 
   inspection: {
     fuelLevel: number; // 0 - 100%
@@ -608,3 +621,35 @@ export interface VatLedgerEntry {
   vatAmount: number;
   exemptAmount: number;
 }
+
+// Nepal Workshop Vehicle Gate Pass & Security Exit Permit
+export interface GatePass {
+  id: string;
+  passNumber: string; // e.g. "GP-81-0194"
+  invoiceId: string;
+  invoiceNumber: string;
+  jobCardId?: string;
+  jobCardNumber?: string;
+  vehicleReg: string;
+  vehicleMake?: string;
+  vehicleModel: string;
+  vinNumber?: string;
+  engineNumber?: string;
+  customerName: string;
+  customerPhone: string;
+  odometerReading: number;
+  arrivalDate?: string;
+  entryTime?: string;
+  issueDate: string; // YYYY-MM-DD
+  issueTime: string; // e.g. "14:35"
+  exitDate?: string;
+  exitTime?: string;
+  status: 'Cleared for Exit' | 'Exited' | 'On Hold';
+  securityOfficerName?: string;
+  authorizedBy: string;
+  remarks?: string;
+  itemsDeliveredCount?: number;
+  totalInvoiceAmount?: number;
+  paymentStatus?: string;
+}
+

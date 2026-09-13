@@ -80,6 +80,12 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
   const [viewReadOnly, setViewReadOnly] = useState(false);
 
+  React.useEffect(() => {
+    if (profile) {
+      setProfileForm(profile);
+    }
+  }, [profile]);
+
   // Staff edit modal state
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [isNewUserModal, setIsNewUserModal] = useState(false);

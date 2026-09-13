@@ -32,7 +32,8 @@ import {
   PartsSalesReturn, 
   Customer,
   PurchaseOrder,
-  UserRole 
+  UserRole,
+  WorkshopProfile
 } from '../../types';
 import { OtcOrderModal } from './OtcOrderModal';
 import { SalesReturnModal } from './SalesReturnModal';
@@ -45,6 +46,7 @@ interface InventoryManagementProps {
   salesOrders?: PartsSalesOrder[];
   salesReturns?: PartsSalesReturn[];
   purchaseOrders?: PurchaseOrder[];
+  profile?: WorkshopProfile;
   userRole: UserRole;
   onAddPart: (part: SparePart) => void;
   onUpdatePart: (part: SparePart) => void;
@@ -64,6 +66,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   salesOrders = [],
   salesReturns = [],
   purchaseOrders = [],
+  profile,
   userRole,
   onAddPart,
   onUpdatePart,
@@ -1265,6 +1268,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         quotation={viewQuotation}
         salesOrder={viewSalesOrder}
         salesReturn={viewSalesReturn}
+        profile={profile}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Printer, CheckCircle2, QrCode } from 'lucide-react';
-import { PartsQuotation, PartsSalesOrder, PartsSalesReturn } from '../../types';
+import { PartsQuotation, PartsSalesOrder, PartsSalesReturn, WorkshopProfile } from '../../types';
 
 interface InventoryDocSlipModalProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface InventoryDocSlipModalProps {
   quotation?: PartsQuotation | null;
   salesOrder?: PartsSalesOrder | null;
   salesReturn?: PartsSalesReturn | null;
+  profile?: WorkshopProfile;
 }
 
 export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
@@ -15,9 +16,15 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
   onClose,
   quotation,
   salesOrder,
-  salesReturn
+  salesReturn,
+  profile
 }) => {
   if (!isOpen) return null;
+
+  const workshopName = profile?.legalEntityName || profile?.name || 'MULTI-BRAND AUTO WORKSHOP & SPARES';
+  const workshopAddress = profile?.address ? `${profile.address}, ${profile.city || 'Kathmandu'}, Nepal` : 'Ring Road Sukedhara, Kathmandu, Nepal';
+  const workshopPan = profile?.panVatNumber || '601239845';
+  const workshopPhone = profile?.contactNumber || '+977-1-4370000';
 
   const handlePrint = () => {
     window.print();
@@ -51,11 +58,11 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
         <div className="overflow-y-auto py-4 space-y-4 font-mono shrink grow text-slate-800">
           {/* Workshop Header */}
           <div className="text-center pb-3 border-b border-dashed border-slate-300">
-            <h2 className="text-base font-black tracking-tight text-slate-900 font-sans">
-              MULTI-BRAND AUTO WORKSHOP & SPARES
+            <h2 className="text-base font-black tracking-tight text-slate-900 font-sans uppercase">
+              {workshopName}
             </h2>
-            <p className="text-[11px] text-slate-500">Ring Road Sukedhara, Kathmandu, Nepal</p>
-            <p className="text-[11px] text-slate-500">PAN / VAT Reg: 601239845 | Ph: +977-1-4370000</p>
+            <p className="text-[11px] text-slate-500">{workshopAddress}</p>
+            <p className="text-[11px] text-slate-500">PAN / VAT Reg: <span className="font-bold text-slate-800">{workshopPan}</span> | Ph: {workshopPhone}</p>
           </div>
 
           {/* Quotation View */}
