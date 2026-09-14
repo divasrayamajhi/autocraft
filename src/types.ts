@@ -177,6 +177,11 @@ export interface Vehicle {
   customerName?: string;
   insuranceCompany?: string;
   insurancePolicyNumber?: string;
+  totalServiceCount?: number;
+  totalBilledAmount?: number;
+  lastServiceDate?: string;
+  lastServiceType?: string;
+  lastJobCardNumber?: string;
 }
 
 export interface Customer {

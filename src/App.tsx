@@ -238,7 +238,43 @@ export default function App() {
     };
     const updatedGatePasses = [vehicleGatePass, ...(db.gatePasses || [])];
 
-    updateDb({ jobCards: updatedCards, invoices: updatedInvoices, gatePasses: updatedGatePasses });
+    // Automatically update customer directory: aggregate lifetime totalSpent, last visit date, and vehicle garage records
+    const invoiceCustName = (newInvoice.customerName || '').trim().toLowerCase();
+    const invoiceVehReg = (newInvoice.vehicleReg || '').trim().toUpperCase();
+    const updatedCustomers = (db.customers || []).map(cust => {
+      const matchesId = newInvoice.customerId && cust.id === newInvoice.customerId;
+      const matchesName = cust.name.trim().toLowerCase() === invoiceCustName;
+      const matchesVeh = (cust.vehicles || []).some(v => (v.registrationNumber || '').toUpperCase() === invoiceVehReg);
+      if (!matchesId && !matchesName && !matchesVeh) return cust;
+
+      const updatedVehicles = (cust.vehicles || []).map(v => {
+        if ((v.registrationNumber || '').toUpperCase() === invoiceVehReg) {
+          return {
+            ...v,
+            totalServiceCount: (v.totalServiceCount || 0) + 1,
+            totalBilledAmount: (v.totalBilledAmount || 0) + newInvoice.grandTotal,
+            lastServiceDate: now.toISOString().slice(0, 10),
+            lastJobCardNumber: newInvoice.jobCardNumber,
+            odometerReading: jc.vehicle?.odometerReading || v.odometerReading
+          };
+        }
+        return v;
+      });
+
+      return {
+        ...cust,
+        totalSpent: (cust.totalSpent || 0) + newInvoice.grandTotal,
+        lastVisit: now.toISOString().slice(0, 10),
+        vehicles: updatedVehicles
+      };
+    });
+
+    updateDb({ 
+      jobCards: updatedCards, 
+      invoices: updatedInvoices, 
+      gatePasses: updatedGatePasses,
+      customers: updatedCustomers
+    });
     setActiveTab('billing');
     setPrintInvoice(newInvoice);
   };
@@ -307,7 +343,38 @@ export default function App() {
       });
     }
 
-    updateDb({ invoices: updated, gatePasses: updatedGatePasses, jobCards: updatedCards });
+    // Automatically update customer directory: aggregate lifetime totalSpent, last visit date, and vehicle garage records
+    const invoiceCustName = (newInv.customerName || '').trim().toLowerCase();
+    const invoiceVehReg = (newInv.vehicleReg || '').trim().toUpperCase();
+    const updatedCustomers = (db.customers || []).map(cust => {
+      const matchesId = newInv.customerId && cust.id === newInv.customerId;
+      const matchesName = cust.name.trim().toLowerCase() === invoiceCustName;
+      const matchesVeh = (cust.vehicles || []).some(v => (v.registrationNumber || '').toUpperCase() === invoiceVehReg);
+      if (!matchesId && !matchesName && !matchesVeh) return cust;
+
+      const updatedVehicles = (cust.vehicles || []).map(v => {
+        if ((v.registrationNumber || '').toUpperCase() === invoiceVehReg) {
+          return {
+            ...v,
+            totalServiceCount: (v.totalServiceCount || 0) + 1,
+            totalBilledAmount: (v.totalBilledAmount || 0) + newInv.grandTotal,
+            lastServiceDate: now.toISOString().slice(0, 10),
+            lastJobCardNumber: newInv.jobCardNumber,
+            odometerReading: correspondingJc?.vehicle?.odometerReading || v.odometerReading
+          };
+        }
+        return v;
+      });
+
+      return {
+        ...cust,
+        totalSpent: (cust.totalSpent || 0) + newInv.grandTotal,
+        lastVisit: now.toISOString().slice(0, 10),
+        vehicles: updatedVehicles
+      };
+    });
+
+    updateDb({ invoices: updated, gatePasses: updatedGatePasses, jobCards: updatedCards, customers: updatedCustomers });
   };
 
   const handleUpdateInvoice = (updatedInv: Invoice) => {
@@ -747,6 +814,7 @@ export default function App() {
               onCreateAppointment={handleCreateAppointment}
               onConvertToInvoice={handleConvertJobCardToInvoice}
               onAddCustomer={handleAddCustomer}
+              onUpdateCustomer={handleUpdateCustomer}
               onViewInvoice={(invoice) => {
                 setActiveTab('billing');
                 setPrintInvoice(invoice);

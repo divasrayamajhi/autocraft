@@ -246,7 +246,20 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     <div className="text-right">
                       <span className="text-[10px] font-bold uppercase text-slate-400 block">Total Workshop Spend</span>
                       <span className="font-mono text-base font-black text-emerald-600">
-                        रु. {selectedCustomer.totalSpent.toLocaleString()}
+                        {(() => {
+                          const customerInvoices = (invoices || []).filter(inv => {
+                            const matchesId = inv.customerId && inv.customerId === selectedCustomer.id;
+                            const matchesName = inv.customerName && inv.customerName.toLowerCase().trim() === selectedCustomer.name.toLowerCase().trim();
+                            const matchesVeh = (selectedCustomer.vehicles || []).some(v => {
+                              const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
+                              return regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                            });
+                            return matchesId || matchesName || matchesVeh;
+                          });
+                          const invoiceTotal = customerInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+                          const total = Math.max(selectedCustomer.totalSpent || 0, invoiceTotal);
+                          return `रु. ${total.toLocaleString()}`;
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -271,51 +284,152 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     </div>
                   </div>
 
-                  {/* Registered Vehicles */}
+                  {/* Customer Garage / Registered Fleet */}
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center space-x-1.5">
-                      <Car className="w-4 h-4 text-indigo-600" />
-                      <span>Registered Fleet / Vehicles ({(selectedCustomer.vehicles || []).length})</span>
-                    </h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                          <Car className="w-4 h-4 text-indigo-600" />
+                          <span>Customer Garage ({(selectedCustomer.vehicles || []).length} Vehicles Managed)</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Fleet vehicles registered to this customer account with past service history and bill totals.
+                        </p>
+                      </div>
+                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {(selectedCustomer.vehicles || []).map(veh => (
-                        <div key={veh.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="font-mono font-bold text-xs text-slate-900">{veh.registrationNumber}</span>
-                            <span className="text-[10px] text-slate-500">{veh.year}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {(selectedCustomer.vehicles || []).map(veh => {
+                        const vehReg = (veh.registrationNumber || '').toUpperCase().trim();
+                        const vehVin = (veh.vinNumber || veh.chassisNumber || '').toUpperCase().trim();
+
+                        // Match past job cards for this specific vehicle
+                        const matchingJobCards = jobCards.filter(jc => {
+                          const jcReg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                          const jcVin = (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                          const cleanR = vehReg.replace(/[^A-Z0-9]/g, '');
+                          const cleanV = vehVin.replace(/[^A-Z0-9]/g, '');
+                          return (cleanR && jcReg === cleanR) || (cleanV && jcVin === cleanV);
+                        });
+
+                        // Match all past invoices/bills for this specific vehicle
+                        const matchingInvoices = invoices.filter(inv => {
+                          const invReg = (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                          const cleanR = vehReg.replace(/[^A-Z0-9]/g, '');
+                          const isJcMatch = matchingJobCards.some(jc => jc.id === inv.jobCardId || jc.jobCardNumber === inv.jobCardNumber);
+                          return (cleanR && invReg === cleanR) || isJcMatch;
+                        });
+
+                        // Calculate total billed amount for this vehicle
+                        const totalBilledOnVehicle = matchingInvoices.length > 0
+                          ? matchingInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0)
+                          : (veh.totalBilledAmount || 0);
+
+                        const totalVisitsOnVehicle = Math.max(matchingJobCards.length, veh.totalServiceCount || (matchingInvoices.length > 0 ? matchingInvoices.length : 1));
+                        const lastServiceDate = veh.lastServiceDate || matchingJobCards[0]?.arrivalDate || matchingJobCards[0]?.createdAt?.slice(0, 10) || matchingInvoices[0]?.createdAt?.slice(0, 10) || 'Active';
+                        const lastServiceType = veh.lastServiceType || matchingJobCards[0]?.serviceType || 'Maintenance Inspection';
+
+                        return (
+                          <div key={veh.id} className="p-4 bg-slate-50 hover:bg-slate-50/80 border border-slate-200 rounded-xl space-y-3 transition">
+                            {/* Vehicle Header */}
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className="font-mono font-bold text-xs bg-white px-2 py-0.5 rounded border border-slate-300 text-slate-900 shadow-2xs">
+                                  {veh.registrationNumber}
+                                </span>
+                                <h5 className="text-xs text-slate-800 font-bold mt-1">
+                                  {veh.brand || veh.make} {veh.model}
+                                </h5>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold block">Vehicle Bill Total</span>
+                                <span className="font-mono text-xs font-bold text-emerald-700">
+                                  रु. {totalBilledOnVehicle.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Key Technical Specs */}
+                            <div className="grid grid-cols-2 gap-2 text-[10px] bg-white p-2 rounded-lg border border-slate-200 font-mono">
+                              <div>
+                                <span className="text-slate-400 block font-sans">VIN / Chassis:</span>
+                                <span className="text-slate-700 font-semibold truncate block" title={veh.vinNumber || veh.chassisNumber || 'N/A'}>
+                                  {veh.vinNumber || veh.chassisNumber || 'N/A'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block font-sans">Engine No:</span>
+                                <span className="text-slate-700 font-semibold truncate block" title={veh.engineNumber || 'N/A'}>
+                                  {veh.engineNumber || 'N/A'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block font-sans">Odometer:</span>
+                                <span className="text-slate-700 font-semibold">
+                                  {(veh.odometerReading || 0).toLocaleString()} km
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block font-sans">Fuel & Year:</span>
+                                <span className="text-slate-700 font-semibold">
+                                  {veh.fuelType || 'Petrol'} • {veh.year || 2022}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Service History & Bill Amount Status Bar */}
+                            <div className="p-2 bg-indigo-50/70 border border-indigo-100 rounded-lg text-[11px] space-y-1">
+                              <div className="flex items-center justify-between text-indigo-900 font-semibold">
+                                <span className="flex items-center space-x-1">
+                                  <History className="w-3 h-3 text-indigo-600" />
+                                  <span>{totalVisitsOnVehicle} Service Visit{totalVisitsOnVehicle !== 1 ? 's' : ''}</span>
+                                </span>
+                                <span className="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-bold">
+                                  {matchingInvoices.length} Bill{matchingInvoices.length !== 1 ? 's' : ''} Issued
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-600 truncate">
+                                Last Visit: <span className="font-semibold text-slate-800">{lastServiceDate}</span> • {lastServiceType}
+                              </p>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                Garage ID: {veh.id}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setHistoryModalTarget({
+                                  vehicleReg: veh.registrationNumber,
+                                  chassis: veh.vinNumber || veh.chassisNumber,
+                                  customerName: selectedCustomer.name,
+                                  customerPhone: selectedCustomer.phone
+                                })}
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center space-x-1 shadow-2xs transition"
+                              >
+                                <History className="w-3.5 h-3.5" />
+                                <span>Display Service History</span>
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-700 font-semibold">{veh.brand} {veh.model}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">
-                            Odo: {veh.odometerReading.toLocaleString()} km • Fuel: {veh.fuelType}
-                          </p>
-                          <div className="pt-2 border-t border-slate-200 flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => setHistoryModalTarget({
-                                vehicleReg: veh.registrationNumber,
-                                chassis: veh.vinNumber || veh.chassisNumber,
-                                customerName: selectedCustomer.name,
-                                customerPhone: selectedCustomer.phone
-                              })}
-                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition"
-                            >
-                              <History className="w-3.5 h-3.5" />
-                              <span>Display Service History</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Service History in Workshop */}
+                  {/* Past Service Invoices & Visits Across Garage */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
-                        <History className="w-4 h-4 text-indigo-600" />
-                        <span>Past Service Invoices & Visits</span>
-                      </h4>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                          <History className="w-4 h-4 text-indigo-600" />
+                          <span>Customer Billing History & Service Invoices</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          All IRD tax invoices and workshop service bills across all garage vehicles.
+                        </p>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
@@ -334,42 +448,60 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                       </button>
                     </div>
 
-                    {invoices.filter(i => i.customerName === selectedCustomer.name).length === 0 ? (
-                      <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500">
-                        No historical visits recorded yet.
-                      </div>
-                    ) : (
-                      <div className="border border-slate-200 rounded-xl overflow-hidden">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                            <tr>
-                              <th className="p-2.5">Date</th>
-                              <th className="p-2.5">Invoice #</th>
-                              <th className="p-2.5">Vehicle</th>
-                              <th className="p-2.5 text-right">Amount (NPR)</th>
-                              <th className="p-2.5 text-center">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(invoices || []).filter(i => i && i.customerName === selectedCustomer.name).map(inv => (
-                              <tr key={inv.id}>
-                                <td className="p-2.5 font-mono text-slate-600">{(inv.createdAt || inv.date || '').slice(0, 10)}</td>
-                                <td className="p-2.5 font-mono font-bold text-indigo-700">{inv.invoiceNumber}</td>
-                                <td className="p-2.5 font-mono">{inv.vehicleReg}</td>
-                                <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                                  रु. {(inv.grandTotal || 0).toLocaleString()}
-                                </td>
-                                <td className="p-2.5 text-center">
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                                    {inv.status || inv.paymentStatus || 'Paid'}
-                                  </span>
-                                </td>
+                    {(() => {
+                      const customerInvoices = (invoices || []).filter(inv => {
+                        const matchesId = inv.customerId && inv.customerId === selectedCustomer.id;
+                        const matchesName = inv.customerName && inv.customerName.toLowerCase().trim() === selectedCustomer.name.toLowerCase().trim();
+                        const matchesVeh = (selectedCustomer.vehicles || []).some(v => {
+                          const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
+                          return regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        });
+                        return matchesId || matchesName || matchesVeh;
+                      });
+
+                      if (customerInvoices.length === 0) {
+                        return (
+                          <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500 border border-slate-200">
+                            No historical service bills or invoices recorded yet for this customer garage.
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                              <tr>
+                                <th className="p-2.5">Date</th>
+                                <th className="p-2.5">Invoice #</th>
+                                <th className="p-2.5">Vehicle Reg</th>
+                                <th className="p-2.5 text-right">Bill Amount (NPR)</th>
+                                <th className="p-2.5 text-center">Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {customerInvoices.map(inv => (
+                                <tr key={inv.id} className="hover:bg-slate-50/70 transition">
+                                  <td className="p-2.5 font-mono text-slate-600">{(inv.createdAt || inv.date || '').slice(0, 10)}</td>
+                                  <td className="p-2.5 font-mono font-bold text-indigo-700">{inv.invoiceNumber}</td>
+                                  <td className="p-2.5 font-mono font-semibold text-slate-800">{inv.vehicleReg}</td>
+                                  <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                                    रु. {(inv.grandTotal || 0).toLocaleString()}
+                                  </td>
+                                  <td className="p-2.5 text-center">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                    }`}>
+                                      {inv.status || inv.paymentStatus || 'Paid'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </>

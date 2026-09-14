@@ -34,7 +34,8 @@ import {
   RotateCcw,
   Tag,
   Hash,
-  X
+  X,
+  Users
 } from 'lucide-react';
 import { JobCardDetailModal } from './JobCardDetailModal';
 
@@ -454,13 +455,13 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const cleanVin = intakeVin.trim().toUpperCase();
     const cleanEngine = intakeEngineNo.trim().toUpperCase();
 
-    // 2. Auto-Customer Creation in Customer Directory (Requirement 3)
-    // If details are totally new, create it as a new customer automatically under customer garages section
+    // 2. Automated Customer Directory & Customer Garage Registration / Update
     const cleanPhone = intakeCustPhone.replace(/[^0-9]/g, '');
+    const cleanCustName = intakeCustName.trim();
     const existingCustomer = safeCustomers.find(c => {
       const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
       const matchesPhone = cleanPhone && cPhone && (cPhone === cleanPhone || cPhone.endsWith(cleanPhone) || cleanPhone.endsWith(cPhone));
-      const matchesName = c.name.trim().toLowerCase() === intakeCustName.trim().toLowerCase();
+      const matchesName = cleanCustName && c.name.trim().toLowerCase() === cleanCustName.toLowerCase();
       const matchesVehicle = (c.vehicles || []).some((v: any) => {
         const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
         const regMatch = regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg.replace(/[^A-Z0-9]/g, '');
@@ -470,6 +471,28 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       });
       return matchesPhone || matchesName || matchesVehicle;
     });
+
+    const newJcNumber = `JC-81-${Math.floor(100 + Math.random() * 900)}`;
+
+    // Query all past workshop service history / job cards for this vehicle
+    const vehiclePastJobCards = safeJobCards.filter(jc => {
+      const jcReg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const jcVin = (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const cleanR = cleanReg.replace(/[^A-Z0-9]/g, '');
+      const cleanV = cleanVin.replace(/[^A-Z0-9]/g, '');
+      return (cleanR && jcReg === cleanR) || (cleanV && jcVin === cleanV);
+    });
+
+    // Query all past invoices / service bills for this vehicle
+    const vehiclePastInvoices = (invoices || []).filter(inv => {
+      const invReg = (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const cleanR = cleanReg.replace(/[^A-Z0-9]/g, '');
+      const isJcMatch = vehiclePastJobCards.some(jc => jc.id === inv.jobCardId || jc.jobCardNumber === inv.jobCardNumber);
+      return (cleanR && invReg === cleanR) || isJcMatch;
+    });
+
+    const vehicleTotalBilledAmount = vehiclePastInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+    const vehicleTotalServiceCount = vehiclePastJobCards.length + 1; // including this intake
 
     const vehicleRecord: Vehicle = {
       id: `VEH-${Date.now().toString().slice(-4)}`,
@@ -484,41 +507,86 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       vinNumber: cleanVin,
       chassisNumber: cleanVin,
       engineNumber: cleanEngine,
-      customerName: intakeCustName.trim()
+      customerName: cleanCustName,
+      totalServiceCount: vehicleTotalServiceCount,
+      totalBilledAmount: vehicleTotalBilledAmount,
+      lastServiceDate: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+      lastServiceType: intakeServiceType,
+      lastJobCardNumber: newJcNumber
     };
 
     let assignedCustomerId = existingCustomer?.id;
 
     if (!existingCustomer && onAddCustomer) {
+      // Completely new customer and vehicle: automatically register in Customer Directory under their customer garage
       assignedCustomerId = `CUST-${Date.now().toString().slice(-6)}`;
       const newCustomer: Customer = {
         id: assignedCustomerId,
-        name: intakeCustName.trim(),
+        name: cleanCustName,
         phone: intakeCustPhone.trim(),
-        email: `${intakeCustName.trim().toLowerCase().replace(/\s+/g, '.')}@nepalmail.com`,
+        email: `${cleanCustName.toLowerCase().replace(/\s+/g, '.')}@nepalmail.com`,
         address: 'Kathmandu, Nepal',
         customerType: 'Individual',
         createdAt: new Date().toISOString().slice(0, 10),
-        lastVisit: new Date().toISOString().slice(0, 10),
-        totalSpent: 0,
+        lastVisit: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+        totalSpent: vehicleTotalBilledAmount,
         outstandingBalance: 0,
         vehicles: [vehicleRecord]
       };
       onAddCustomer(newCustomer);
     } else if (existingCustomer && onUpdateCustomer) {
-      // If customer exists but does not have this vehicle registered in their garage, add it
-      const hasVehicle = (existingCustomer.vehicles || []).some((v: any) => {
+      // Existing customer brings a vehicle: check if it is a new vehicle or existing garage vehicle
+      const existingVehIndex = (existingCustomer.vehicles || []).findIndex((v: any) => {
         const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
         const regMatch = regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg.replace(/[^A-Z0-9]/g, '');
         const vinStr = typeof v !== 'string' ? (v.vinNumber || v.chassisNumber || '') : '';
         const vinMatch = cleanVin && vinStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanVin.replace(/[^A-Z0-9]/g, '');
         return regMatch || vinMatch;
       });
-      if (!hasVehicle) {
+
+      if (existingVehIndex === -1) {
+        // Existing customer brings a NEW vehicle:
+        // Update customer garage with all past service history and the bill amount
+        const updatedVehicles = [...(existingCustomer.vehicles || []), vehicleRecord];
+        const updatedTotalSpent = (existingCustomer.totalSpent || 0) + vehicleTotalBilledAmount;
+
         onUpdateCustomer({
           ...existingCustomer,
-          lastVisit: new Date().toISOString().slice(0, 10),
-          vehicles: [...(existingCustomer.vehicles || []), vehicleRecord]
+          lastVisit: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+          totalSpent: updatedTotalSpent,
+          vehicles: updatedVehicles
+        });
+      } else {
+        // Existing vehicle in garage: update garage entry with fresh odometer, service count, service date and synced bill amount
+        const currentVeh = existingCustomer.vehicles[existingVehIndex];
+        const updatedVeh: Vehicle = {
+          ...(typeof currentVeh === 'object' ? currentVeh : {}),
+          id: typeof currentVeh === 'object' && currentVeh.id ? currentVeh.id : `VEH-${Date.now().toString().slice(-4)}`,
+          registrationNumber: cleanReg,
+          make: intakeBrand.trim() || (typeof currentVeh === 'object' ? currentVeh.make : '') || 'Generic',
+          brand: intakeBrand.trim() || (typeof currentVeh === 'object' ? currentVeh.brand : '') || 'Generic',
+          model: intakeModel.trim() || (typeof currentVeh === 'object' ? currentVeh.model : '') || 'Model',
+          year: typeof currentVeh === 'object' && currentVeh.year ? currentVeh.year : new Date().getFullYear(),
+          fuelType: typeof currentVeh === 'object' && currentVeh.fuelType ? currentVeh.fuelType : 'Petrol',
+          color: typeof currentVeh === 'object' && currentVeh.color ? currentVeh.color : 'Standard',
+          odometerReading: Number(intakeOdo),
+          vinNumber: cleanVin || (typeof currentVeh === 'object' ? currentVeh.vinNumber || currentVeh.chassisNumber : ''),
+          chassisNumber: cleanVin || (typeof currentVeh === 'object' ? currentVeh.chassisNumber || currentVeh.vinNumber : ''),
+          engineNumber: cleanEngine || (typeof currentVeh === 'object' ? currentVeh.engineNumber : ''),
+          customerName: existingCustomer.name,
+          totalServiceCount: ((typeof currentVeh === 'object' && currentVeh.totalServiceCount) || vehiclePastJobCards.length) + 1,
+          totalBilledAmount: vehicleTotalBilledAmount,
+          lastServiceDate: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+          lastServiceType: intakeServiceType,
+          lastJobCardNumber: newJcNumber
+        };
+        const updatedVehicles = [...existingCustomer.vehicles];
+        updatedVehicles[existingVehIndex] = updatedVeh;
+
+        onUpdateCustomer({
+          ...existingCustomer,
+          lastVisit: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+          vehicles: updatedVehicles
         });
       }
     }
@@ -526,7 +594,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     // 3. Construct the comprehensive Job Card
     const newJc: JobCard = {
       id: `JC-${Date.now().toString().slice(-6)}`,
-      jobCardNumber: `JC-81-${Math.floor(100 + Math.random() * 900)}`,
+      jobCardNumber: newJcNumber,
       customerId: assignedCustomerId || `CUST-${Date.now().toString().slice(-4)}`,
       customerName: intakeCustName.trim(),
       customerPhone: intakeCustPhone.trim(),
@@ -1327,6 +1395,101 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Existing Customer Quick Selector */}
+              {safeCustomers.length > 0 && (
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center space-x-1">
+                      <Users className="w-3 h-3 text-indigo-600" />
+                      <span>Select Existing Customer from Directory:</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">or enter details below</span>
+                  </div>
+                  <select
+                    onChange={e => {
+                      const selected = safeCustomers.find(c => c.id === e.target.value);
+                      if (selected) {
+                        setIntakeCustName(selected.name);
+                        setIntakeCustPhone(selected.phone);
+                      }
+                    }}
+                    defaultValue=""
+                    className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="" disabled>-- Choose existing customer --</option>
+                    {safeCustomers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.phone}) — {(c.vehicles || []).length} vehicle(s) in garage
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Automated Customer & Vehicle Directory Indicator */}
+              {(() => {
+                const cleanPhone = intakeCustPhone.replace(/[^0-9]/g, '');
+                const cleanName = intakeCustName.trim().toLowerCase();
+                const matchedCust = safeCustomers.find(c => {
+                  const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
+                  const phoneMatch = cleanPhone && cleanPhone.length >= 7 && (cPhone === cleanPhone || cPhone.endsWith(cleanPhone) || cleanPhone.endsWith(cPhone));
+                  const nameMatch = cleanName && cleanName.length >= 3 && c.name.trim().toLowerCase() === cleanName;
+                  return phoneMatch || nameMatch;
+                });
+
+                const cleanReg = intakeReg.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+                if (matchedCust) {
+                  const hasVehInGarage = cleanReg && (matchedCust.vehicles || []).some((v: any) => {
+                    const reg = typeof v === 'string' ? v : v.registrationNumber || '';
+                    return reg.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg;
+                  });
+
+                  if (cleanReg && !hasVehInGarage) {
+                    // Query past vehicle bills/history across all workshop records
+                    const pastJcs = safeJobCards.filter(jc => (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg);
+                    const pastInvs = (invoices || []).filter(inv => (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg);
+                    const pastBills = pastInvs.reduce((sum, i) => sum + (i.grandTotal || 0), 0);
+
+                    return (
+                      <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
+                        <div className="flex items-center space-x-1.5 font-bold text-amber-900">
+                          <Car className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Existing Customer Bringing New Vehicle</span>
+                        </div>
+                        <p className="text-[11px] text-amber-800">
+                          Customer: <strong>{matchedCust.name}</strong>. New vehicle <strong>{intakeReg}</strong> will be registered to their customer garage.
+                          {pastJcs.length > 0 || pastBills > 0 ? (
+                            <span className="block mt-0.5 font-semibold text-emerald-800">
+                              ✓ Will automatically sync {pastJcs.length} past service record(s) and रु. {pastBills.toLocaleString()} in historical bills into their garage record.
+                            </span>
+                          ) : (
+                            <span className="block mt-0.5 text-amber-700">
+                              This vehicle will be added to their garage fleet and start tracking service history and bill totals.
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  } else if (cleanReg && hasVehInGarage) {
+                    return (
+                      <div className="p-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900 flex items-center space-x-1.5 font-medium">
+                        <History className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                        <span>Vehicle already registered in <strong>{matchedCust.name}</strong>'s customer garage. Service visit & odometer will update the garage record.</span>
+                      </div>
+                    );
+                  }
+                } else if (cleanName && cleanName.length >= 3 && cleanReg) {
+                  return (
+                    <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 flex items-center space-x-1.5 font-medium">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      <span>New Customer & Vehicle: <strong>{intakeCustName}</strong> will be automatically registered in Customer Directory with <strong>{intakeReg}</strong> in their customer garage.</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Customer Info (Mandatory & Editable) */}
               <div className="grid grid-cols-2 gap-2">
