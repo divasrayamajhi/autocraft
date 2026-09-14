@@ -244,18 +244,20 @@ export default function App() {
     const updatedCustomers = (db.customers || []).map(cust => {
       const matchesId = newInvoice.customerId && cust.id === newInvoice.customerId;
       const matchesName = cust.name.trim().toLowerCase() === invoiceCustName;
-      const matchesVeh = (cust.vehicles || []).some(v => (v.registrationNumber || '').toUpperCase() === invoiceVehReg);
+      const matchesVeh = (cust.vehicles || []).some(v => (typeof v === 'string' ? v : v?.registrationNumber || '').toUpperCase() === invoiceVehReg);
       if (!matchesId && !matchesName && !matchesVeh) return cust;
 
       const updatedVehicles = (cust.vehicles || []).map(v => {
-        if ((v.registrationNumber || '').toUpperCase() === invoiceVehReg) {
+        const reg = (typeof v === 'string' ? v : v?.registrationNumber || '').toUpperCase();
+        if (reg === invoiceVehReg) {
           return {
-            ...v,
-            totalServiceCount: (v.totalServiceCount || 0) + 1,
-            totalBilledAmount: (v.totalBilledAmount || 0) + newInvoice.grandTotal,
+            ...(typeof v === 'object' ? v : {}),
+            registrationNumber: typeof v === 'string' ? v : v?.registrationNumber || invoiceVehReg,
+            totalServiceCount: ((typeof v === 'object' && v?.totalServiceCount) || 0) + 1,
+            totalBilledAmount: ((typeof v === 'object' && v?.totalBilledAmount) || 0) + newInvoice.grandTotal,
             lastServiceDate: now.toISOString().slice(0, 10),
             lastJobCardNumber: newInvoice.jobCardNumber,
-            odometerReading: jc.vehicle?.odometerReading || v.odometerReading
+            odometerReading: jc.vehicle?.odometerReading || (typeof v === 'object' ? v?.odometerReading : 0)
           };
         }
         return v;
@@ -349,18 +351,20 @@ export default function App() {
     const updatedCustomers = (db.customers || []).map(cust => {
       const matchesId = newInv.customerId && cust.id === newInv.customerId;
       const matchesName = cust.name.trim().toLowerCase() === invoiceCustName;
-      const matchesVeh = (cust.vehicles || []).some(v => (v.registrationNumber || '').toUpperCase() === invoiceVehReg);
+      const matchesVeh = (cust.vehicles || []).some(v => (typeof v === 'string' ? v : v?.registrationNumber || '').toUpperCase() === invoiceVehReg);
       if (!matchesId && !matchesName && !matchesVeh) return cust;
 
       const updatedVehicles = (cust.vehicles || []).map(v => {
-        if ((v.registrationNumber || '').toUpperCase() === invoiceVehReg) {
+        const reg = (typeof v === 'string' ? v : v?.registrationNumber || '').toUpperCase();
+        if (reg === invoiceVehReg) {
           return {
-            ...v,
-            totalServiceCount: (v.totalServiceCount || 0) + 1,
-            totalBilledAmount: (v.totalBilledAmount || 0) + newInv.grandTotal,
+            ...(typeof v === 'object' ? v : {}),
+            registrationNumber: typeof v === 'string' ? v : v?.registrationNumber || invoiceVehReg,
+            totalServiceCount: ((typeof v === 'object' && v?.totalServiceCount) || 0) + 1,
+            totalBilledAmount: ((typeof v === 'object' && v?.totalBilledAmount) || 0) + newInv.grandTotal,
             lastServiceDate: now.toISOString().slice(0, 10),
             lastJobCardNumber: newInv.jobCardNumber,
-            odometerReading: correspondingJc?.vehicle?.odometerReading || v.odometerReading
+            odometerReading: correspondingJc?.vehicle?.odometerReading || (typeof v === 'object' ? v?.odometerReading : 0)
           };
         }
         return v;

@@ -77,7 +77,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     const matchesSearch = 
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.phone.includes(searchQuery) ||
-      c.vehicles.some(v => v.registrationNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+      (c.vehicles || []).some(v => (typeof v === 'string' ? v : v?.registrationNumber || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
     return matchesSearch;
   });
@@ -218,8 +218,8 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     <div className="text-[11px] text-slate-500 font-mono mt-1">{cust.phone}</div>
 
                     <div className="mt-2 flex items-center space-x-1 text-[11px] text-slate-600">
-                      <Car className="w-3 h-3 text-slate-400" />
-                      <span>{(cust.vehicles || []).map(v => v.registrationNumber).join(', ')}</span>
+                      <Car className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                      <span className="truncate">{(cust.vehicles || []).map(v => (typeof v === 'string' ? v : v?.registrationNumber || '')).filter(Boolean).join(', ')}</span>
                     </div>
                   </div>
                 );
@@ -299,9 +299,16 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                      {(selectedCustomer.vehicles || []).map(veh => {
-                        const vehReg = (veh.registrationNumber || '').toUpperCase().trim();
-                        const vehVin = (veh.vinNumber || veh.chassisNumber || '').toUpperCase().trim();
+                      {(selectedCustomer.vehicles || []).map((veh, vehIdx) => {
+                        const vehReg = (typeof veh === 'string' ? veh : veh?.registrationNumber || '').toUpperCase().trim();
+                        const vehVin = (typeof veh === 'object' && veh ? (veh.vinNumber || veh.chassisNumber || '') : '').toUpperCase().trim();
+                        const vehEngine = typeof veh === 'object' && veh ? veh.engineNumber || 'N/A' : 'N/A';
+                        const vehBrand = typeof veh === 'object' && veh ? (veh.brand || veh.make || 'Generic') : 'Generic';
+                        const vehModel = typeof veh === 'object' && veh ? veh.model || 'Model' : '';
+                        const vehYear = typeof veh === 'object' && veh ? veh.year || 2022 : 2022;
+                        const vehFuel = typeof veh === 'object' && veh ? veh.fuelType || 'Petrol' : 'Petrol';
+                        const vehOdo = typeof veh === 'object' && veh ? (veh.odometerReading || 0) : 0;
+                        const vehId = (typeof veh === 'object' && veh && veh.id) || `veh-${vehIdx}`;
 
                         // Match past job cards for this specific vehicle
                         const matchingJobCards = jobCards.filter(jc => {
@@ -323,22 +330,22 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                         // Calculate total billed amount for this vehicle
                         const totalBilledOnVehicle = matchingInvoices.length > 0
                           ? matchingInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0)
-                          : (veh.totalBilledAmount || 0);
+                          : (typeof veh === 'object' && veh ? (veh.totalBilledAmount || 0) : 0);
 
-                        const totalVisitsOnVehicle = Math.max(matchingJobCards.length, veh.totalServiceCount || (matchingInvoices.length > 0 ? matchingInvoices.length : 1));
-                        const lastServiceDate = veh.lastServiceDate || matchingJobCards[0]?.arrivalDate || matchingJobCards[0]?.createdAt?.slice(0, 10) || matchingInvoices[0]?.createdAt?.slice(0, 10) || 'Active';
-                        const lastServiceType = veh.lastServiceType || matchingJobCards[0]?.serviceType || 'Maintenance Inspection';
+                        const totalVisitsOnVehicle = Math.max(matchingJobCards.length, (typeof veh === 'object' && veh && veh.totalServiceCount) || (matchingInvoices.length > 0 ? matchingInvoices.length : 1));
+                        const lastServiceDate = (typeof veh === 'object' && veh && veh.lastServiceDate) || matchingJobCards[0]?.arrivalDate || matchingJobCards[0]?.createdAt?.slice(0, 10) || matchingInvoices[0]?.createdAt?.slice(0, 10) || 'Active';
+                        const lastServiceType = (typeof veh === 'object' && veh && veh.lastServiceType) || matchingJobCards[0]?.serviceType || 'Maintenance Inspection';
 
                         return (
-                          <div key={veh.id} className="p-4 bg-slate-50 hover:bg-slate-50/80 border border-slate-200 rounded-xl space-y-3 transition">
+                          <div key={vehId} className="p-4 bg-slate-50 hover:bg-slate-50/80 border border-slate-200 rounded-xl space-y-3 transition">
                             {/* Vehicle Header */}
                             <div className="flex justify-between items-start">
                               <div>
                                 <span className="font-mono font-bold text-xs bg-white px-2 py-0.5 rounded border border-slate-300 text-slate-900 shadow-2xs">
-                                  {veh.registrationNumber}
+                                  {vehReg || 'Unregistered'}
                                 </span>
                                 <h5 className="text-xs text-slate-800 font-bold mt-1">
-                                  {veh.brand || veh.make} {veh.model}
+                                  {vehBrand} {vehModel}
                                 </h5>
                               </div>
                               <div className="text-right">
@@ -353,26 +360,26 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                             <div className="grid grid-cols-2 gap-2 text-[10px] bg-white p-2 rounded-lg border border-slate-200 font-mono">
                               <div>
                                 <span className="text-slate-400 block font-sans">VIN / Chassis:</span>
-                                <span className="text-slate-700 font-semibold truncate block" title={veh.vinNumber || veh.chassisNumber || 'N/A'}>
-                                  {veh.vinNumber || veh.chassisNumber || 'N/A'}
+                                <span className="text-slate-700 font-semibold truncate block" title={vehVin || 'N/A'}>
+                                  {vehVin || 'N/A'}
                                 </span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block font-sans">Engine No:</span>
-                                <span className="text-slate-700 font-semibold truncate block" title={veh.engineNumber || 'N/A'}>
-                                  {veh.engineNumber || 'N/A'}
+                                <span className="text-slate-700 font-semibold truncate block" title={vehEngine}>
+                                  {vehEngine}
                                 </span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block font-sans">Odometer:</span>
                                 <span className="text-slate-700 font-semibold">
-                                  {(veh.odometerReading || 0).toLocaleString()} km
+                                  {vehOdo.toLocaleString()} km
                                 </span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block font-sans">Fuel & Year:</span>
                                 <span className="text-slate-700 font-semibold">
-                                  {veh.fuelType || 'Petrol'} • {veh.year || 2022}
+                                  {vehFuel} • {vehYear}
                                 </span>
                               </div>
                             </div>
@@ -396,13 +403,13 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                             {/* Actions */}
                             <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
                               <span className="text-[10px] text-slate-500 font-mono">
-                                Garage ID: {veh.id}
+                                Garage ID: {vehId}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => setHistoryModalTarget({
-                                  vehicleReg: veh.registrationNumber,
-                                  chassis: veh.vinNumber || veh.chassisNumber,
+                                  vehicleReg: vehReg,
+                                  chassis: vehVin,
                                   customerName: selectedCustomer.name,
                                   customerPhone: selectedCustomer.phone
                                 })}
@@ -545,7 +552,9 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   <td className="p-3 font-mono font-bold text-slate-400">#{idx + 1}</td>
                   <td className="p-3 font-bold text-slate-900">{c.name}</td>
                   <td className="p-3 font-mono text-slate-600">{c.phone}</td>
-                  <td className="p-3 font-mono">{(c.vehicles || []).map(v => v.registrationNumber).join(', ')}</td>
+                  <td className="p-3 font-mono font-bold text-slate-800">
+                    {(c.vehicles || []).map(v => (typeof v === 'string' ? v : v?.registrationNumber || '')).filter(Boolean).join(', ') || 'None'}
+                  </td>
                   <td className="p-3">
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                       {c.customerType}

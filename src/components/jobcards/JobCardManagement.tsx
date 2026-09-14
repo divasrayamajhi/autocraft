@@ -185,29 +185,41 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     }
 
     // Secondary check against registered customers in customer directory
+    let matchedCustomerVeh: any = null;
     const matchedCustomer = safeCustomers.find(c => {
-      const regMatch = cleanReg && cleanReg.length >= 3 && (c.vehicles || []).some(v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanReg));
+      const matchingVeh = (c.vehicles || []).find((v: any) => {
+        const regStr = typeof v === 'string' ? v : v?.registrationNumber || '';
+        const vinStr = typeof v !== 'string' ? (v?.vinNumber || v?.chassisNumber || '') : '';
+        const rMatch = cleanReg && cleanReg.length >= 3 && regStr.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanReg);
+        const vMatch = cleanVin && cleanVin.length >= 4 && vinStr.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanVin);
+        return rMatch || vMatch;
+      });
+      if (matchingVeh) {
+        matchedCustomerVeh = matchingVeh;
+        return true;
+      }
       const notesMatch = cleanVin && cleanVin.length >= 4 && (c.notes || '').toUpperCase().includes(cleanVin);
-      return regMatch || notesMatch;
+      return notesMatch;
     });
 
     if (matchedCustomer) {
+      const vehObj = typeof matchedCustomerVeh === 'object' && matchedCustomerVeh !== null ? matchedCustomerVeh : null;
       return {
         source: 'Customer Master Directory',
         matchReason: 'Customer Directory Match',
         customerName: matchedCustomer.name,
         customerPhone: matchedCustomer.phone,
-        brand: 'Toyota',
-        model: 'RAV4',
-        vinNumber: cleanVin || `MAL${cleanReg || '7781'}`,
-        engineNumber: `ENG${cleanReg || '02'}`,
+        brand: vehObj?.brand || vehObj?.make || 'Toyota',
+        model: vehObj?.model || 'RAV4',
+        vinNumber: cleanVin || vehObj?.vinNumber || vehObj?.chassisNumber || `MAL${cleanReg || '7781'}`,
+        engineNumber: vehObj?.engineNumber || `ENG${cleanReg || '02'}`,
         couponNumber: '',
-        lastOdometer: 28000,
-        lastServiceDate: '2025-10-10',
-        lastServiceType: 'Major 30K Service',
+        lastOdometer: vehObj?.odometerReading || 28000,
+        lastServiceDate: vehObj?.lastServiceDate || '2025-10-10',
+        lastServiceType: vehObj?.lastServiceType || 'Major 30K Service',
         lastComplaints: 'Fluids flush and brake pad check',
-        visitCount: 1,
-        nextServiceDueKm: 33000,
+        visitCount: vehObj?.totalServiceCount || 1,
+        nextServiceDueKm: (vehObj?.odometerReading ? vehObj.odometerReading + 5000 : 33000),
         nextServiceDueDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       };
     }
