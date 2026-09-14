@@ -243,6 +243,7 @@ export interface PartsQuotation {
   quotationNumber: string;
   customerId: string;
   customerName: string;
+  customerPhone?: string;
   date: string;
   expiryDate: string;
   items: PartsQuotationItem[];
@@ -250,6 +251,27 @@ export interface PartsQuotation {
   vatAmount: number;
   grandTotal: number;
   status: 'Draft' | 'Sent' | 'Converted to Order' | 'Expired';
+  jobCardId?: string;
+  jobCardNumber?: string;
+  vehicleReg?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  vinNumber?: string;
+  engineNumber?: string;
+  isAccidentInsuranceEstimate?: boolean;
+  insuranceCompany?: string;
+  claimNumber?: string;
+  laborItems?: {
+    id: string;
+    description: string;
+    hours: number;
+    ratePerHour: number;
+    totalAmount: number;
+  }[];
+  customerShareEstimated?: number;
+  insuranceShareEstimated?: number;
+  estimatedSalvageDeduction?: number;
+  notes?: string;
 }
 
 export interface PartsSalesOrder {
@@ -371,6 +393,14 @@ export interface JobCard {
   lastServiceSummary?: string;
   nextServiceDueDate?: string;
   nextServiceDueKm?: number;
+
+  // Coupon / Promotional Voucher
+  couponNumber?: string;
+  couponNotes?: string;
+
+  // Billing & IRD Tax Invoice Reference
+  invoiceId?: string;
+  invoiceNumber?: string;
 
   inspection: {
     fuelLevel: number; // 0 - 100%

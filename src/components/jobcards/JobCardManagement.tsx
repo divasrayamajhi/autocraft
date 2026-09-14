@@ -1,12 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   JobCard, 
   Appointment, 
   Customer, 
+  Vehicle,
   Technician, 
   SparePart, 
   JobCardStatus,
-  UserAccount 
+  UserAccount,
+  Invoice,
+  GatePass,
+  PartsQuotation
 } from '../../types';
 import { 
   Wrench, 
@@ -26,7 +30,11 @@ import {
   FileText,
   History,
   Sparkles,
-  Check
+  Check,
+  RotateCcw,
+  Tag,
+  Hash,
+  X
 } from 'lucide-react';
 import { JobCardDetailModal } from './JobCardDetailModal';
 
@@ -37,10 +45,16 @@ interface JobCardManagementProps {
   technicians: Technician[];
   availableParts: SparePart[];
   currentUser: UserAccount;
+  invoices?: Invoice[];
+  gatePasses?: GatePass[];
   onCreateJobCard: (newJc: JobCard) => void;
   onUpdateJobCard: (updatedJc: JobCard) => void;
   onCreateAppointment: (newApt: Appointment) => void;
   onConvertToInvoice: (jc: JobCard) => void;
+  onAddCustomer?: (customer: Customer) => void;
+  onUpdateCustomer?: (customer: Customer) => void;
+  onViewInvoice?: (invoice: Invoice) => void;
+  onCreateQuotation?: (quotation: PartsQuotation) => void;
 }
 
 const KANBAN_COLUMNS: { id: JobCardStatus; title: string; color: string }[] = [
@@ -68,10 +82,16 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   technicians = [],
   availableParts = [],
   currentUser,
+  invoices = [],
+  gatePasses = [],
   onCreateJobCard,
   onUpdateJobCard,
   onCreateAppointment,
-  onConvertToInvoice
+  onConvertToInvoice,
+  onAddCustomer,
+  onUpdateCustomer,
+  onViewInvoice,
+  onCreateQuotation
 }) => {
   const safeJobCards = jobCards || [];
   const safeAppointments = appointments || [];
@@ -83,6 +103,16 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJobCard, setSelectedJobCard] = useState<JobCard | null>(null);
 
+  // Enhanced Filter States for Job Cards & Appointments
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterDate, setFilterDate] = useState<'all' | 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom'>('all');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | JobCardStatus>('all');
+  const [filterTech, setFilterTech] = useState<'all' | string>('all');
+  const [filterServiceType, setFilterServiceType] = useState<'all' | string>('all');
+  const [aptFilterDate, setAptFilterDate] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
+
   // New Job Card Intake Modal State
   const [isIntakeModalOpen, setIsIntakeModalOpen] = useState(false);
   const [intakeReg, setIntakeReg] = useState('');
@@ -91,15 +121,16 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [intakeCustName, setIntakeCustName] = useState('');
   const [intakeCustPhone, setIntakeCustPhone] = useState('+977-98');
   const [intakeServiceType, setIntakeServiceType] = useState<JobCard['serviceType']>('Periodic Maintenance Service');
-  const [intakeOdo, setIntakeOdo] = useState(38000);
-  const [intakeFuel, setIntakeFuel] = useState(60);
+  const [intakeOdo, setIntakeOdo] = useState<number>(38000);
+  const [intakeFuel, setIntakeFuel] = useState<number>(60);
   const [intakeComplaints, setIntakeComplaints] = useState('Periodic 40,000 km general service, brake inspection, engine oil replacement.');
   const [intakeBay, setIntakeBay] = useState('Bay 1 (Mechanical Lift)');
   const [intakeTechId, setIntakeTechId] = useState(safeTechnicians[0]?.id || '');
   const [intakeIsCashless, setIntakeIsCashless] = useState(false);
   const [intakeInsuranceCo, setIntakeInsuranceCo] = useState(NEPAL_INSURERS[0]);
+  const [intakeCouponNumber, setIntakeCouponNumber] = useState('');
 
-  // Enhanced Check-in tracking fields requested by user
+  // Mandatory check-in tracking fields requested by user
   const [intakeArrivalDate, setIntakeArrivalDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [intakeEntryTime, setIntakeEntryTime] = useState<string>(() => {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -107,15 +138,20 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [intakeVin, setIntakeVin] = useState('');
   const [intakeEngineNo, setIntakeEngineNo] = useState('');
 
-  // Auto-Detect & Match Existing Service History by Vehicle Registration or Customer
+  // Auto-Detect & Match Existing Service History by Vehicle Registration or Chassis/VIN (especially)
   const matchedServiceHistory = useMemo(() => {
     const cleanReg = intakeReg.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!cleanReg || cleanReg.length < 3) return null;
+    const cleanVin = intakeVin.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if ((!cleanReg || cleanReg.length < 3) && (!cleanVin || cleanVin.length < 4)) return null;
 
-    // Search historical job cards for this vehicle
+    // Search historical job cards for this vehicle by registration OR chassis / VIN
     const matchingCards = safeJobCards.filter(jc => {
       const jcReg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      return jcReg === cleanReg || (jcReg.length >= 4 && (jcReg.includes(cleanReg) || cleanReg.includes(jcReg)));
+      const jcVin = (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      
+      const regMatch = cleanReg && cleanReg.length >= 3 && (jcReg === cleanReg || (jcReg.length >= 4 && (jcReg.includes(cleanReg) || cleanReg.includes(jcReg))));
+      const vinMatch = cleanVin && cleanVin.length >= 4 && (jcVin === cleanVin || (jcVin.length >= 5 && (jcVin.includes(cleanVin) || cleanVin.includes(jcVin))));
+      return regMatch || vinMatch;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     if (matchingCards.length > 0) {
@@ -125,14 +161,18 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       const latestDate = new Date(latest.createdAt);
       const nextDueDate = new Date(latestDate.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+      const isVinMatch = cleanVin && (latest.vehicle?.vinNumber || latest.vehicle?.chassisNumber || '').toUpperCase().includes(cleanVin);
+
       return {
         source: 'Job Cards Archive',
+        matchReason: isVinMatch ? 'Chassis/VIN Match' : 'Registration Match',
         customerName: latest.customerName,
         customerPhone: latest.customerPhone,
         brand: latest.vehicle?.brand || latest.vehicle?.make || 'Hyundai',
         model: latest.vehicle?.model || 'Car',
         vinNumber: latest.vehicle?.vinNumber || latest.vehicle?.chassisNumber || '',
         engineNumber: latest.vehicle?.engineNumber || '',
+        couponNumber: latest.couponNumber || '',
         lastOdometer: previousKm,
         lastServiceDate: latest.createdAt.slice(0, 10),
         lastServiceType: latest.serviceType,
@@ -143,20 +183,24 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       };
     }
 
-    // Secondary check against registered customers
+    // Secondary check against registered customers in customer directory
     const matchedCustomer = safeCustomers.find(c => {
-      return (c.vehicles || []).some(v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanReg));
+      const regMatch = cleanReg && cleanReg.length >= 3 && (c.vehicles || []).some(v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanReg));
+      const notesMatch = cleanVin && cleanVin.length >= 4 && (c.notes || '').toUpperCase().includes(cleanVin);
+      return regMatch || notesMatch;
     });
 
     if (matchedCustomer) {
       return {
         source: 'Customer Master Directory',
+        matchReason: 'Customer Directory Match',
         customerName: matchedCustomer.name,
         customerPhone: matchedCustomer.phone,
         brand: 'Toyota',
         model: 'RAV4',
-        vinNumber: `MAL${cleanReg}7781`,
-        engineNumber: `ENG${cleanReg}02`,
+        vinNumber: cleanVin || `MAL${cleanReg || '7781'}`,
+        engineNumber: `ENG${cleanReg || '02'}`,
+        couponNumber: '',
         lastOdometer: 28000,
         lastServiceDate: '2025-10-10',
         lastServiceType: 'Major 30K Service',
@@ -168,9 +212,37 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     }
 
     return null;
-  }, [intakeReg, safeJobCards, safeCustomers]);
+  }, [intakeReg, intakeVin, safeJobCards, safeCustomers]);
 
-  // Quick auto-fill handler from detected history
+  // Autofill when chassis or registration matches while preserving full editability
+  useEffect(() => {
+    if (matchedServiceHistory) {
+      // If customer fields are empty or default, autofill
+      if (!intakeCustName || intakeCustName === 'Ram Chandra Shrestha') {
+        setIntakeCustName(matchedServiceHistory.customerName);
+      }
+      if (!intakeCustPhone || intakeCustPhone === '+977-98') {
+        setIntakeCustPhone(matchedServiceHistory.customerPhone);
+      }
+      if (intakeBrand === 'Hyundai' && matchedServiceHistory.brand) {
+        setIntakeBrand(matchedServiceHistory.brand);
+      }
+      if (intakeModel === 'Creta SX' && matchedServiceHistory.model) {
+        setIntakeModel(matchedServiceHistory.model);
+      }
+      if (!intakeVin && matchedServiceHistory.vinNumber) {
+        setIntakeVin(matchedServiceHistory.vinNumber);
+      }
+      if (!intakeEngineNo && matchedServiceHistory.engineNumber) {
+        setIntakeEngineNo(matchedServiceHistory.engineNumber);
+      }
+      if (matchedServiceHistory.couponNumber && !intakeCouponNumber) {
+        setIntakeCouponNumber(matchedServiceHistory.couponNumber);
+      }
+    }
+  }, [matchedServiceHistory]);
+
+  // Quick auto-fill handler from detected history (can also be invoked manually via button)
   const handleApplyMatchedHistory = () => {
     if (!matchedServiceHistory) return;
     setIntakeCustName(matchedServiceHistory.customerName);
@@ -183,6 +255,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     if (matchedServiceHistory.engineNumber) {
       setIntakeEngineNo(matchedServiceHistory.engineNumber);
     }
+    if (matchedServiceHistory.couponNumber) {
+      setIntakeCouponNumber(matchedServiceHistory.couponNumber);
+    }
     if (matchedServiceHistory.lastOdometer) {
       setIntakeOdo(matchedServiceHistory.lastOdometer + 2500);
     }
@@ -190,7 +265,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
   // Known vehicles list for quick selection
   const knownVehicles = useMemo(() => {
-    const list: { reg: string; brand: string; model: string; custName: string; phone: string }[] = [];
+    const list: { reg: string; brand: string; model: string; custName: string; phone: string; vin?: string; engine?: string }[] = [];
     const seen = new Set<string>();
 
     safeJobCards.forEach(jc => {
@@ -202,7 +277,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           brand: jc.vehicle?.brand || jc.vehicle?.make || '',
           model: jc.vehicle?.model || '',
           custName: jc.customerName,
-          phone: jc.customerPhone
+          phone: jc.customerPhone,
+          vin: jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber,
+          engine: jc.vehicle?.engineNumber
         });
       }
     });
@@ -220,55 +297,259 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [aptDate, setAptDate] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16));
   const [aptService, setAptService] = useState('Periodic Maintenance Service');
 
-  // Filter job cards
-  const filteredCards = jobCards.filter((jc) => {
-    const matchesSearch = 
-      jc.jobCardNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      jc.vehicle.registrationNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      jc.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      jc.customerPhone.includes(searchQuery);
+  // Filter job cards with enhanced search & multi-dimensional filters
+  const filteredCards = useMemo(() => {
+    return safeJobCards.filter((jc) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || 
+        jc.jobCardNumber.toLowerCase().includes(q) ||
+        (jc.vehicle?.registrationNumber || '').toLowerCase().includes(q) ||
+        (jc.vehicle?.brand || '').toLowerCase().includes(q) ||
+        (jc.vehicle?.model || '').toLowerCase().includes(q) ||
+        (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toLowerCase().includes(q) ||
+        (jc.vehicle?.engineNumber || '').toLowerCase().includes(q) ||
+        jc.customerName.toLowerCase().includes(q) ||
+        jc.customerPhone.includes(q) ||
+        (jc.couponNumber || '').toLowerCase().includes(q);
 
-    return matchesSearch;
-  });
+      if (!matchesSearch) return false;
 
-  // Handle New Job Card Submit
+      // Status filter
+      if (filterStatus !== 'all' && jc.status !== filterStatus) return false;
+
+      // Service type filter
+      if (filterServiceType !== 'all' && jc.serviceType !== filterServiceType) return false;
+
+      // Technician filter
+      if (filterTech !== 'all' && jc.technicianId !== filterTech && jc.assignedTechnicianId !== filterTech) return false;
+
+      // Date filter
+      if (filterDate !== 'all') {
+        const jcDate = new Date(jc.arrivalDate || jc.createdAt);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (filterDate === 'today') {
+          const check = new Date(jcDate);
+          check.setHours(0, 0, 0, 0);
+          if (check.getTime() !== today.getTime()) return false;
+        } else if (filterDate === 'yesterday') {
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const check = new Date(jcDate);
+          check.setHours(0, 0, 0, 0);
+          if (check.getTime() !== yesterday.getTime()) return false;
+        } else if (filterDate === 'this_week') {
+          const weekAgo = new Date(today);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          if (jcDate < weekAgo) return false;
+        } else if (filterDate === 'this_month') {
+          if (jcDate.getMonth() !== today.getMonth() || jcDate.getFullYear() !== today.getFullYear()) return false;
+        } else if (filterDate === 'custom') {
+          if (filterStartDate && (jc.arrivalDate || jc.createdAt.slice(0, 10)) < filterStartDate) return false;
+          if (filterEndDate && (jc.arrivalDate || jc.createdAt.slice(0, 10)) > filterEndDate) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [safeJobCards, searchQuery, filterStatus, filterServiceType, filterTech, filterDate, filterStartDate, filterEndDate]);
+
+  // Filter appointments
+  const filteredAppointments = useMemo(() => {
+    return safeAppointments.filter((apt) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q ||
+        apt.id.toLowerCase().includes(q) ||
+        apt.customerName.toLowerCase().includes(q) ||
+        apt.customerPhone.includes(q) ||
+        apt.vehicleReg.toLowerCase().includes(q) ||
+        (apt.brand || '').toLowerCase().includes(q) ||
+        (apt.model || '').toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+
+      if (aptFilterDate !== 'all') {
+        const aptDate = new Date(apt.scheduledDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (aptFilterDate === 'today') {
+          const check = new Date(aptDate);
+          check.setHours(0, 0, 0, 0);
+          if (check.getTime() !== today.getTime()) return false;
+        } else if (aptFilterDate === 'upcoming') {
+          if (aptDate < today) return false;
+        } else if (aptFilterDate === 'past') {
+          if (aptDate >= today) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [safeAppointments, searchQuery, aptFilterDate]);
+
+  // Reset all active filters
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setFilterDate('all');
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setFilterStatus('all');
+    setFilterTech('all');
+    setFilterServiceType('all');
+    setAptFilterDate('all');
+  };
+
+  const hasActiveFilters = searchQuery !== '' || filterDate !== 'all' || filterStatus !== 'all' || filterTech !== 'all' || filterServiceType !== 'all' || aptFilterDate !== 'all';
+
+  // Handle New Job Card Submit with Mandatory Validations & Auto-Customer Creation
   const handleCreateJobCardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!intakeReg || !intakeCustName) {
-      alert('Vehicle registration and customer name are required.');
+
+    // 1. Mandatory Fields Validation
+    if (!intakeArrivalDate?.trim()) {
+      alert('Arrival Date is mandatory for vehicle check-in.');
+      return;
+    }
+    if (!intakeEntryTime?.trim()) {
+      alert('Entry / Arrival Time is mandatory for vehicle check-in.');
+      return;
+    }
+    if (!intakeReg?.trim()) {
+      alert('Vehicle Registration Number is mandatory.');
+      return;
+    }
+    if (!intakeBrand?.trim()) {
+      alert('Vehicle Make is mandatory.');
+      return;
+    }
+    if (!intakeModel?.trim()) {
+      alert('Vehicle Model is mandatory.');
+      return;
+    }
+    if (!intakeVin?.trim()) {
+      alert('VIN / Chassis Number is mandatory.');
+      return;
+    }
+    if (!intakeEngineNo?.trim()) {
+      alert('Engine Number is mandatory.');
+      return;
+    }
+    if (!intakeOdo || Number(intakeOdo) <= 0) {
+      alert('A valid Odometer Reading (KM) is mandatory.');
+      return;
+    }
+    if (!intakeCustName?.trim()) {
+      alert('Customer Full Name is mandatory.');
+      return;
+    }
+    if (!intakeCustPhone?.trim() || intakeCustPhone.trim() === '+977-98') {
+      alert('Customer Phone Number is mandatory.');
       return;
     }
 
     const tech = safeTechnicians.find(t => t.id === intakeTechId);
     const cleanReg = intakeReg.trim().toUpperCase();
-    const resolvedVin = intakeVin.trim() || `MAL${cleanReg.replace(/[^A-Z0-9]/g, '')}9812`;
-    const resolvedEngineNo = intakeEngineNo.trim() || `ENG${cleanReg.replace(/[^A-Z0-9]/g, '')}`;
+    const cleanVin = intakeVin.trim().toUpperCase();
+    const cleanEngine = intakeEngineNo.trim().toUpperCase();
 
+    // 2. Auto-Customer Creation in Customer Directory (Requirement 3)
+    // If details are totally new, create it as a new customer automatically under customer garages section
+    const cleanPhone = intakeCustPhone.replace(/[^0-9]/g, '');
+    const existingCustomer = safeCustomers.find(c => {
+      const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
+      const matchesPhone = cleanPhone && cPhone && (cPhone === cleanPhone || cPhone.endsWith(cleanPhone) || cleanPhone.endsWith(cPhone));
+      const matchesName = c.name.trim().toLowerCase() === intakeCustName.trim().toLowerCase();
+      const matchesVehicle = (c.vehicles || []).some((v: any) => {
+        const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
+        const regMatch = regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg.replace(/[^A-Z0-9]/g, '');
+        const vinStr = typeof v !== 'string' ? (v.vinNumber || v.chassisNumber || '') : '';
+        const vinMatch = cleanVin && vinStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanVin.replace(/[^A-Z0-9]/g, '');
+        return regMatch || vinMatch;
+      });
+      return matchesPhone || matchesName || matchesVehicle;
+    });
+
+    const vehicleRecord: Vehicle = {
+      id: `VEH-${Date.now().toString().slice(-4)}`,
+      registrationNumber: cleanReg,
+      make: intakeBrand.trim(),
+      brand: intakeBrand.trim(),
+      model: intakeModel.trim(),
+      year: new Date().getFullYear(),
+      fuelType: 'Petrol',
+      color: 'Standard',
+      odometerReading: Number(intakeOdo),
+      vinNumber: cleanVin,
+      chassisNumber: cleanVin,
+      engineNumber: cleanEngine,
+      customerName: intakeCustName.trim()
+    };
+
+    let assignedCustomerId = existingCustomer?.id;
+
+    if (!existingCustomer && onAddCustomer) {
+      assignedCustomerId = `CUST-${Date.now().toString().slice(-6)}`;
+      const newCustomer: Customer = {
+        id: assignedCustomerId,
+        name: intakeCustName.trim(),
+        phone: intakeCustPhone.trim(),
+        email: `${intakeCustName.trim().toLowerCase().replace(/\s+/g, '.')}@nepalmail.com`,
+        address: 'Kathmandu, Nepal',
+        customerType: 'Individual',
+        createdAt: new Date().toISOString().slice(0, 10),
+        lastVisit: new Date().toISOString().slice(0, 10),
+        totalSpent: 0,
+        outstandingBalance: 0,
+        vehicles: [vehicleRecord]
+      };
+      onAddCustomer(newCustomer);
+    } else if (existingCustomer && onUpdateCustomer) {
+      // If customer exists but does not have this vehicle registered in their garage, add it
+      const hasVehicle = (existingCustomer.vehicles || []).some((v: any) => {
+        const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
+        const regMatch = regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg.replace(/[^A-Z0-9]/g, '');
+        const vinStr = typeof v !== 'string' ? (v.vinNumber || v.chassisNumber || '') : '';
+        const vinMatch = cleanVin && vinStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanVin.replace(/[^A-Z0-9]/g, '');
+        return regMatch || vinMatch;
+      });
+      if (!hasVehicle) {
+        onUpdateCustomer({
+          ...existingCustomer,
+          lastVisit: new Date().toISOString().slice(0, 10),
+          vehicles: [...(existingCustomer.vehicles || []), vehicleRecord]
+        });
+      }
+    }
+
+    // 3. Construct the comprehensive Job Card
     const newJc: JobCard = {
       id: `JC-${Date.now().toString().slice(-6)}`,
       jobCardNumber: `JC-81-${Math.floor(100 + Math.random() * 900)}`,
-      customerId: `CUST-${Date.now().toString().slice(-4)}`,
-      customerName: intakeCustName,
-      customerPhone: intakeCustPhone,
+      customerId: assignedCustomerId || `CUST-${Date.now().toString().slice(-4)}`,
+      customerName: intakeCustName.trim(),
+      customerPhone: intakeCustPhone.trim(),
       arrivalDate: intakeArrivalDate,
       entryTime: intakeEntryTime,
+      couponNumber: intakeCouponNumber.trim() || undefined,
       lastServiceDate: matchedServiceHistory?.lastServiceDate,
       lastServiceKm: matchedServiceHistory?.lastOdometer,
       lastServiceSummary: matchedServiceHistory ? `${matchedServiceHistory.lastServiceType}: ${matchedServiceHistory.lastComplaints}` : undefined,
       nextServiceDueDate: matchedServiceHistory?.nextServiceDueDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      nextServiceDueKm: intakeOdo + 5000,
+      nextServiceDueKm: Number(intakeOdo) + 5000,
       vehicle: {
         id: `VEH-${Date.now().toString().slice(-4)}`,
         registrationNumber: cleanReg,
-        make: intakeBrand,
-        brand: intakeBrand,
-        model: intakeModel,
+        make: intakeBrand.trim(),
+        brand: intakeBrand.trim(),
+        model: intakeModel.trim(),
         fuelType: 'Petrol',
         year: 2022,
-        vinNumber: resolvedVin,
-        chassisNumber: resolvedVin,
-        engineNumber: resolvedEngineNo,
-        odometerReading: intakeOdo,
+        vinNumber: cleanVin,
+        chassisNumber: cleanVin,
+        engineNumber: cleanEngine,
+        odometerReading: Number(intakeOdo),
         color: 'Pearl White',
         insuranceCompany: intakeIsCashless ? intakeInsuranceCo : undefined
       },
@@ -284,8 +565,8 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       isWarrantyClaim: false,
       isLocked: false,
       inspection: {
-        fuelLevel: intakeFuel,
-        odometer: intakeOdo,
+        fuelLevel: Number(intakeFuel),
+        odometer: Number(intakeOdo),
         inventoryBelongings: {
           spareWheel: true,
           toolKit: true,
@@ -296,7 +577,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
         },
         damages: [],
         customerVoiceComplaints: intakeComplaints.split('.').filter(s => s.trim().length > 0),
-        advisorsObservations: ['Vehicle admitted via express intake. Standard safety checks initiated.', intakeComplaints]
+        advisorsObservations: ['Vehicle admitted via express check-in. Standard safety checks initiated.', intakeComplaints]
       },
       laborItems: [
         {
@@ -317,6 +598,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
     onCreateJobCard(newJc);
     setIsIntakeModalOpen(false);
+    setIntakeCouponNumber('');
   };
 
   // Convert Appointment to Job Card
@@ -393,17 +675,41 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search Reg, Job Card, Customer..."
+              placeholder="Search Reg, Chassis, Job Card, Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 w-52 sm:w-64"
+              className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 sm:w-60"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
+
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 border transition ${
+              hasActiveFilters || showFilters
+                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+            title="Filter by Date, Status, Technician, and Service Type"
+          >
+            <Filter className="w-3.5 h-3.5" />
+            <span>Filters</span>
+            {hasActiveFilters && (
+              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+            )}
+          </button>
 
           {activeSubTab === 'appointments' ? (
             <button
@@ -424,6 +730,149 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           )}
         </div>
       </div>
+
+      {/* EXPANDABLE FILTER TOOLBAR */}
+      {showFilters && (
+        <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 text-xs space-y-3 shadow-sm transition">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-slate-800 flex items-center space-x-1.5">
+                <Filter className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Search & Filter Engine</span>
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Showing {activeSubTab === 'appointments' ? filteredAppointments.length : filteredCards.length} matching records
+              </span>
+            </div>
+            {hasActiveFilters && (
+              <button
+                onClick={handleResetFilters}
+                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 flex items-center space-x-1 hover:underline"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Clear All Filters</span>
+              </button>
+            )}
+          </div>
+
+          {activeSubTab === 'appointments' ? (
+            <div className="flex flex-wrap gap-3 items-center">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Appointment Timing</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'all', label: 'All Dates' },
+                    { id: 'today', label: 'Today' },
+                    { id: 'upcoming', label: 'Upcoming' },
+                    { id: 'past', label: 'Past Bookings' }
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setAptFilterDate(t.id as any)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                        aptFilterDate === t.id
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {/* Date Filter */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date Created / Arrival</label>
+                <select
+                  value={filterDate}
+                  onChange={e => setFilterDate(e.target.value as any)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 outline-none font-medium"
+                >
+                  <option value="all">All Dates</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="this_week">Past 7 Days</option>
+                  <option value="this_month">This Month</option>
+                  <option value="custom">Custom Date Range</option>
+                </select>
+
+                {filterDate === 'custom' && (
+                  <div className="flex items-center space-x-1 mt-1.5">
+                    <input
+                      type="date"
+                      value={filterStartDate}
+                      onChange={e => setFilterStartDate(e.target.value)}
+                      className="w-1/2 bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px]"
+                      placeholder="Start"
+                    />
+                    <input
+                      type="date"
+                      value={filterEndDate}
+                      onChange={e => setFilterEndDate(e.target.value)}
+                      className="w-1/2 bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px]"
+                      placeholder="End"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Repair Stage / Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={e => setFilterStatus(e.target.value as any)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 outline-none font-medium"
+                >
+                  <option value="all">All Stages ({safeJobCards.length})</option>
+                  {KANBAN_COLUMNS.map(col => (
+                    <option key={col.id} value={col.id}>
+                      {col.title} ({safeJobCards.filter(c => c.status === col.id).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Technician Filter */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Assigned Technician</label>
+                <select
+                  value={filterTech}
+                  onChange={e => setFilterTech(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 outline-none font-medium"
+                >
+                  <option value="all">All Technicians</option>
+                  {safeTechnicians.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.specialization})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Service Type Filter */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Service Type</label>
+                <select
+                  value={filterServiceType}
+                  onChange={e => setFilterServiceType(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 outline-none font-medium"
+                >
+                  <option value="all">All Service Types</option>
+                  <option value="Periodic Maintenance Service">Periodic Maintenance Service</option>
+                  <option value="Running Repair">Running Repair</option>
+                  <option value="Brake & Suspension Overhaul">Brake & Suspension Overhaul</option>
+                  <option value="Engine Diagnostics & Tuning">Engine Diagnostics & Tuning</option>
+                  <option value="Accidental Repair">Accidental Repair</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* SUBTAB 1: AGILE KANBAN BOARD */}
       {activeSubTab === 'kanban' && (
@@ -606,29 +1055,37 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {safeAppointments.map((apt) => (
-                <tr key={apt.id} className="hover:bg-slate-50 transition">
-                  <td className="p-3.5 font-mono font-bold text-indigo-700">{apt.id}</td>
-                  <td className="p-3.5">
-                    <div className="font-semibold text-slate-900">{apt.customerName}</div>
-                    <div className="text-[11px] text-slate-500 font-mono">{apt.customerPhone}</div>
-                  </td>
-                  <td className="p-3.5">
-                    <div className="font-mono font-bold text-slate-800">{apt.vehicleReg}</div>
-                    <div className="text-[11px] text-slate-500">{apt.brand} {apt.model}</div>
-                  </td>
-                  <td className="p-3.5 text-slate-700">{new Date(apt.scheduledDate).toLocaleString()}</td>
-                  <td className="p-3.5 text-slate-600">{apt.serviceType}</td>
-                  <td className="p-3.5 text-center">
-                    <button
-                      onClick={() => handleConvertAppointment(apt)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold"
-                    >
-                      Convert to Job Card
-                    </button>
+              {filteredAppointments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                    No appointments matching the selected filter criteria.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredAppointments.map((apt) => (
+                  <tr key={apt.id} className="hover:bg-slate-50 transition">
+                    <td className="p-3.5 font-mono font-bold text-indigo-700">{apt.id}</td>
+                    <td className="p-3.5">
+                      <div className="font-semibold text-slate-900">{apt.customerName}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">{apt.customerPhone}</div>
+                    </td>
+                    <td className="p-3.5">
+                      <div className="font-mono font-bold text-slate-800">{apt.vehicleReg}</div>
+                      <div className="text-[11px] text-slate-500">{apt.brand} {apt.model}</div>
+                    </td>
+                    <td className="p-3.5 text-slate-700">{new Date(apt.scheduledDate).toLocaleString()}</td>
+                    <td className="p-3.5 text-slate-600">{apt.serviceType}</td>
+                    <td className="p-3.5 text-center">
+                      <button
+                        onClick={() => handleConvertAppointment(apt)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold"
+                      >
+                        Convert to Job Card
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -638,6 +1095,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       {selectedJobCard && (
         <JobCardDetailModal
           jobCard={selectedJobCard}
+          allJobCards={safeJobCards}
+          invoices={invoices}
+          gatePasses={gatePasses}
           availableParts={availableParts}
           technicians={technicians}
           currentUser={currentUser}
@@ -650,6 +1110,8 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             setSelectedJobCard(null);
             onConvertToInvoice(jc);
           }}
+          onViewInvoice={onViewInvoice}
+          onCreateQuotation={onCreateQuotation}
         />
       )}
 
@@ -696,6 +1158,8 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                         setIntakeModel(v.model);
                         setIntakeCustName(v.custName);
                         setIntakeCustPhone(v.phone);
+                        if (v.vin) setIntakeVin(v.vin);
+                        if (v.engine) setIntakeEngineNo(v.engine);
                       }}
                       className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-300 hover:border-indigo-300 rounded-lg text-[11px] font-semibold text-slate-700 hover:text-indigo-700 transition flex items-center space-x-1"
                     >
@@ -713,7 +1177,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1.5 text-indigo-950 font-bold">
                     <History className="w-4 h-4 text-indigo-600" />
-                    <span>Past Workshop Service Record Detected ({matchedServiceHistory.visitCount} visits)</span>
+                    <span>Past Workshop Service Record Detected ({matchedServiceHistory.matchReason} • {matchedServiceHistory.visitCount} visits)</span>
                   </div>
                   <button
                     type="button"
@@ -721,7 +1185,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                     className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg shadow-sm flex items-center space-x-1 transition"
                   >
                     <Sparkles className="w-3 h-3" />
-                    <span>Auto-Fill Details</span>
+                    <span>Re-apply Autofill</span>
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] bg-white p-2 rounded-lg border border-indigo-100">
@@ -746,80 +1210,93 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             <form onSubmit={handleCreateJobCardSubmit} className="mt-3 space-y-3 text-xs">
               {/* Check-in Arrival Date & Entry Time */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-600 uppercase block mb-2">Check-in Timing & Timestamps</span>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase">Check-in Timing & Timestamps (Mandatory)</span>
+                  <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    All fields editable
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Arrival Date *</label>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={intakeArrivalDate}
-                        onChange={e => setIntakeArrivalDate(e.target.value)}
-                        className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium"
-                        required
-                      />
-                    </div>
+                    <input
+                      type="date"
+                      value={intakeArrivalDate}
+                      onChange={e => setIntakeArrivalDate(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium"
+                      required
+                    />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Entry Time *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">Arrival / Entry Time *</label>
                     <input
                       type="text"
                       value={intakeEntryTime}
                       onChange={e => setIntakeEntryTime(e.target.value)}
-                      placeholder="09:30 AM"
-                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium"
+                      placeholder="e.g. 09:30 AM"
+                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium font-mono"
                       required
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Vehicle Registration and Specs */}
+              {/* Vehicle Registration */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Vehicle Registration # *</label>
+                <input
+                  value={intakeReg}
+                  onChange={e => setIntakeReg(e.target.value)}
+                  placeholder="e.g. BA 02 CHA 8892"
+                  className="w-full font-mono font-bold uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+
+              {/* Vehicle Make and Model (Separated and Fully Editable) */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Registration # *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Make / Brand *</label>
                   <input
-                    value={intakeReg}
-                    onChange={e => setIntakeReg(e.target.value)}
-                    placeholder="BA 02 CHA 8892"
-                    className="w-full font-mono font-bold uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    value={intakeBrand}
+                    onChange={e => setIntakeBrand(e.target.value)}
+                    placeholder="e.g. Hyundai, Toyota, Suzuki"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none font-medium"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Make & Model *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Vehicle Model *</label>
                   <input
-                    value={`${intakeBrand} ${intakeModel}`}
-                    onChange={e => {
-                      const parts = e.target.value.split(' ');
-                      setIntakeBrand(parts[0] || 'Car');
-                      setIntakeModel(parts.slice(1).join(' ') || 'Model');
-                    }}
-                    placeholder="Hyundai Creta SX"
+                    value={intakeModel}
+                    onChange={e => setIntakeModel(e.target.value)}
+                    placeholder="e.g. Creta SX, RAV4, Swift"
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none font-medium"
                     required
                   />
                 </div>
               </div>
 
-              {/* VIN and Engine Number */}
+              {/* VIN/Chassis and Engine Number (Mandatory & Editable) */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">VIN / Chassis Number</label>
+                  <label className="block font-semibold text-slate-700 mb-1">VIN / Chassis Number *</label>
                   <input
                     value={intakeVin}
                     onChange={e => setIntakeVin(e.target.value.toUpperCase())}
-                    placeholder="MALBB51BLMM123456"
+                    placeholder="e.g. MALBB51BLMM123456"
                     className="w-full font-mono uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Engine Number</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Engine Number *</label>
                   <input
                     value={intakeEngineNo}
                     onChange={e => setIntakeEngineNo(e.target.value.toUpperCase())}
-                    placeholder="G4LA-KM99812"
+                    placeholder="e.g. G4LA-KM99812"
                     className="w-full font-mono uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    required
                   />
                 </div>
               </div>
@@ -830,6 +1307,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                   <label className="block font-semibold text-slate-700 mb-1">Odometer (KM Reading) *</label>
                   <input
                     type="number"
+                    min="1"
                     value={intakeOdo}
                     onChange={e => setIntakeOdo(parseInt(e.target.value) || 0)}
                     className="w-full font-mono font-bold border border-slate-300 rounded-xl px-3 py-2 outline-none"
@@ -850,14 +1328,14 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                 </div>
               </div>
 
-              {/* Customer Info */}
+              {/* Customer Info (Mandatory & Editable) */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Customer Full Name *</label>
                   <input
                     value={intakeCustName}
                     onChange={e => setIntakeCustName(e.target.value)}
-                    placeholder="Ram Chandra Shrestha"
+                    placeholder="e.g. Ram Chandra Shrestha"
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none"
                     required
                   />
@@ -931,6 +1409,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                 />
               </div>
 
+              {/* Cashless Insurance Claim */}
               <div className="pt-2 border-t border-slate-100 flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -958,6 +1437,24 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                   </select>
                 </div>
               )}
+
+              {/* Coupon Number / Voucher Code Textarea in bottom */}
+              <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 space-y-1.5">
+                <label className="block font-bold text-amber-900 flex items-center space-x-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Coupon Number / Promotional Voucher</span>
+                </label>
+                <textarea
+                  value={intakeCouponNumber}
+                  onChange={e => setIntakeCouponNumber(e.target.value)}
+                  placeholder="Enter promotional coupon number or discount code (e.g., FESTIVE10, DASH-2025-VOUCHER, VIP-SERVICE)"
+                  rows={2}
+                  className="w-full border border-amber-300 rounded-xl px-3 py-1.5 outline-none font-mono text-xs bg-white focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-[10px] text-amber-700">
+                  Coupons entered will be permanently attached to this Job Card and will be applied to the invoice upon billing.
+                </p>
+              </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
                 <button

@@ -183,8 +183,29 @@ export default function App() {
       ]
     };
 
-    // Mark JC as ready for billing
-    const updatedJc: JobCard = { ...jc, status: 'Ready for Billing' };
+    // Prevent generating multiple bills for the same job card
+    const existingInvoice = db.invoices.find(inv => 
+      inv.jobCardId === jc.id || 
+      inv.jobCardNumber === jc.jobCardNumber ||
+      (jc.invoiceId && inv.id === jc.invoiceId) ||
+      (jc.invoiceNumber && inv.invoiceNumber === jc.invoiceNumber)
+    );
+
+    if (existingInvoice) {
+      alert(`An IRD Tax Invoice (#${existingInvoice.invoiceNumber}) already exists for this Job Card. Multiple invoices for the same Job Card are prohibited to avoid daily ledger discrepancies.`);
+      setActiveTab('billing');
+      setPrintInvoice(existingInvoice);
+      return;
+    }
+
+    // User requirement: "When the job card is ready for billing and process to ird tax invoice, complete and delivered the job card automatically when the invoice is generated."
+    const updatedJc: JobCard = { 
+      ...jc, 
+      status: 'Delivered',
+      isLocked: true,
+      invoiceId: newInvoice.id,
+      invoiceNumber: newInvoice.invoiceNumber
+    };
     const updatedCards = db.jobCards.map(c => c.id === jc.id ? updatedJc : c);
     const updatedInvoices = [newInvoice, ...db.invoices];
 
@@ -224,6 +245,20 @@ export default function App() {
 
   // --- INVOICE & PAYMENT HANDLERS ---
   const handleCreateInvoice = (newInv: Invoice) => {
+    // Check if an invoice already exists for this job card
+    if (newInv.jobCardId || newInv.jobCardNumber) {
+      const duplicate = db.invoices.find(inv => 
+        (newInv.jobCardId && inv.jobCardId === newInv.jobCardId) ||
+        (newInv.jobCardNumber && inv.jobCardNumber === newInv.jobCardNumber)
+      );
+      if (duplicate) {
+        alert(`An IRD Tax Invoice (#${duplicate.invoiceNumber}) already exists for this Job Card. Multiple invoices under the same Job Card are prohibited.`);
+        setActiveTab('billing');
+        setPrintInvoice(duplicate);
+        return;
+      }
+    }
+
     const updated = [newInv, ...db.invoices];
     const now = new Date();
     // Automatically create vehicle gate pass upon invoice generation
@@ -254,7 +289,25 @@ export default function App() {
       paymentStatus: newInv.status
     };
     const updatedGatePasses = [vehicleGatePass, ...(db.gatePasses || [])];
-    updateDb({ invoices: updated, gatePasses: updatedGatePasses });
+
+    // Automatically complete and deliver the job card if linked
+    let updatedCards = db.jobCards;
+    if (newInv.jobCardId || newInv.jobCardNumber) {
+      updatedCards = db.jobCards.map(jc => {
+        if (jc.id === newInv.jobCardId || jc.jobCardNumber === newInv.jobCardNumber) {
+          return {
+            ...jc,
+            status: 'Delivered',
+            isLocked: true,
+            invoiceId: newInv.id,
+            invoiceNumber: newInv.invoiceNumber
+          };
+        }
+        return jc;
+      });
+    }
+
+    updateDb({ invoices: updated, gatePasses: updatedGatePasses, jobCards: updatedCards });
   };
 
   const handleUpdateInvoice = (updatedInv: Invoice) => {
@@ -674,6 +727,7 @@ export default function App() {
               onCreateSalesOrder={handleCreateSalesOrder}
               onDispatchOrder={handleDispatchOrder}
               onCreateSalesReturn={handleCreateSalesReturn}
+              onViewJobCard={() => setActiveTab('jobcards')}
             />
           )}
 
@@ -685,11 +739,19 @@ export default function App() {
               customers={db.customers}
               technicians={db.technicians}
               availableParts={db.parts}
+              invoices={db.invoices}
+              gatePasses={db.gatePasses || []}
               currentUser={currentUser}
               onCreateJobCard={handleCreateJobCard}
               onUpdateJobCard={handleUpdateJobCard}
               onCreateAppointment={handleCreateAppointment}
               onConvertToInvoice={handleConvertJobCardToInvoice}
+              onAddCustomer={handleAddCustomer}
+              onViewInvoice={(invoice) => {
+                setActiveTab('billing');
+                setPrintInvoice(invoice);
+              }}
+              onCreateQuotation={handleCreateQuotation}
             />
           )}
 
@@ -743,6 +805,7 @@ export default function App() {
               customers={db.customers}
               invoices={db.invoices}
               jobCards={db.jobCards}
+              gatePasses={db.gatePasses || []}
               userRole={currentUser.role}
               onAddCustomer={handleAddCustomer}
               onUpdateCustomer={handleUpdateCustomer}

@@ -4,7 +4,8 @@ import {
   Vehicle, 
   Invoice, 
   JobCard, 
-  UserRole 
+  UserRole,
+  GatePass
 } from '../../types';
 import { 
   Users, 
@@ -24,11 +25,13 @@ import {
   Wrench,
   X
 } from 'lucide-react';
+import { VehicleServiceHistoryModal } from '../common/VehicleServiceHistoryModal';
 
 interface CustomerManagementProps {
   customers: Customer[];
   invoices: Invoice[];
   jobCards: JobCard[];
+  gatePasses?: GatePass[];
   userRole: UserRole;
   onAddCustomer: (customer: Customer) => void;
   onUpdateCustomer: (customer: Customer) => void;
@@ -39,6 +42,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   customers = [],
   invoices = [],
   jobCards = [],
+  gatePasses = [],
   userRole,
   onAddCustomer,
   onUpdateCustomer,
@@ -48,6 +52,12 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   const [activeTab, setActiveTab] = useState<'profiles' | 'sales_reports'>('profiles');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(safeCustomers[0] || null);
+  const [historyModalTarget, setHistoryModalTarget] = useState<{
+    vehicleReg: string;
+    chassis?: string;
+    customerName: string;
+    customerPhone?: string;
+  } | null>(null);
 
   // New Customer Modal
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
@@ -270,7 +280,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {(selectedCustomer.vehicles || []).map(veh => (
-                        <div key={veh.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <div key={veh.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="font-mono font-bold text-xs text-slate-900">{veh.registrationNumber}</span>
                             <span className="text-[10px] text-slate-500">{veh.year}</span>
@@ -279,6 +289,21 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                           <p className="text-[10px] text-slate-500 font-mono">
                             Odo: {veh.odometerReading.toLocaleString()} km • Fuel: {veh.fuelType}
                           </p>
+                          <div className="pt-2 border-t border-slate-200 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setHistoryModalTarget({
+                                vehicleReg: veh.registrationNumber,
+                                chassis: veh.vinNumber || veh.chassisNumber,
+                                customerName: selectedCustomer.name,
+                                customerPhone: selectedCustomer.phone
+                              })}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>Display Service History</span>
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -286,10 +311,28 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
                   {/* Service History in Workshop */}
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center space-x-1.5">
-                      <History className="w-4 h-4 text-indigo-600" />
-                      <span>Past Service Invoices & Visits</span>
-                    </h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                        <History className="w-4 h-4 text-indigo-600" />
+                        <span>Past Service Invoices & Visits</span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const primaryVeh = selectedCustomer.vehicles?.[0];
+                          setHistoryModalTarget({
+                            vehicleReg: primaryVeh?.registrationNumber || '',
+                            chassis: primaryVeh?.vinNumber || primaryVeh?.chassisNumber,
+                            customerName: selectedCustomer.name,
+                            customerPhone: selectedCustomer.phone
+                          });
+                        }}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center space-x-1 shadow-xs transition"
+                      >
+                        <History className="w-3.5 h-3.5" />
+                        <span>Display Full Service History</span>
+                      </button>
+                    </div>
 
                     {invoices.filter(i => i.customerName === selectedCustomer.name).length === 0 ? (
                       <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500">
@@ -510,6 +553,23 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* Modal: Service History */}
+      {historyModalTarget && (
+        <VehicleServiceHistoryModal
+          vehicleReg={historyModalTarget.vehicleReg}
+          vehicleChassis={historyModalTarget.chassis}
+          customerName={historyModalTarget.customerName}
+          customerPhone={historyModalTarget.customerPhone}
+          jobCards={jobCards}
+          invoices={invoices}
+          gatePasses={gatePasses}
+          onClose={() => setHistoryModalTarget(null)}
+          onSelectJobCard={(jc) => {
+            setHistoryModalTarget(null);
+            onViewJobCard(jc.jobCardNumber);
+          }}
+        />
       )}
     </div>
   );
