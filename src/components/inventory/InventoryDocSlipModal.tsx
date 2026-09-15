@@ -115,6 +115,12 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
                   Total Estimate: NPR {quotation.grandTotal.toLocaleString()}
                 </div>
               </div>
+
+              {/* Preliminary Quotation Disclaimer */}
+              <div className="mt-3 p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-xl text-[10px] text-amber-900 leading-relaxed font-sans text-left">
+                <span className="font-bold block text-amber-950 mb-0.5">ESTIMATE & QUOTATION DISCLAIMER</span>
+                Note: The quotation is a preliminary estimate based on the inspection of the vehicle. The final invoice may differ from the quoted amount, as the quotation is an estimated cost and may be subject to change depending on the actual work and parts required.
+              </div>
             </>
           )}
 
@@ -227,11 +233,13 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
               </table>
 
               <div className="pt-2 border-t border-slate-200 space-y-1 text-right text-[11px]">
+                <div>Subtotal Reversal: NPR {Math.round(salesReturn.totalRefundAmount / 1.13).toLocaleString()}</div>
+                <div className="text-rose-600 font-medium">Nepal VAT (13%) Reversal: NPR {(salesReturn.totalRefundAmount - Math.round(salesReturn.totalRefundAmount / 1.13)).toLocaleString()}</div>
                 <div className="font-bold text-sm text-rose-700 pt-1 border-t border-slate-200">
                   Total Credit Amount: NPR {salesReturn.totalRefundAmount.toLocaleString()}
                 </div>
                 <div className="text-[10px] text-slate-500">
-                  Inventory status: <span className="font-bold text-emerald-700">Restocked to Shelves</span>
+                  Inventory status: <span className="font-bold text-emerald-700">Restocked to Shelves</span> • IRD CBMS Logged
                 </div>
               </div>
             </>

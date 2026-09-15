@@ -160,7 +160,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       const previousKm = latest.vehicle?.odometerReading || 0;
       const nextDueKm = previousKm + 5000;
       const latestDate = new Date(latest.createdAt);
-      const nextDueDate = new Date(latestDate.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const nextDueDate = new Date(latestDate.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       const isVinMatch = cleanVin && (latest.vehicle?.vinNumber || latest.vehicle?.chassisNumber || '').toUpperCase().includes(cleanVin);
 
@@ -616,7 +616,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       lastServiceDate: matchedServiceHistory?.lastServiceDate,
       lastServiceKm: matchedServiceHistory?.lastOdometer,
       lastServiceSummary: matchedServiceHistory ? `${matchedServiceHistory.lastServiceType}: ${matchedServiceHistory.lastComplaints}` : undefined,
-      nextServiceDueDate: matchedServiceHistory?.nextServiceDueDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      nextServiceDueDate: matchedServiceHistory?.nextServiceDueDate || new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       nextServiceDueKm: Number(intakeOdo) + 5000,
       vehicle: {
         id: `VEH-${Date.now().toString().slice(-4)}`,

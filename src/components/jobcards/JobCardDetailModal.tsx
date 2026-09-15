@@ -722,7 +722,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                   <div className="bg-white p-3 rounded-lg border border-indigo-100">
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Next Service Target</span>
                     <p className="font-bold text-indigo-900">
-                      {currentJobCard.nextServiceDueDate ? `${currentJobCard.nextServiceDueDate} / ${(currentJobCard.nextServiceDueKm || 0).toLocaleString()} km` : '6 Months / 5,000 km after completion'}
+                      {currentJobCard.nextServiceDueDate ? `${currentJobCard.nextServiceDueDate} / ${(currentJobCard.nextServiceDueKm || 0).toLocaleString()} km` : '4 Months (120 Days) / 5,000 km after completion'}
                     </p>
                     <p className="text-emerald-700 text-[11px] font-semibold mt-0.5">
                       Recommended: Scheduled PMS with Synthetic Oil & Brake Inspection.

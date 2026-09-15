@@ -378,7 +378,10 @@ const INITIAL_CUSTOMERS: Customer[] = [
         odometerReading: 38400,
         customerName: 'Dr. Rameshwor Pokharel',
         insuranceCompany: 'Shikhar Insurance Co. Ltd.',
-        insurancePolicyNumber: 'SHK-081-MOT-89211'
+        insurancePolicyNumber: 'SHK-081-MOT-89211',
+        lastServiceDate: new Date(Date.now() - 145 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        nextServiceDueDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        nextServiceDueKm: 43400
       }
     ]
   },
@@ -410,7 +413,10 @@ const INITIAL_CUSTOMERS: Customer[] = [
         odometerReading: 78200,
         customerName: 'Himalayan Adventure Travels',
         insuranceCompany: 'Sagarmatha Lumbini Insurance',
-        insurancePolicyNumber: 'SALICO-81-COM-1092'
+        insurancePolicyNumber: 'SALICO-81-COM-1092',
+        lastServiceDate: new Date(Date.now() - 116 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        nextServiceDueDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        nextServiceDueKm: 83200
       }
     ]
   },
@@ -441,7 +447,10 @@ const INITIAL_CUSTOMERS: Customer[] = [
         odometerReading: 21900,
         customerName: 'Sunita Pradhan',
         insuranceCompany: 'NLG Insurance Company Ltd.',
-        insurancePolicyNumber: 'NLG-2081-PVT-4432'
+        insurancePolicyNumber: 'NLG-2081-PVT-4432',
+        lastServiceDate: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        nextServiceDueDate: new Date(Date.now() + 108 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        nextServiceDueKm: 26900
       }
     ]
   }

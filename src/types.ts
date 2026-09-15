@@ -182,6 +182,8 @@ export interface Vehicle {
   lastServiceDate?: string;
   lastServiceType?: string;
   lastJobCardNumber?: string;
+  nextServiceDueDate?: string;
+  nextServiceDueKm?: number;
 }
 
 export interface Customer {

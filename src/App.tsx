@@ -256,6 +256,8 @@ export default function App() {
             totalServiceCount: ((typeof v === 'object' && v?.totalServiceCount) || 0) + 1,
             totalBilledAmount: ((typeof v === 'object' && v?.totalBilledAmount) || 0) + newInvoice.grandTotal,
             lastServiceDate: now.toISOString().slice(0, 10),
+            nextServiceDueDate: new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+            nextServiceDueKm: (jc.vehicle?.odometerReading || (typeof v === 'object' ? v?.odometerReading : 0) || 0) + 5000,
             lastJobCardNumber: newInvoice.jobCardNumber,
             odometerReading: jc.vehicle?.odometerReading || (typeof v === 'object' ? v?.odometerReading : 0)
           };
@@ -363,6 +365,8 @@ export default function App() {
             totalServiceCount: ((typeof v === 'object' && v?.totalServiceCount) || 0) + 1,
             totalBilledAmount: ((typeof v === 'object' && v?.totalBilledAmount) || 0) + newInv.grandTotal,
             lastServiceDate: now.toISOString().slice(0, 10),
+            nextServiceDueDate: new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+            nextServiceDueKm: (correspondingJc?.vehicle?.odometerReading || (typeof v === 'object' ? v?.odometerReading : 0) || 0) + 5000,
             lastJobCardNumber: newInv.jobCardNumber,
             odometerReading: correspondingJc?.vehicle?.odometerReading || (typeof v === 'object' ? v?.odometerReading : 0)
           };
@@ -603,6 +607,34 @@ export default function App() {
       return p;
     });
 
+    // Update customer spending / credit if customer identified
+    const matchingCustomer = (db.customers || []).find(c => 
+      c.id === returnData.customerId || 
+      c.name.toLowerCase().trim() === returnData.customerName.toLowerCase().trim()
+    );
+
+    const updatedCustomers = (db.customers || []).map(c => {
+      if (c.id === returnData.customerId || c.name.toLowerCase().trim() === returnData.customerName.toLowerCase().trim()) {
+        return {
+          ...c,
+          totalSpent: Math.max(0, (c.totalSpent || 0) - returnData.totalRefundAmount)
+        };
+      }
+      return c;
+    });
+
+    // Update Sales Orders if return was logged against an order
+    const updatedSalesOrders = (db.partsSalesOrders || []).map(o => {
+      if (o.orderNumber === returnData.originalInvoiceNumber || o.id === returnData.originalInvoiceNumber) {
+        return {
+          ...o,
+          dispatchStatus: 'Fully Dispatched' as const,
+          invoiceStatus: 'Invoiced' as const
+        };
+      }
+      return o;
+    });
+
     // Create Credit Note Invoice entry in invoices
     const creditNoteInvoice: Invoice = {
       id: `CN-${returnData.id}`,
@@ -611,7 +643,7 @@ export default function App() {
       jobCardId: 'JC-RETURN',
       jobCardNumber: 'SALES-RETURN',
       customerName: returnData.customerName,
-      customerPhone: '+977-9800000000',
+      customerPhone: matchingCustomer?.phone || '+977-9800000000',
       vehicleReg: 'SALES-RETURN',
       vehicleModel: `Credit Note for ${returnData.originalInvoiceNumber}`,
       type: 'Credit Note',
@@ -649,6 +681,8 @@ export default function App() {
     updateDb({
       partsSalesReturns: updatedReturns,
       parts: updatedParts,
+      customers: updatedCustomers,
+      partsSalesOrders: updatedSalesOrders,
       invoices: [creditNoteInvoice, ...(db.invoices || [])]
     });
   };
@@ -790,6 +824,7 @@ export default function App() {
               salesOrders={db.partsSalesOrders || []}
               salesReturns={db.partsSalesReturns || []}
               purchaseOrders={db.purchaseOrders || []}
+              invoices={db.invoices || []}
               userRole={currentUser.role}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}

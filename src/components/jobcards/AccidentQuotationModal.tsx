@@ -537,6 +537,12 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Preliminary Estimate Disclaimer */}
+          <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-[11px] text-amber-950">
+            <span className="font-bold block text-xs mb-0.5">Note:</span>
+            The quotation is a preliminary estimate based on the inspection of the vehicle. The final invoice may differ from the quoted amount, as the quotation is an estimated cost and may be subject to change depending on the actual work and parts required.
+          </div>
         </div>
 
         {/* Bottom Total & Dispatch Bar */}

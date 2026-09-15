@@ -145,7 +145,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
             <div className="bg-white p-3 rounded-xl border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase block">Next Target Due</span>
               <span className="font-bold text-emerald-700 text-xs block">
-                {latestCard?.nextServiceDueDate || 'Within 6 Months'}
+                {latestCard?.nextServiceDueDate || 'Within 4 Months (120 Days)'}
               </span>
               <span className="text-slate-500 font-mono text-[11px] block">
                 Target: {latestCard?.nextServiceDueKm ? `${latestCard.nextServiceDueKm.toLocaleString()} km` : '+5,000 km'}

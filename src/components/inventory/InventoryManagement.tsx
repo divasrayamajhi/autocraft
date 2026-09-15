@@ -34,7 +34,8 @@ import {
   Customer,
   PurchaseOrder,
   UserRole,
-  WorkshopProfile
+  WorkshopProfile,
+  Invoice
 } from '../../types';
 import { OtcOrderModal } from './OtcOrderModal';
 import { SalesReturnModal } from './SalesReturnModal';
@@ -47,6 +48,7 @@ interface InventoryManagementProps {
   salesOrders?: PartsSalesOrder[];
   salesReturns?: PartsSalesReturn[];
   purchaseOrders?: PurchaseOrder[];
+  invoices?: Invoice[];
   profile?: WorkshopProfile;
   userRole: UserRole;
   onAddPart: (part: SparePart) => void;
@@ -68,6 +70,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   salesOrders = [],
   salesReturns = [],
   purchaseOrders = [],
+  invoices = [],
   profile,
   userRole,
   onAddPart,
@@ -728,12 +731,17 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
           {/* Quotations Table */}
           {(salesPipelineView === 'all' || salesPipelineView === 'quotations') && (
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center space-x-2">
                   <FileText className="w-4 h-4 text-blue-700" />
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                    Estimates & Quotations ({quotations.length})
-                  </h4>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                      Customer Repair Estimates & Quotations ({quotations.length})
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Preliminary price estimations for vehicle repair and parts. Quotations provide customer cost estimates and are not converted to orders or billed.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -820,31 +828,6 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                                 >
                                   <Wrench className="w-3 h-3" />
                                   <span>Job Card</span>
-                                </button>
-                              )}
-                              {quot.status !== 'Converted to Order' && onCreateSalesOrder && (
-                                <button
-                                  onClick={() => {
-                                    const convertedOrder: PartsSalesOrder = {
-                                      id: `PSO-${Date.now().toString().slice(-4)}`,
-                                      orderNumber: `PSO-81-${Math.floor(1000 + Math.random() * 9000)}`,
-                                      quotationId: quot.id,
-                                      customerId: quot.customerId,
-                                      customerName: quot.customerName,
-                                      date: new Date().toISOString().slice(0, 10),
-                                      items: quot.items,
-                                      subtotal: quot.subtotal,
-                                      vatAmount: quot.vatAmount,
-                                      grandTotal: quot.grandTotal,
-                                      dispatchStatus: 'Fully Dispatched',
-                                      invoiceStatus: 'Invoiced'
-                                    };
-                                    onCreateSalesOrder(convertedOrder);
-                                    notify(`Quotation ${quot.quotationNumber} successfully converted to Order ${convertedOrder.orderNumber}! Stock deducted.`);
-                                  }}
-                                  className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition-colors"
-                                >
-                                  Convert to Order
                                 </button>
                               )}
                               <button
@@ -1290,6 +1273,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         parts={parts}
         customers={customers}
         salesOrders={salesOrders}
+        invoices={invoices}
         onCreateSalesReturn={onCreateSalesReturn}
         onNotify={notify}
       />
