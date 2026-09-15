@@ -392,7 +392,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         ? `🚨 SERVICE DUE TODAY (0 Days Remaining)`
         : `⏳ Service Due in ${item.daysRemaining} Days (${item.nextServiceDueDate})`;
 
-    return `Namaste ${item.customerName} ji,\n\nThis is a periodic service reminder from Sagarmatha Multi-Care Auto Workshop regarding your vehicle:\n\n🚗 Vehicle: ${item.brand} ${item.model} (${item.registrationNumber})\n📅 Scheduled Due Date: ${item.nextServiceDueDate}\n🛣️ Target Service Odometer: ${item.nextServiceDueKm.toLocaleString()} km\n⏱️ Current Status: ${statusNote}\n\nOur standard PMS service interval is 5,000 km or 4 months (120 days) whichever comes first to maintain optimal safety, fuel efficiency, and vehicle health.\n\nPlease visit our workshop or reply to book your priority service bay slot.\n\n📍 Ring Road, Sukedhara-04, Kathmandu\n📞 +977-9851087654 / 01-4378912`;
+    return `Namaste ${item.customerName} ji,\n\nThis is a periodic service reminder from Sagarmatha Multi-Care Auto Workshop regarding your vehicle:\n\n🚗 Vehicle: ${item.brand} ${item.model} (${item.registrationNumber})\n📅 Scheduled Due Date: ${item.nextServiceDueDate}\n🛣️ Target Service Odometer: ${(item.nextServiceDueKm || 0).toLocaleString()} km\n⏱️ Current Status: ${statusNote}\n\nOur standard PMS service interval is 5,000 km or 4 months (120 days) whichever comes first to maintain optimal safety, fuel efficiency, and vehicle health.\n\nPlease visit our workshop or reply to book your priority service bay slot.\n\n📍 Ring Road, Sukedhara-04, Kathmandu\n📞 +977-9851087654 / 01-4378912`;
   };
 
   const handleSendWhatsApp = (item: ServiceReminderItem) => {
@@ -809,7 +809,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
                       <div className="p-2 bg-white/80 rounded-lg border border-slate-200">
                         <span className="text-[10px] text-slate-400 font-bold uppercase block">Last Odometer</span>
-                        <span className="font-mono font-semibold text-slate-800">{item.lastServiceKm.toLocaleString()} km</span>
+                        <span className="font-mono font-semibold text-slate-800">{(item.lastServiceKm || 0).toLocaleString()} km</span>
                         <span className="text-[10px] text-slate-500 block">Baseline PMS mark</span>
                       </div>
 
@@ -824,7 +824,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                       <div className="p-2 bg-white/80 rounded-lg border border-slate-200">
                         <span className="text-[10px] text-slate-400 font-bold uppercase block">Target Odometer</span>
                         <span className="font-mono font-bold text-emerald-700 block">
-                          {item.nextServiceDueKm.toLocaleString()} km
+                          {(item.nextServiceDueKm || 0).toLocaleString()} km
                         </span>
                         <span className="text-[10px] text-slate-500 block">+5,000 km PMS</span>
                       </div>
@@ -835,7 +835,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                       <div className="flex items-center space-x-2 text-[11px] text-slate-500">
                         <span className="font-mono">History: {item.matchingJobCardsCount} Job Cards</span>
                         <span>•</span>
-                        <span className="font-mono text-emerald-700 font-semibold">Total Spent: NPR {item.totalBilledAmount.toLocaleString()}</span>
+                        <span className="font-mono text-emerald-700 font-semibold">Total Spent: NPR {(item.totalBilledAmount || 0).toLocaleString()}</span>
                       </div>
 
                       <div className="flex items-center space-x-2">
@@ -1003,7 +1003,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                           });
                           const invoiceTotal = customerInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
                           const total = Math.max(selectedCustomer.totalSpent || 0, invoiceTotal);
-                          return `रु. ${total.toLocaleString()}`;
+                          return `रु. ${(total || 0).toLocaleString()}`;
                         })()}
                       </span>
                     </div>
@@ -1115,7 +1115,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                               <div className="text-right">
                                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Vehicle Bill Total</span>
                                 <span className="font-mono text-xs font-bold text-emerald-700">
-                                  रु. {totalBilledOnVehicle.toLocaleString()}
+                                  रु. {(totalBilledOnVehicle || 0).toLocaleString()}
                                 </span>
                               </div>
                             </div>
@@ -1137,7 +1137,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                               <div>
                                 <span className="text-slate-400 block font-sans">Odometer:</span>
                                 <span className="text-slate-700 font-semibold">
-                                  {vehOdo.toLocaleString()} km
+                                  {(vehOdo || 0).toLocaleString()} km
                                 </span>
                               </div>
                               <div>
@@ -1328,7 +1328,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Workshop Billed</span>
-              <span className="font-mono text-lg font-black text-slate-900">रु. {totalInvoicedSales.toLocaleString()}</span>
+              <span className="font-mono text-lg font-black text-slate-900">रु. {(totalInvoicedSales || 0).toLocaleString()}</span>
             </div>
           </div>
 
@@ -1344,7 +1344,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {[...customers].sort((a, b) => b.totalSpent - a.totalSpent).map((c, idx) => (
+              {[...safeCustomers].sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0)).map((c, idx) => (
                 <tr key={c.id} className="hover:bg-slate-50 transition">
                   <td className="p-3 font-mono font-bold text-slate-400">#{idx + 1}</td>
                   <td className="p-3 font-bold text-slate-900">{c.name}</td>
@@ -1358,7 +1358,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     </span>
                   </td>
                   <td className="p-3 text-right font-mono font-bold text-emerald-700 text-sm">
-                    रु. {c.totalSpent.toLocaleString()}
+                    रु. {(c.totalSpent || 0).toLocaleString()}
                   </td>
                 </tr>
               ))}

@@ -1272,14 +1272,14 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                   <div>
                     <span className="text-slate-400 block font-bold uppercase text-[9px]">Last Service Date & KM</span>
                     <span className="font-bold text-slate-800">
-                      {matchedServiceHistory.lastServiceDate} • {matchedServiceHistory.lastOdometer.toLocaleString()} km
+                      {matchedServiceHistory.lastServiceDate} • {(matchedServiceHistory.lastOdometer || 0).toLocaleString()} km
                     </span>
                     <span className="text-slate-500 block truncate">{matchedServiceHistory.lastServiceType}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-bold uppercase text-[9px]">Next Service Target Due</span>
                     <span className="font-bold text-emerald-700">
-                      {matchedServiceHistory.nextServiceDueDate} • {matchedServiceHistory.nextServiceDueKm.toLocaleString()} km
+                      {matchedServiceHistory.nextServiceDueDate} • {(matchedServiceHistory.nextServiceDueKm || 0).toLocaleString()} km
                     </span>
                     <span className="text-slate-500 block truncate">{matchedServiceHistory.customerName} ({matchedServiceHistory.customerPhone})</span>
                   </div>
@@ -1474,7 +1474,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                           Customer: <strong>{matchedCust.name}</strong>. New vehicle <strong>{intakeReg}</strong> will be registered to their customer garage.
                           {pastJcs.length > 0 || pastBills > 0 ? (
                             <span className="block mt-0.5 font-semibold text-emerald-800">
-                              ✓ Will automatically sync {pastJcs.length} past service record(s) and रु. {pastBills.toLocaleString()} in historical bills into their garage record.
+                              ✓ Will automatically sync {pastJcs.length} past service record(s) and रु. {(pastBills || 0).toLocaleString()} in historical bills into their garage record.
                             </span>
                           ) : (
                             <span className="block mt-0.5 text-amber-700">

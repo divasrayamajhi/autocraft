@@ -663,7 +663,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] font-bold uppercase">Odometer & Fuel</span>
-                      <span className="font-bold text-slate-800 font-mono">{(currentJobCard.vehicle.odometerReading || 0).toLocaleString()} km</span>
+                      <span className="font-bold text-slate-800 font-mono">{(currentJobCard.vehicle?.odometerReading || 0).toLocaleString()} km</span>
                       <span className="text-slate-500 block">Fuel Level: {currentJobCard.inspection?.fuelLevel ?? 50}%</span>
                     </div>
                     <div>

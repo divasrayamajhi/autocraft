@@ -279,7 +279,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                     <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between text-xs">
                       <span className="text-slate-400">Claim Amount:</span>
                       <span className="font-mono font-bold text-slate-800">
-                        रु. {cl.totalClaimAmount.toLocaleString()}
+                        रु. {(cl.totalClaimAmount || 0).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -316,11 +316,11 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">Total Claim Amount</span>
-                    <span className="font-mono font-bold text-slate-800">रु. {selectedClaim.totalClaimAmount.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-slate-800">रु. {(selectedClaim.totalClaimAmount || 0).toLocaleString()}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">Approved Cashless</span>
-                    <span className="font-mono font-bold text-emerald-700">रु. {selectedClaim.approvedAmount.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-emerald-700">रु. {(selectedClaim.approvedAmount || 0).toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -350,13 +350,13 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   <div>
                     <span className="font-bold text-emerald-950 block">Customer Liability (Depreciation + Excess):</span>
                     <span className="text-emerald-700 font-mono font-black text-sm">
-                      रु. {selectedClaim.customerLiabilityAmount.toLocaleString()}
+                      रु. {(selectedClaim.customerLiabilityAmount || 0).toLocaleString()}
                     </span>
                   </div>
                   <div>
                     <span className="font-bold text-emerald-950 block">Insurer Cashless Settlement:</span>
                     <span className="text-emerald-700 font-mono font-black text-sm">
-                      रु. {selectedClaim.approvedAmount.toLocaleString()}
+                      रु. {(selectedClaim.approvedAmount || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -407,7 +407,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   onChange={e => setCalcPlasticPartsShare(parseFloat(e.target.value) || 0)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono"
                 />
-                <span className="text-[10px] text-rose-600">50% Depreciation applied = रु. {plasticDepAmount.toLocaleString()}</span>
+                <span className="text-[10px] text-rose-600">50% Depreciation applied = रु. {(plasticDepAmount || 0).toLocaleString()}</span>
               </div>
 
               <div>
@@ -418,7 +418,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   onChange={e => setCalcMetalPartsShare(parseFloat(e.target.value) || 0)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono"
                 />
-                <span className="text-[10px] text-rose-600">{metalDepPercent}% Depreciation applied = रु. {metalDepAmount.toLocaleString()}</span>
+                <span className="text-[10px] text-rose-600">{metalDepPercent}% Depreciation applied = रु. {(metalDepAmount || 0).toLocaleString()}</span>
               </div>
 
               <div>

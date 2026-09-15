@@ -301,7 +301,7 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
                 <div className="space-y-2 text-xs text-slate-600">
                   <p><span className="font-semibold text-slate-500">Defective Component:</span> {selectedClaim.defectivePartName}</p>
                   <p><span className="font-semibold text-slate-500">OEM / Supplier:</span> {selectedClaim.oemManufacturer}</p>
-                  <p><span className="font-semibold text-slate-500">Failure Mileage:</span> {selectedClaim.failureMileage.toLocaleString()} km</p>
+                  <p><span className="font-semibold text-slate-500">Failure Mileage:</span> {(selectedClaim.failureMileage || 0).toLocaleString()} km</p>
                   <p><span className="font-semibold text-slate-500">Failure Symptom:</span> {selectedClaim.symptomType}</p>
                   <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-slate-700">
                     <span className="font-semibold block text-[11px] text-slate-500 mb-0.5">Defect Diagnosis:</span>
@@ -312,15 +312,15 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
                 <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl space-y-1.5 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-600">Parts Replacement Cost:</span>
-                    <span className="font-mono font-bold text-slate-800">रु. {selectedClaim.claimPartsAmount.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-slate-800">रु. {(selectedClaim.claimPartsAmount || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">OEM Labor Allowance:</span>
-                    <span className="font-mono font-bold text-slate-800">रु. {selectedClaim.claimLaborAmount.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-slate-800">रु. {(selectedClaim.claimLaborAmount || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between pt-1 border-t border-indigo-200 text-indigo-900 font-extrabold text-sm">
                     <span>Total Claimable to OEM:</span>
-                    <span>रु. {selectedClaim.totalClaimAmount.toLocaleString()}</span>
+                    <span>रु. {(selectedClaim.totalClaimAmount || 0).toLocaleString()}</span>
                   </div>
                 </div>
 

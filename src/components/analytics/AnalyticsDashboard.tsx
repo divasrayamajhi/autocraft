@@ -811,10 +811,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                         </span>
                       </td>
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                        रु. {tech.laborRevenue.toLocaleString()}
+                        रु. {(tech.laborRevenue || 0).toLocaleString()}
                       </td>
                       <td className="p-3.5 text-right font-mono font-extrabold text-emerald-700">
-                        रु. {tech.commission.toLocaleString()} ({tech.commissionPercentage}%)
+                        रु. {(tech.commission || 0).toLocaleString()} ({tech.commissionPercentage}%)
                       </td>
                     </tr>
                   ))}
@@ -891,7 +891,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                     <div className="flex items-center space-x-4">
                       <span className="font-mono font-bold text-rose-600">Stock: {part.currentStock} {part.unit}</span>
                       <span className="font-mono text-slate-500">Min: {part.minReorderLevel}</span>
-                      <span className="font-mono text-slate-700 font-semibold">Cost: रु. {part.costPrice.toLocaleString()}</span>
+                      <span className="font-mono text-slate-700 font-semibold">Cost: रु. {(part.costPrice || 0).toLocaleString()}</span>
                     </div>
                   </div>
                 ))}

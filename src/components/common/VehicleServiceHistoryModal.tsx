@@ -137,7 +137,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
             <div className="bg-white p-3 rounded-xl border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Workshop Billed</span>
               <span className="font-mono font-bold text-indigo-700 text-sm block">
-                रु. {totalSpent.toLocaleString()}
+                रु. {(totalSpent || 0).toLocaleString()}
               </span>
               <span className="text-slate-500 text-[11px] block">{matchedInvoices.length} Settled Tax Invoices</span>
             </div>
@@ -148,7 +148,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                 {latestCard?.nextServiceDueDate || 'Within 4 Months (120 Days)'}
               </span>
               <span className="text-slate-500 font-mono text-[11px] block">
-                Target: {latestCard?.nextServiceDueKm ? `${latestCard.nextServiceDueKm.toLocaleString()} km` : '+5,000 km'}
+                Target: {latestCard?.nextServiceDueKm ? `${(latestCard.nextServiceDueKm || 0).toLocaleString()} km` : '+5,000 km'}
               </span>
             </div>
           </div>
@@ -231,7 +231,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Billed Gross</span>
                         <span className="font-mono font-bold text-slate-900 text-sm">
-                          रु. {gross.toLocaleString()}
+                          रु. {(gross || 0).toLocaleString()}
                         </span>
                       </div>
                       {matchingInvoice && (
@@ -271,7 +271,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                             <Package className="w-3.5 h-3.5 text-teal-600" />
                             <span>Spare Parts Replaced / Fitted ({parts.length})</span>
                           </h5>
-                          <span className="font-mono font-bold text-slate-700">Parts Total: रु. {partsTotal.toLocaleString()}</span>
+                          <span className="font-mono font-bold text-slate-700">Parts Total: रु. {(partsTotal || 0).toLocaleString()}</span>
                         </div>
 
                         {parts.length === 0 ? (
@@ -296,9 +296,9 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                                     <td className="p-2 font-mono font-bold text-teal-700">{p.partNumber}</td>
                                     <td className="p-2 text-slate-800 font-medium">{p.partName || p.name}</td>
                                     <td className="p-2 text-center font-mono">{p.quantity}</td>
-                                    <td className="p-2 text-right font-mono">रु. {p.unitPrice.toLocaleString()}</td>
+                                    <td className="p-2 text-right font-mono">रु. {(p.unitPrice || 0).toLocaleString()}</td>
                                     <td className="p-2 text-right font-mono font-bold text-slate-900">
-                                      रु. {(p.totalAmount || (p.quantity * p.unitPrice)).toLocaleString()}
+                                      रु. {(p.totalAmount || (p.quantity * p.unitPrice) || 0).toLocaleString()}
                                     </td>
                                   </tr>
                                 ))}
@@ -315,7 +315,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                             <Wrench className="w-3.5 h-3.5 text-indigo-600" />
                             <span>Labor Operations & Diagnostics ({labor.length})</span>
                           </h5>
-                          <span className="font-mono font-bold text-slate-700">Labor Total: रु. {laborTotal.toLocaleString()}</span>
+                          <span className="font-mono font-bold text-slate-700">Labor Total: रु. {(laborTotal || 0).toLocaleString()}</span>
                         </div>
 
                         {labor.length === 0 ? (
