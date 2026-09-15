@@ -23,7 +23,10 @@ import {
   ShieldCheck,
   Percent,
   FileCheck,
-  BookOpen
+  BookOpen,
+  Search,
+  Filter,
+  X
 } from 'lucide-react';
 
 interface AccountingReportsProps {
@@ -46,6 +49,36 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
   userRole
 }) => {
   const [activeTab, setActiveTab] = useState<AccountingTab>('vat_register');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMonth, setFilterMonth] = useState('All');
+
+  // Filtered invoices for Sales Book / VAT Register
+  const filteredInvoices = (invoices || []).filter(inv => {
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = !q || (
+      (inv.invoiceNumber || '').toLowerCase().includes(q) ||
+      (inv.customerName || '').toLowerCase().includes(q) ||
+      (inv.customerPan || '').toLowerCase().includes(q) ||
+      (inv.vehicleReg || '').toLowerCase().includes(q)
+    );
+    if (!matchesSearch) return false;
+    if (filterMonth !== 'All') {
+      const dateStr = (inv.createdAt || inv.date || '').slice(0, 7);
+      if (!dateStr.includes(filterMonth)) return false;
+    }
+    return true;
+  });
+
+  // Filtered GL Accounts for Chart of Accounts
+  const filteredGlAccounts = (glAccounts || []).filter(acc => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      (acc.code || '').toLowerCase().includes(q) ||
+      (acc.name || '').toLowerCase().includes(q) ||
+      (acc.type || '').toLowerCase().includes(q)
+    );
+  });
 
   // Compute Revenue in NPR
   const totalTaxableSales = (invoices || []).reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
@@ -162,7 +195,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
       {activeTab === 'vat_register' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
                   बिक्री खाता (Sales Book) - Annexure 13, Nepal Value Added Tax Rules
@@ -171,9 +204,36 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   Seller PAN: <strong className="font-mono text-slate-800">{profile.panVatNumber}</strong> | Fiscal Year: <strong className="font-mono text-slate-800">{profile.fiscalYear} B.S.</strong>
                 </p>
               </div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300">
+              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 self-start sm:self-auto">
                 IRD CBMS Realtime Verified
               </span>
+            </div>
+
+            {/* Search & Filter Toolbar */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search by invoice #, buyer name, PAN, or vehicle reg..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              {searchQuery && (
+                <div className="flex items-center text-xs text-slate-500 px-1">
+                  Showing {filteredInvoices.length} of {(invoices || []).length} invoices
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -192,28 +252,36 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {(invoices || []).map((inv) => {
-                    const taxable = inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0;
-                    const vat = inv.vatAmount ?? inv.totalVatAmount ?? 0;
-                    const grand = inv.grandTotal ?? (taxable + vat);
-                    const dateStr = (inv.createdAt || inv.date || '').slice(0, 10);
+                  {filteredInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-6 text-center text-slate-400">
+                        No sales invoices match your search query.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredInvoices.map((inv) => {
+                      const taxable = inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0;
+                      const vat = inv.vatAmount ?? inv.totalVatAmount ?? 0;
+                      const grand = inv.grandTotal ?? (taxable + vat);
+                      const dateStr = (inv.createdAt || inv.date || '').slice(0, 10);
 
-                    return (
-                      <tr key={inv.id} className="hover:bg-slate-50 transition">
-                        <td className="p-3 font-mono text-slate-600">{dateStr}</td>
-                        <td className="p-3 font-mono font-bold text-indigo-700">{inv.invoiceNumber}</td>
-                        <td className="p-3 font-semibold text-slate-900">{inv.customerName}</td>
-                        <td className="p-3 font-mono text-slate-600">{inv.customerPan || 'Consumer'}</td>
-                        <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono font-bold text-indigo-700">रु. {vat.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono text-slate-400">रु. 0</td>
-                        <td className="p-3 text-right font-mono font-extrabold text-slate-900">रु. {grand.toLocaleString()}</td>
-                        <td className="p-3 text-center font-mono text-[10px] text-emerald-700">
-                          {inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'ACK-2081-NPL-01'}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr key={inv.id} className="hover:bg-slate-50 transition">
+                          <td className="p-3 font-mono text-slate-600">{dateStr}</td>
+                          <td className="p-3 font-mono font-bold text-indigo-700">{inv.invoiceNumber}</td>
+                          <td className="p-3 font-semibold text-slate-900">{inv.customerName}</td>
+                          <td className="p-3 font-mono text-slate-600">{inv.customerPan || 'Consumer'}</td>
+                          <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono font-bold text-indigo-700">रु. {vat.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono text-slate-400">रु. 0</td>
+                          <td className="p-3 text-right font-mono font-extrabold text-slate-900">रु. {grand.toLocaleString()}</td>
+                          <td className="p-3 text-center font-mono text-[10px] text-emerald-700">
+                            {inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'ACK-2081-NPL-01'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-100 font-bold text-slate-900">
@@ -384,43 +452,80 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
 
       {/* TAB 4: GL LEDGER */}
       {activeTab === 'gl_ledger' && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                <th className="p-3.5">Account Code</th>
-                <th className="p-3.5">GL Account Name</th>
-                <th className="p-3.5">Classification</th>
-                <th className="p-3.5 text-right">Debit Balance (NPR)</th>
-                <th className="p-3.5 text-right">Credit Balance (NPR)</th>
-                <th className="p-3.5 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {glAccounts.map((acc) => (
-                <tr key={acc.id} className="hover:bg-slate-50 transition">
-                  <td className="p-3.5 font-mono font-bold text-indigo-700">{acc.code}</td>
-                  <td className="p-3.5 font-bold text-slate-900">{acc.name}</td>
-                  <td className="p-3.5">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                      {acc.type}
-                    </span>
-                  </td>
-                  <td className="p-3.5 text-right font-mono">
-                    {acc.balance >= 0 && ['Asset', 'Expense'].includes(acc.type) ? `रु. ${acc.balance.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="p-3.5 text-right font-mono">
-                    {acc.balance >= 0 && ['Liability', 'Revenue', 'Equity'].includes(acc.type) ? `रु. ${acc.balance.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="p-3.5 text-center">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                      Active
-                    </span>
-                  </td>
+        <div className="space-y-4">
+          {/* Search Toolbar */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search GL accounts by code, name, or classification..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <div className="flex items-center text-xs text-slate-500 px-1">
+                Showing {filteredGlAccounts.length} of {glAccounts.length} accounts
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-3.5">Account Code</th>
+                  <th className="p-3.5">GL Account Name</th>
+                  <th className="p-3.5">Classification</th>
+                  <th className="p-3.5 text-right">Debit Balance (NPR)</th>
+                  <th className="p-3.5 text-right">Credit Balance (NPR)</th>
+                  <th className="p-3.5 text-center">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredGlAccounts.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-slate-400">
+                      No general ledger accounts match your search.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredGlAccounts.map((acc) => (
+                    <tr key={acc.id} className="hover:bg-slate-50 transition">
+                      <td className="p-3.5 font-mono font-bold text-indigo-700">{acc.code}</td>
+                      <td className="p-3.5 font-bold text-slate-900">{acc.name}</td>
+                      <td className="p-3.5">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
+                          {acc.type}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right font-mono">
+                        {acc.balance >= 0 && ['Asset', 'Expense'].includes(acc.type) ? `रु. ${acc.balance.toLocaleString()}` : '—'}
+                      </td>
+                      <td className="p-3.5 text-right font-mono">
+                        {acc.balance >= 0 && ['Liability', 'Revenue', 'Equity'].includes(acc.type) ? `रु. ${acc.balance.toLocaleString()}` : '—'}
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          Active
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -9,7 +9,8 @@ import {
   UserAccount,
   Invoice,
   GatePass,
-  PartsQuotation
+  PartsQuotation,
+  WorkshopProfile
 } from '../../types';
 import { 
   Wrench, 
@@ -26,25 +27,27 @@ import {
   Fuel, 
   Printer, 
   Lock, 
-  Unlock,
+  Unlock, 
   ShieldAlert, 
-  X,
-  FileText,
-  Edit3,
-  Save,
-  History,
-  RotateCcw,
-  FileSpreadsheet,
-  Tag
+  X, 
+  FileText, 
+  Edit3, 
+  Save, 
+  History, 
+  RotateCcw, 
+  FileSpreadsheet, 
+  Tag 
 } from 'lucide-react';
 import { VehicleServiceHistoryModal } from '../common/VehicleServiceHistoryModal';
 import { AccidentQuotationModal } from './AccidentQuotationModal';
+import { PrintJobCardModal } from './PrintJobCardModal';
 
 interface JobCardDetailModalProps {
   jobCard: JobCard;
   availableParts: SparePart[];
   technicians: Technician[];
   currentUser: UserAccount;
+  profile?: WorkshopProfile;
   allJobCards?: JobCard[];
   invoices?: Invoice[];
   gatePasses?: GatePass[];
@@ -60,6 +63,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   availableParts = [],
   technicians = [],
   currentUser,
+  profile,
   allJobCards = [],
   invoices = [],
   gatePasses = [],
@@ -76,8 +80,9 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     partsRequested: jobCard.partsRequested || jobCard.partsItems || []
   }));
 
-  // Service History & Accident Quotation modals
+  // Service History & Accident Quotation & Print modals
   const [isServiceHistoryOpen, setIsServiceHistoryOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isAccidentQuotationOpen, setIsAccidentQuotationOpen] = useState(false);
 
   // Re-open Job Card state (Admin only)
@@ -327,11 +332,12 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
 
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => window.print()}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1 transition"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
+              title="Print standard A4 Job Card & Estimate"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print</span>
+              <span>Print A4 Job Card</span>
             </button>
             <button
               onClick={onClose}
@@ -1128,6 +1134,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
         <AccidentQuotationModal
           jobCard={currentJobCard}
           availableParts={availableParts}
+          profile={profile}
           onClose={() => setIsAccidentQuotationOpen(false)}
           onSaveQuotation={(quotation) => {
             if (onCreateQuotation) {
@@ -1135,6 +1142,15 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
             }
             setIsAccidentQuotationOpen(false);
           }}
+        />
+      )}
+
+      {/* PRINT A4 JOB CARD MODAL */}
+      {isPrintModalOpen && (
+        <PrintJobCardModal
+          jobCard={currentJobCard}
+          profile={profile}
+          onClose={() => setIsPrintModalOpen(false)}
         />
       )}
     </div>

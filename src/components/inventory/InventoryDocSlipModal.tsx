@@ -21,7 +21,7 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const workshopName = profile?.legalEntityName || profile?.name || 'MULTI-BRAND AUTO WORKSHOP & SPARES';
+  const workshopName = profile?.name || profile?.legalEntityName || 'MULTI-BRAND AUTO WORKSHOP & SPARES';
   const workshopAddress = profile?.address ? `${profile.address}, ${profile.city || 'Kathmandu'}, Nepal` : 'Ring Road Sukedhara, Kathmandu, Nepal';
   const workshopPan = profile?.panVatNumber || '601239845';
   const workshopPhone = profile?.contactNumber || '+977-1-4370000';

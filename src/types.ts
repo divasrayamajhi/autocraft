@@ -232,6 +232,13 @@ export interface SparePart {
   leadTimeDays: number;
   lastRestockedDate: string;
   preferredVendor: string;
+  purchaseHistory?: {
+    date: string;
+    poNumber: string;
+    supplierName: string;
+    quantity: number;
+    unitCost: number;
+  }[];
 }
 
 export interface PartsQuotationItem {
@@ -543,20 +550,56 @@ export interface Invoice {
 
 export type BayArea = WorkshopBay;
 
+export type PurchaseOrderStatus = 
+  | 'Draft'
+  | 'Pending'
+  | 'Pending Approval'
+  | 'Ordered'
+  | 'Received'
+  | 'Partially Received'
+  | 'Fully Received'
+  | 'Cancelled';
+
+export interface PurchaseOrderItem {
+  partId: string;
+  partNumber: string;
+  partName: string;
+  currentStock?: number;
+  orderedQuantity: number;
+  receivedQuantity?: number;
+  unitCost: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  vatRate?: number; // 13%
+  vatAmount?: number;
+  lineTotal: number;
+  // For backwards compatibility
+  quantity?: number;
+  unitPrice?: number;
+  total?: number;
+}
+
 export interface PurchaseOrder {
   id: string;
   poNumber: string;
-  vendorName: string;
   date: string;
-  status: 'Draft' | 'Sent' | 'Received' | 'Cancelled';
+  expectedDeliveryDate?: string;
+  supplierName: string;
+  supplierContact?: string;
+  supplierAddress?: string;
+  supplierPanVat?: string;
+  paymentTerms?: string;
+  notes?: string;
+  status: PurchaseOrderStatus;
+  items: PurchaseOrderItem[];
+  subtotal: number;
+  discountTotal?: number;
+  taxableAmount?: number;
+  vatTotal?: number;
   totalAmount: number;
-  items: {
-    partId: string;
-    partName: string;
-    quantity: number;
-    unitPrice: number;
-    total: number;
-  }[];
+  createdAt?: string;
+  updatedAt?: string;
+  vendorName?: string; // backwards compatibility
 }
 
 export interface InsuranceClaim {

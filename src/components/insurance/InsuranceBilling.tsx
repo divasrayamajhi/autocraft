@@ -18,6 +18,7 @@ import {
   User, 
   ArrowRight,
   Plus,
+  Search,
   X
 } from 'lucide-react';
 
@@ -71,6 +72,26 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
   const [newClaimJcId, setNewClaimJcId] = useState(safeJobCards[0]?.id || '');
   const [newClaimSurveyor, setNewClaimSurveyor] = useState('Surveyor - Nepal Insurance Board');
   const [newClaimPhone, setNewClaimPhone] = useState('+977-9851000000');
+
+  // Search & Filters
+  const [claimSearch, setClaimSearch] = useState('');
+  const [claimStatusFilter, setClaimStatusFilter] = useState('All');
+  const [claimCompanyFilter, setClaimCompanyFilter] = useState('All');
+
+  const filteredClaims = safeClaims.filter((cl) => {
+    const q = claimSearch.toLowerCase().trim();
+    const matchesSearch = !q || (
+      (cl.claimNumber && cl.claimNumber.toLowerCase().includes(q)) ||
+      (cl.insuranceCompany && cl.insuranceCompany.toLowerCase().includes(q)) ||
+      (cl.jobCardNumber && cl.jobCardNumber.toLowerCase().includes(q)) ||
+      (cl.surveyorName && cl.surveyorName.toLowerCase().includes(q))
+    );
+
+    const matchesStatus = claimStatusFilter === 'All' || cl.status === claimStatusFilter;
+    const matchesCompany = claimCompanyFilter === 'All' || cl.insuranceCompany === claimCompanyFilter;
+
+    return matchesSearch && matchesStatus && matchesCompany;
+  });
 
   // Metal depreciation based on Nepal Beema Samiti rules
   const getMetalDepRate = (age: number) => {
@@ -251,12 +272,61 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           {/* List */}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700">
-              Active Insurance Dossiers
+            <div className="p-4 bg-slate-50 border-b border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-700">Active Insurance Dossiers</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200 text-slate-700 rounded-full">
+                  {filteredClaims.length}
+                </span>
+              </div>
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search claim, company, job card..."
+                  value={claimSearch}
+                  onChange={(e) => setClaimSearch(e.target.value)}
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Status & Insurer Selectors */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <select
+                  value={claimStatusFilter}
+                  onChange={(e) => setClaimStatusFilter(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 outline-none"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Submitted">Submitted</option>
+                  <option value="Surveyor Assigned">Surveyor Assigned</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Settled">Settled</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+
+                <select
+                  value={claimCompanyFilter}
+                  onChange={(e) => setClaimCompanyFilter(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 outline-none truncate"
+                >
+                  <option value="All">All Insurers</option>
+                  {NEPAL_INSURERS.map(ins => (
+                    <option key={ins} value={ins}>{ins}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-              {safeClaims.map((cl) => {
+              {filteredClaims.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  No dossiers matching search or filter criteria.
+                </div>
+              ) : (
+                filteredClaims.map((cl) => {
                 const isSelected = selectedClaim?.id === cl.id;
                 return (
                   <div
@@ -284,7 +354,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </div>
           </div>
 

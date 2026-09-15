@@ -10,7 +10,8 @@ import {
   UserAccount,
   Invoice,
   GatePass,
-  PartsQuotation
+  PartsQuotation,
+  WorkshopProfile
 } from '../../types';
 import { 
   Wrench, 
@@ -46,6 +47,7 @@ interface JobCardManagementProps {
   technicians: Technician[];
   availableParts: SparePart[];
   currentUser: UserAccount;
+  profile?: WorkshopProfile;
   invoices?: Invoice[];
   gatePasses?: GatePass[];
   onCreateJobCard: (newJc: JobCard) => void;
@@ -83,6 +85,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   technicians = [],
   availableParts = [],
   currentUser,
+  profile,
   invoices = [],
   gatePasses = [],
   onCreateJobCard,
@@ -1181,6 +1184,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           availableParts={availableParts}
           technicians={technicians}
           currentUser={currentUser}
+          profile={profile}
           onClose={() => setSelectedJobCard(null)}
           onUpdateJobCard={(upd) => {
             onUpdateJobCard(upd);

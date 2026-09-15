@@ -452,8 +452,126 @@ export default function App() {
   };
 
   const handleCreatePurchaseOrder = (newPO: PurchaseOrder) => {
+    // Inventory rule: Creating a PO does NOT increase stock. Stock increases ONLY upon receipt.
     const updatedPOs = [newPO, ...(db.purchaseOrders || [])];
     updateDb({ purchaseOrders: updatedPOs });
+  };
+
+  const handleUpdatePurchaseOrder = (updatedPO: PurchaseOrder) => {
+    const updatedPOs = (db.purchaseOrders || []).map(po => po.id === updatedPO.id ? updatedPO : po);
+    updateDb({ purchaseOrders: updatedPOs });
+  };
+
+  const handleReceivePurchaseOrder = (receivedPO: PurchaseOrder) => {
+    // Rule: Stock increases ONLY when spare parts are marked as received.
+    const updatedPO: PurchaseOrder = {
+      ...receivedPO,
+      status: 'Received',
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedPOs = (db.purchaseOrders || []).map(po => po.id === updatedPO.id ? updatedPO : po);
+    if (!updatedPOs.some(po => po.id === updatedPO.id)) {
+      updatedPOs.unshift(updatedPO);
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const updatedParts = (db.parts || []).map(p => {
+      const match = updatedPO.items.find(item => item.partId === p.id || item.partNumber === p.partNumber || item.partNumber === p.sku);
+      if (match) {
+        const qty = match.orderedQuantity || match.quantity || 1;
+        const newStock = (p.currentStock || 0) + qty;
+        const purchaseHistory = [
+          ...(p.purchaseHistory || []),
+          {
+            date: todayStr,
+            poNumber: updatedPO.poNumber,
+            supplier: updatedPO.supplierName,
+            quantity: qty,
+            unitCost: match.unitCost || match.unitPrice || p.purchasePrice
+          }
+        ];
+        const stockMovements = [
+          ...(p.stockMovements || []),
+          {
+            id: `SM-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            date: todayStr,
+            type: 'IN' as const,
+            quantity: qty,
+            reference: `PO Received: ${updatedPO.poNumber}`,
+            currentStockAfter: newStock
+          }
+        ];
+        return {
+          ...p,
+          currentStock: newStock,
+          purchasePrice: match.unitCost || match.unitPrice || p.purchasePrice,
+          purchaseHistory,
+          stockMovements
+        };
+      }
+      return p;
+    });
+
+    // Check if any items in the PO were new and not in parts list
+    const existingPartIds = new Set(updatedParts.map(p => p.id));
+    const existingPartNumbers = new Set(updatedParts.map(p => p.partNumber));
+    updatedPO.items.forEach(item => {
+      const matchFound = updatedParts.some(p => p.id === item.partId || p.partNumber === item.partNumber || p.sku === item.partNumber);
+      if (!matchFound) {
+        const qty = item.orderedQuantity || item.quantity || 1;
+        const unitCost = item.unitCost || item.unitPrice || 0;
+        const newPart: any = {
+          id: item.partId || `PART-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          sku: item.partNumber || `SKU-${Date.now().toString().slice(-4)}`,
+          partNumber: item.partNumber || 'OEM-PART',
+          oemNumber: item.partNumber || 'OEM-PART',
+          name: item.partName,
+          category: 'Filters & Fluids',
+          compatibleModels: ['All Vehicles'],
+          rackLocation: 'Rack-A-01',
+          barcode: `890${Date.now().toString().slice(-9)}`,
+          costPrice: unitCost,
+          sellingPrice: Math.round(unitCost * 1.3),
+          vatRate: 13,
+          hsnSacCode: '8708',
+          currentStock: qty,
+          minReorderLevel: 2,
+          maxStockLevel: 20,
+          safetyStock: 1,
+          monthlyConsumption: 2,
+          unit: 'pcs',
+          fmsClass: 'Fast',
+          abcClass: 'B',
+          substitutePartIds: [],
+          leadTimeDays: 3,
+          lastRestockedDate: todayStr,
+          preferredVendor: updatedPO.supplierName,
+          purchaseHistory: [
+            {
+              date: todayStr,
+              poNumber: updatedPO.poNumber,
+              supplier: updatedPO.supplierName,
+              quantity: qty,
+              unitCost
+            }
+          ],
+          stockMovements: [
+            {
+              id: `SM-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              date: todayStr,
+              type: 'IN' as const,
+              quantity: qty,
+              reference: `PO Received: ${updatedPO.poNumber}`,
+              currentStockAfter: qty
+            }
+          ]
+        };
+        updatedParts.push(newPart);
+      }
+    });
+
+    updateDb({ purchaseOrders: updatedPOs, parts: updatedParts });
   };
 
   const handleCreateQuotation = (quotation: PartsQuotation) => {
@@ -825,10 +943,13 @@ export default function App() {
               salesReturns={db.partsSalesReturns || []}
               purchaseOrders={db.purchaseOrders || []}
               invoices={db.invoices || []}
+              profile={db.profile}
               userRole={currentUser.role}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
               onCreatePurchaseOrder={handleCreatePurchaseOrder}
+              onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
+              onReceivePurchaseOrder={handleReceivePurchaseOrder}
               onCreateQuotation={handleCreateQuotation}
               onCreateSalesOrder={handleCreateSalesOrder}
               onDispatchOrder={handleDispatchOrder}
@@ -848,6 +969,7 @@ export default function App() {
               invoices={db.invoices}
               gatePasses={db.gatePasses || []}
               currentUser={currentUser}
+              profile={db.profile}
               onCreateJobCard={handleCreateJobCard}
               onUpdateJobCard={handleUpdateJobCard}
               onCreateAppointment={handleCreateAppointment}
@@ -914,6 +1036,7 @@ export default function App() {
               jobCards={db.jobCards}
               gatePasses={db.gatePasses || []}
               userRole={currentUser.role}
+              profile={db.profile}
               onAddCustomer={handleAddCustomer}
               onUpdateCustomer={handleUpdateCustomer}
               onViewJobCard={() => setActiveTab('jobcards')}

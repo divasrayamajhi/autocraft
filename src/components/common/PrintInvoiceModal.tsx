@@ -19,7 +19,8 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   onWhatsAppShare,
   onOpenGatePass
 }) => {
-  const workshopName = profile?.legalEntityName || profile?.name || 'SAGARMATHA MULTI-CARE AUTO WORKSHOP PVT. LTD.';
+  const workshopName = profile?.name || 'SAGARMATHA MULTI-CARE AUTO WORKSHOP';
+  const legalEntity = profile?.legalEntityName || workshopName;
   const workshopAddress = profile?.address 
     ? `${profile.address}, ${profile.city || ''}, Nepal`
     : 'Sukedhara-04, Ring Road, Kathmandu, Nepal';
@@ -96,6 +97,9 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
             <h1 className="text-lg font-black text-slate-900 tracking-wide uppercase">
               {workshopName}
             </h1>
+            {legalEntity && legalEntity !== workshopName && (
+              <p className="text-[11px] font-semibold text-slate-600">({legalEntity})</p>
+            )}
             <p className="text-xs text-slate-600 mt-0.5">
               {workshopAddress} | Hotline: {workshopPhone}
             </p>

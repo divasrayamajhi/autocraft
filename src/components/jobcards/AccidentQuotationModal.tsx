@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { JobCard, SparePart, PartsQuotation, PartsQuotationItem } from '../../types';
+import { JobCard, SparePart, PartsQuotation, PartsQuotationItem, WorkshopProfile } from '../../types';
 import { 
   FileSpreadsheet, 
   ShieldCheck, 
@@ -13,10 +13,12 @@ import {
   Building2,
   DollarSign
 } from 'lucide-react';
+import { PrintQuotationModal } from './PrintQuotationModal';
 
 interface AccidentQuotationModalProps {
   jobCard: JobCard;
   availableParts: SparePart[];
+  profile?: WorkshopProfile;
   onClose: () => void;
   onSaveQuotation: (quotation: PartsQuotation) => void;
 }
@@ -35,6 +37,7 @@ const NEPAL_INSURERS = [
 export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
   jobCard,
   availableParts = [],
+  profile,
   onClose,
   onSaveQuotation
 }) => {
@@ -47,6 +50,7 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
   const [surveyorName, setSurveyorName] = useState('Govinda Sharma (Licensed Surveyor)');
   const [validityDays, setValidityDays] = useState(15);
   const [notes, setNotes] = useState('Comprehensive accidental repair and insurance survey estimate. Subject to physical inspection and depreciation clauses.');
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Initialize with parts from job card or common accident items
   const [quotedParts, setQuotedParts] = useState<PartsQuotationItem[]>(() => {
@@ -574,6 +578,15 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
+              title="Print standard A4 Insurance Quotation"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Print A4 Quotation</span>
+            </button>
+            <button
+              type="button"
               onClick={handleSave}
               className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black shadow-md shadow-purple-900 transition flex items-center space-x-1.5"
             >
@@ -583,6 +596,37 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* PRINT A4 QUOTATION MODAL */}
+      {isPrintModalOpen && (
+        <PrintQuotationModal
+          quotation={{
+            id: `QUOTE-${Date.now()}`,
+            quotationNumber: `QT-${Date.now().toString().slice(-4)}`,
+            jobCardId: jobCard.id,
+            jobCardNumber: jobCard.jobCardNumber,
+            customerName: jobCard.customerName,
+            customerPhone: jobCard.customerPhone,
+            customerPan: jobCard.customerPan,
+            vehicleReg: jobCard.vehicle.registrationNumber,
+            vehicleBrand: jobCard.vehicle.brand,
+            vehicleModel: jobCard.vehicle.model,
+            vehicleChassis: jobCard.vehicle.vinNumber || jobCard.vehicle.chassisNumber,
+            insuranceCompany,
+            insuranceClaimNumber: claimNumber,
+            surveyorName,
+            items: quotedParts,
+            subtotal: totalTaxable,
+            vatAmount,
+            totalAmount: grandTotal,
+            date: new Date().toISOString().split('T')[0],
+            status: 'Sent to Insurer'
+          }}
+          jobCard={jobCard}
+          profile={profile}
+          onClose={() => setIsPrintModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

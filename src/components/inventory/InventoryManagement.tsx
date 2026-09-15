@@ -24,6 +24,9 @@ import {
   ChevronRight,
   Eye,
   ShoppingBag,
+  ShoppingCart,
+  ArrowDownCircle,
+  Clock,
   Wrench
 } from 'lucide-react';
 import { 
@@ -40,6 +43,8 @@ import {
 import { OtcOrderModal } from './OtcOrderModal';
 import { SalesReturnModal } from './SalesReturnModal';
 import { InventoryDocSlipModal } from './InventoryDocSlipModal';
+import { PurchaseOrderModal } from './PurchaseOrderModal';
+import { PrintPurchaseOrderModal } from './PrintPurchaseOrderModal';
 
 interface InventoryManagementProps {
   parts: SparePart[];
@@ -54,6 +59,8 @@ interface InventoryManagementProps {
   onAddPart: (part: SparePart) => void;
   onUpdatePart: (part: SparePart) => void;
   onCreatePurchaseOrder?: (po: PurchaseOrder) => void;
+  onUpdatePurchaseOrder?: (po: PurchaseOrder) => void;
+  onReceivePurchaseOrder?: (po: PurchaseOrder) => void;
   onCreateQuotation?: (quotation: PartsQuotation) => void;
   onCreateSalesOrder?: (order: PartsSalesOrder) => void;
   onDispatchOrder?: (orderId: string, isPartial: boolean) => void;
@@ -61,7 +68,7 @@ interface InventoryManagementProps {
   onViewJobCard?: (jcNumber: string) => void;
 }
 
-type InventorySubTab = 'master' | 'replenishment' | 'fms_abc' | 'sales_flow' | 'substitutes' | 'returns';
+type InventorySubTab = 'master' | 'purchase_orders' | 'replenishment' | 'fms_abc' | 'sales_flow' | 'substitutes' | 'returns';
 
 export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   parts = [],
@@ -76,6 +83,8 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   onAddPart,
   onUpdatePart,
   onCreatePurchaseOrder,
+  onUpdatePurchaseOrder,
+  onReceivePurchaseOrder,
   onCreateQuotation,
   onCreateSalesOrder,
   onDispatchOrder,
@@ -87,6 +96,14 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [fmsFilter, setFmsFilter] = useState('All');
   const [abcFilter, setAbcFilter] = useState('All');
+
+  // Purchase Order State
+  const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [isPrintPOOpen, setIsPrintPOOpen] = useState(false);
+  const [printPO, setPrintPO] = useState<PurchaseOrder | null>(null);
+  const [poSearchQuery, setPoSearchQuery] = useState('');
+  const [poStatusFilter, setPoStatusFilter] = useState('All');
 
   // Barcode / QR inspection modal
   const [barcodeModalPart, setBarcodeModalPart] = useState<SparePart | null>(null);
@@ -113,6 +130,32 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
     setTimeout(() => setNotification(null), 3500);
   };
 
+  const handleSavePO = (po: PurchaseOrder) => {
+    const exists = (purchaseOrders || []).some(p => p.id === po.id);
+    if (exists && onUpdatePurchaseOrder) {
+      onUpdatePurchaseOrder(po);
+      notify(`Purchase Order ${po.poNumber} updated successfully.`);
+    } else if (onCreatePurchaseOrder) {
+      onCreatePurchaseOrder(po);
+      notify(`Purchase Order ${po.poNumber} saved. Stock remains unchanged until received.`);
+    }
+  };
+
+  const handleReceivePO = (po: PurchaseOrder) => {
+    if (onReceivePurchaseOrder) {
+      onReceivePurchaseOrder(po);
+      notify(`Purchase Order ${po.poNumber} marked as Received. Inventory stock updated successfully!`);
+    } else if (onUpdatePurchaseOrder) {
+      onUpdatePurchaseOrder({ ...po, status: 'Received' });
+      notify(`Purchase Order ${po.poNumber} marked as Received.`);
+    }
+  };
+
+  const handlePrintPOModal = (po: PurchaseOrder) => {
+    setPrintPO(po);
+    setIsPrintPOOpen(true);
+  };
+
   const filteredParts = (parts || []).filter(p => {
     const matchesSearch = 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -129,6 +172,31 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   });
 
   const lowStockParts = parts.filter(p => p.currentStock <= p.minReorderLevel);
+
+  // Purchase Orders & Filtering
+  const safePOs = purchaseOrders || [];
+  const pendingPOsCount = safePOs.filter(po => po.status === 'Pending' || po.status === 'Pending Approval' || po.status === 'Ordered').length;
+
+  const filteredPOs = safePOs.filter(po => {
+    const q = poSearchQuery.toLowerCase().trim();
+    const matchesQuery = !q || (
+      (po.poNumber && po.poNumber.toLowerCase().includes(q)) ||
+      (po.supplierName && po.supplierName.toLowerCase().includes(q)) ||
+      (po.supplierPanVat && po.supplierPanVat.toLowerCase().includes(q)) ||
+      (po.items && po.items.some(item => 
+        (item.partName && item.partName.toLowerCase().includes(q)) ||
+        (item.partNumber && item.partNumber.toLowerCase().includes(q))
+      ))
+    );
+
+    const matchesStatus = poStatusFilter === 'All' || (
+      poStatusFilter === 'Received' ? (po.status === 'Received' || po.status === 'Fully Received') :
+      poStatusFilter === 'Pending' ? (po.status === 'Pending' || po.status === 'Pending Approval') :
+      po.status === poStatusFilter
+    );
+
+    return matchesQuery && matchesStatus;
+  });
 
   // Total inventory valuation (NPR)
   const totalValuationCost = parts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0);
@@ -212,6 +280,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         <div className="flex items-center space-x-2">
           {[
             { id: 'master', label: 'Parts Master & Barcodes', icon: Package },
+            { id: 'purchase_orders', label: 'Purchase Orders (PO)', icon: ShoppingBag, badge: pendingPOsCount },
             { id: 'replenishment', label: 'Replenishment & Alerts', icon: AlertTriangle, badge: lowStockParts.length },
             { id: 'fms_abc', label: 'FMS & ABC Classification', icon: Layers },
             { id: 'sales_flow', label: 'Quotation → Order → Dispatch', icon: ArrowRight },
@@ -413,6 +482,211 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         </div>
       )}
 
+      {/* SUBTAB: PURCHASE ORDERS (PO) */}
+      {activeSubTab === 'purchase_orders' && (
+        <div className="space-y-4">
+          {/* Header Strip & Metrics */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-bold text-slate-900">Spares Purchase Orders (खरिद आदेश)</h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                    Nepal IRD 13% VAT & Stock Accounting
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Manage vendor procurement orders with complete lifecycle: Draft → Pending → Ordered → Received. 
+                  <strong className="text-blue-900 ml-1">Creating a PO does not increase stock; stock updates only upon receipt verification.</strong>
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setSelectedPO(null);
+                  setIsPOModalOpen(true);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center space-x-1.5 shrink-0 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Purchase Order</span>
+              </button>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Total Purchase Orders</span>
+                <span className="text-base font-extrabold text-slate-900 font-mono">{safePOs.length}</span>
+                <span className="text-[10px] text-slate-400 block font-semibold">Registered in System</span>
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <span className="text-[11px] text-amber-800 block font-semibold">Pending / Ordered</span>
+                <span className="text-base font-extrabold text-amber-900 font-mono">{pendingPOsCount}</span>
+                <span className="text-[10px] text-amber-700 block font-semibold">Awaiting Delivery</span>
+              </div>
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <span className="text-[11px] text-emerald-800 block font-semibold">Received & Verified</span>
+                <span className="text-base font-extrabold text-emerald-900 font-mono">
+                  {safePOs.filter(po => po.status === 'Received' || po.status === 'Fully Received').length}
+                </span>
+                <span className="text-[10px] text-emerald-700 block font-semibold">Stock In Hand Updated</span>
+              </div>
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <span className="text-[11px] text-indigo-800 block font-semibold">Procurement Value</span>
+                <span className="text-base font-extrabold text-indigo-900 font-mono">
+                  रु. {safePOs.reduce((acc, po) => acc + (po.totalAmount || 0), 0).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-indigo-600 block font-semibold">Incl. 13% Nepal VAT</span>
+              </div>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by PO number, supplier name, PAN, or part description..."
+                  value={poSearchQuery}
+                  onChange={(e) => setPoSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <select
+                  value={poStatusFilter}
+                  onChange={(e) => setPoStatusFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 outline-none font-semibold"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Ordered">Ordered</option>
+                  <option value="Received">Received (Stock Added)</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs">
+                    <th className="p-3.5">PO Number</th>
+                    <th className="p-3.5">Supplier / Vendor</th>
+                    <th className="p-3.5">Order Date</th>
+                    <th className="p-3.5">Expected Delivery</th>
+                    <th className="p-3.5 text-center">Items</th>
+                    <th className="p-3.5 text-right">Total (NPR)</th>
+                    <th className="p-3.5 text-center">Status</th>
+                    <th className="p-3.5 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredPOs.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
+                        No purchase orders matching your search and filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPOs.map((po) => {
+                      const isReceived = po.status === 'Received' || po.status === 'Fully Received';
+                      return (
+                        <tr key={po.id} className="hover:bg-slate-50/80 transition">
+                          <td className="p-3.5">
+                            <span className="font-mono font-bold text-indigo-700 block">{po.poNumber}</span>
+                            <span className="text-[10px] text-slate-400">{po.paymentTerms || 'Standard Terms'}</span>
+                          </td>
+                          <td className="p-3.5">
+                            <span className="font-semibold text-slate-900 block">{po.supplierName || po.vendorName}</span>
+                            {po.supplierPanVat && (
+                              <span className="text-[11px] font-mono text-slate-500">PAN: {po.supplierPanVat}</span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-slate-600">{po.date}</td>
+                          <td className="p-3.5 text-slate-600">{po.expectedDeliveryDate || '—'}</td>
+                          <td className="p-3.5 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                              {po.items?.length || 0} Spares
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-right font-mono font-bold text-slate-900">
+                            रु. {(po.totalAmount || 0).toLocaleString()}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isReceived
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : po.status === 'Ordered'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : po.status === 'Cancelled'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {isReceived && <CheckCircle2 className="w-3 h-3 text-emerald-600 mr-0.5 inline" />}
+                              <span>{po.status}</span>
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <div className="flex items-center justify-center space-x-1.5">
+                              {/* Receive Stock Button (Only if not already received) */}
+                              {!isReceived && po.status !== 'Cancelled' && (
+                                <button
+                                  onClick={() => {
+                                    const confirmed = window.confirm(
+                                      `Mark PO ${po.poNumber} as Received?\n\nThis will increase current inventory stock for ${po.items?.length || 0} spare parts.`
+                                    );
+                                    if (confirmed) {
+                                      handleReceivePO(po);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center space-x-1 transition shadow-2xs"
+                                  title="Receive parts and update stock in inventory"
+                                >
+                                  <ArrowDownCircle className="w-3 h-3" />
+                                  <span>Receive</span>
+                                </button>
+                              )}
+
+                              {/* View / Edit PO */}
+                              <button
+                                onClick={() => {
+                                  setSelectedPO(po);
+                                  setIsPOModalOpen(true);
+                                }}
+                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                title="View & Edit Purchase Order"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Print A4 PO */}
+                              <button
+                                onClick={() => handlePrintPOModal(po)}
+                                className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                                title="Print Standard A4 Purchase Order"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SUBTAB 2: REPLENISHMENT PLANNING & ALERTS */}
       {activeSubTab === 'replenishment' && (
         <div className="space-y-4">
@@ -446,10 +720,48 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => notify(`Automated Purchase Order generated for ${part.maxStockLevel - part.currentStock} units of ${part.name}`)}
-                        className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                        onClick={() => {
+                          const orderQty = Math.max(5, (part.maxStockLevel || 10) - part.currentStock);
+                          const cost = part.purchasePrice || part.costPrice || 500;
+                          const taxable = orderQty * cost;
+                          const vat = Math.round(taxable * 0.13);
+                          setSelectedPO({
+                            id: `PO-${Date.now().toString().slice(-4)}`,
+                            poNumber: `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+                            date: new Date().toISOString().slice(0, 10),
+                            expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+                            supplierName: part.preferredVendor || 'Sipradi Trading Pvt. Ltd.',
+                            supplierPanVat: '300049211',
+                            supplierContact: '+977-1-4240000',
+                            supplierAddress: 'Kathmandu, Nepal',
+                            paymentTerms: 'Net 30 Days (Credit)',
+                            status: 'Pending',
+                            items: [{
+                              partId: part.id,
+                              partNumber: part.partNumber || part.sku,
+                              partName: part.name,
+                              currentStock: part.currentStock,
+                              orderedQuantity: orderQty,
+                              unitCost: cost,
+                              vatRate: 13,
+                              vatAmount: vat,
+                              lineTotal: taxable + vat,
+                              quantity: orderQty,
+                              unitPrice: cost,
+                              total: taxable + vat
+                            }],
+                            subtotal: taxable,
+                            taxableAmount: taxable,
+                            vatTotal: vat,
+                            totalAmount: taxable + vat,
+                            notes: `Auto-replenishment for low safety stock (${part.currentStock}/${part.minReorderLevel})`
+                          });
+                          setIsPOModalOpen(true);
+                        }}
+                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5"
                       >
-                        Auto-PO ({part.maxStockLevel - part.currentStock} {part.unit})
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        <span>Create PO ({Math.max(5, (part.maxStockLevel || 10) - part.currentStock)} {part.unit})</span>
                       </button>
                     </div>
                   </div>
@@ -1289,6 +1601,32 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         quotation={viewQuotation}
         salesOrder={viewSalesOrder}
         salesReturn={viewSalesReturn}
+        profile={profile}
+      />
+
+      {/* MODAL: CREATE / EDIT / RECEIVE PURCHASE ORDER */}
+      <PurchaseOrderModal
+        isOpen={isPOModalOpen}
+        onClose={() => {
+          setIsPOModalOpen(false);
+          setSelectedPO(null);
+        }}
+        parts={parts}
+        existingPO={selectedPO}
+        profile={profile}
+        onSavePO={handleSavePO}
+        onReceivePO={handleReceivePO}
+        onPrintPO={handlePrintPOModal}
+      />
+
+      {/* MODAL: PRINT STANDARD A4 PURCHASE ORDER */}
+      <PrintPurchaseOrderModal
+        isOpen={isPrintPOOpen}
+        onClose={() => {
+          setIsPrintPOOpen(false);
+          setPrintPO(null);
+        }}
+        purchaseOrder={printPO}
         profile={profile}
       />
     </div>

@@ -5,7 +5,8 @@ import {
   Invoice, 
   JobCard, 
   UserRole,
-  GatePass
+  GatePass,
+  WorkshopProfile
 } from '../../types';
 import { 
   Users, 
@@ -45,6 +46,7 @@ interface CustomerManagementProps {
   jobCards: JobCard[];
   gatePasses?: GatePass[];
   userRole: UserRole;
+  profile?: WorkshopProfile;
   onAddCustomer: (customer: Customer) => void;
   onUpdateCustomer: (customer: Customer) => void;
   onViewJobCard: (jcNumber: string) => void;
@@ -70,9 +72,12 @@ interface ServiceReminderItem {
   nextServiceDueDate: string;
   nextServiceDueKm: number;
   daysRemaining: number;
+  kmRemaining: number;
+  isKmExceeded: boolean;
   isOverdue: boolean;
   isDueToday: boolean;
   isDueSoon: boolean;
+  isRecentlyServiced: boolean;
   matchingJobCardsCount: number;
   totalBilledAmount: number;
 }
@@ -83,6 +88,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   jobCards = [],
   gatePasses = [],
   userRole,
+  profile,
   onAddCustomer,
   onUpdateCustomer,
   onViewJobCard
@@ -176,24 +182,52 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
           (typeof veh === 'object' && veh?.odometerReading) || 
           25000;
 
+        const currentOdometer = odo || lastServiceKm;
+
         const lastServiceType = latestJc?.serviceType || 
           (typeof veh === 'object' && veh?.lastServiceType) || 
           'Scheduled PMS Inspection';
 
-        // Calculate next service due date (120 days interval or explicit field)
+        // Check if service was performed today
+        const todayStr = today.toISOString().slice(0, 10);
+        const isServicedToday = lastServiceDate === todayStr;
+
+        // RULE: Every 4 months (120 days) OR every 5,000 km — whichever comes first.
+        // When service is recorded today:
+        // 1. Day-based countdown resets to exactly 120 days
+        // 2. Odometer-based countdown resets to Current Odometer + 5,000 km
         let nextServiceDueDate: string;
-        if (typeof veh === 'object' && veh?.nextServiceDueDate) {
-          nextServiceDueDate = veh.nextServiceDueDate;
+        if (isServicedToday) {
+          nextServiceDueDate = new Date(today.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        } else if (typeof veh === 'object' && veh?.nextServiceDueDate) {
+          // If stored due date was previously set beyond 120 days from lastServiceDate, clamp it
+          const lastDateObj = new Date(lastServiceDate);
+          const maxAllowedTime = lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000;
+          const storedTime = new Date(veh.nextServiceDueDate).getTime();
+          if (storedTime > maxAllowedTime) {
+            nextServiceDueDate = new Date(maxAllowedTime).toISOString().slice(0, 10);
+          } else {
+            nextServiceDueDate = veh.nextServiceDueDate;
+          }
         } else if (latestJc?.nextServiceDueDate) {
-          nextServiceDueDate = latestJc.nextServiceDueDate;
+          const lastDateObj = new Date(lastServiceDate);
+          const maxAllowedTime = lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000;
+          const storedTime = new Date(latestJc.nextServiceDueDate).getTime();
+          if (storedTime > maxAllowedTime) {
+            nextServiceDueDate = new Date(maxAllowedTime).toISOString().slice(0, 10);
+          } else {
+            nextServiceDueDate = latestJc.nextServiceDueDate;
+          }
         } else {
           const lastDateObj = new Date(lastServiceDate);
           nextServiceDueDate = new Date(lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         }
 
-        // Calculate next service due km (5000 km interval or explicit field)
+        // Calculate next service due km (Current/Last Odometer + 5000 km)
         let nextServiceDueKm: number;
-        if (typeof veh === 'object' && veh?.nextServiceDueKm) {
+        if (isServicedToday) {
+          nextServiceDueKm = currentOdometer + 5000;
+        } else if (typeof veh === 'object' && veh?.nextServiceDueKm) {
           nextServiceDueKm = veh.nextServiceDueKm;
         } else if (latestJc?.nextServiceDueKm) {
           nextServiceDueKm = latestJc.nextServiceDueKm;
@@ -201,15 +235,25 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
           nextServiceDueKm = lastServiceKm + 5000;
         }
 
-        // Calculate days remaining
+        // Calculate days remaining with strict maximum cap of 120 days
         const dueDateObj = new Date(nextServiceDueDate);
         dueDateObj.setHours(0, 0, 0, 0);
         const diffMs = dueDateObj.getTime() - today.getTime();
-        const daysRemaining = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        const rawDaysRemaining = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        const daysRemaining = isServicedToday ? 120 : Math.min(120, rawDaysRemaining);
 
-        const isOverdue = daysRemaining < 0;
-        const isDueToday = daysRemaining === 0;
-        const isDueSoon = daysRemaining > 0 && daysRemaining <= 15;
+        // Calculate km remaining
+        const kmRemaining = Math.max(0, nextServiceDueKm - currentOdometer);
+        const isKmExceeded = currentOdometer >= nextServiceDueKm;
+
+        // System determines next service based on whichever threshold is reached first:
+        // - Overdue if daysRemaining < 0 OR isKmExceeded
+        // - Due today if daysRemaining === 0 OR (kmRemaining === 0 && !isKmExceeded)
+        // - Due soon if daysRemaining <= 15 OR kmRemaining <= 500
+        const isDueToday = daysRemaining === 0 || (kmRemaining === 0 && !isKmExceeded);
+        const isOverdue = daysRemaining < 0 || isKmExceeded;
+        const isDueSoon = !isOverdue && !isDueToday && (daysRemaining <= 15 || kmRemaining <= 500);
+        const isRecentlyServiced = isServicedToday || (daysRemaining >= 115 && !isOverdue);
 
         reminders.push({
           customerId: cust.id,
@@ -224,16 +268,19 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
           fuelType: fuel,
           vinNumber: vin,
           engineNumber: engine,
-          currentOdometer: odo || lastServiceKm,
+          currentOdometer,
           lastServiceDate,
           lastServiceKm,
           lastServiceType,
           nextServiceDueDate,
           nextServiceDueKm,
           daysRemaining,
+          kmRemaining,
+          isKmExceeded,
           isOverdue,
           isDueToday,
           isDueSoon,
+          isRecentlyServiced,
           matchingJobCardsCount: matchingJobCards.length,
           totalBilledAmount: totalBilled
         });
@@ -384,15 +431,21 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
   const totalInvoicedSales = invoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
 
-  // Helper to generate official WhatsApp Reminder message
+  // Helper to generate official WhatsApp Reminder message using centralized Trading Workshop Name
   const getWhatsAppMessage = (item: ServiceReminderItem) => {
+    const tradingName = profile?.name || 'Multi-Brand Auto Workshop';
+    const contactPhone = profile?.contactNumber || '+977-9851087654';
+    const addressStr = profile?.address 
+      ? `${profile.address}, ${profile.city || 'Kathmandu'}`
+      : 'Ring Road, Sukedhara-04, Kathmandu';
+
     const statusNote = item.daysRemaining < 0
-      ? `⚠️ OVERDUE by ${Math.abs(item.daysRemaining)} Days (Exceeded 120 Days / 4 Months threshold)`
+      ? `⚠️ OVERDUE by ${Math.abs(item.daysRemaining)} Days (Exceeded 120 Days / 5,000 km interval)`
       : item.daysRemaining === 0
-        ? `🚨 SERVICE DUE TODAY (0 Days Remaining)`
+        ? `🚨 SERVICE DUE TODAY (0 Days Remaining • 120-Day / 5,000 km threshold)`
         : `⏳ Service Due in ${item.daysRemaining} Days (${item.nextServiceDueDate})`;
 
-    return `Namaste ${item.customerName} ji,\n\nThis is a periodic service reminder from Sagarmatha Multi-Care Auto Workshop regarding your vehicle:\n\n🚗 Vehicle: ${item.brand} ${item.model} (${item.registrationNumber})\n📅 Scheduled Due Date: ${item.nextServiceDueDate}\n🛣️ Target Service Odometer: ${(item.nextServiceDueKm || 0).toLocaleString()} km\n⏱️ Current Status: ${statusNote}\n\nOur standard PMS service interval is 5,000 km or 4 months (120 days) whichever comes first to maintain optimal safety, fuel efficiency, and vehicle health.\n\nPlease visit our workshop or reply to book your priority service bay slot.\n\n📍 Ring Road, Sukedhara-04, Kathmandu\n📞 +977-9851087654 / 01-4378912`;
+    return `Namaste ${item.customerName} ji,\n\nThis is a periodic service reminder from ${tradingName} regarding your vehicle:\n\n🚗 Vehicle: ${item.brand} ${item.model} (${item.registrationNumber})\n📅 Scheduled Due Date: ${item.nextServiceDueDate}\n🛣️ Target Service Odometer: ${(item.nextServiceDueKm || 0).toLocaleString()} km\n⏱️ Current Status: ${statusNote}\n\nOur standard PMS service interval is 5,000 km or 4 months (120 days) whichever comes first to maintain optimal safety, fuel efficiency, and vehicle health.\n\nPlease visit our workshop or reply to book your priority service bay slot.\n\n📍 ${addressStr}\n📞 ${contactPhone}`;
   };
 
   const handleSendWhatsApp = (item: ServiceReminderItem) => {
@@ -412,6 +465,41 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     navigator.clipboard.writeText(text);
     setCopiedId(item.vehicleId);
     setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  // Quick action: record service performed today -> resets to exactly 120 days & currentOdo + 5,000 km
+  const handleRecordServiceToday = (item: ServiceReminderItem) => {
+    const cust = customers.find(c => c.id === item.customerId);
+    if (!cust) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const nextDueDateStr = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const nextDueKm = item.currentOdometer + 5000;
+
+    const updatedVehicles = cust.vehicles.map(v => {
+      const vId = typeof v === 'object' ? v.id : v;
+      if (vId === item.vehicleId) {
+        if (typeof v === 'object') {
+          return {
+            ...v,
+            lastServiceDate: todayStr,
+            lastServiceKm: item.currentOdometer,
+            lastServiceType: 'PMS Scheduled Inspection & Servicing',
+            nextServiceDueDate: nextDueDateStr,
+            nextServiceDueKm: nextDueKm
+          };
+        }
+      }
+      return v;
+    });
+
+    const updatedCustomer: Customer = {
+      ...cust,
+      lastVisit: todayStr,
+      vehicles: updatedVehicles
+    };
+
+    onUpdateCustomer(updatedCustomer);
   };
 
   const handleSaveCustomer = (e: React.FormEvent) => {
@@ -696,8 +784,8 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
             <div className="grid grid-cols-1 gap-3.5">
               {filteredReminders.map((item) => {
                 // Determine styling based on threshold
-                // Overdue (> 120 days / negative days remaining): RED
-                // 0 Days remaining: URGENT RED/AMBER
+                // Overdue (> 120 days / negative days remaining OR km exceeded): RED
+                // 0 Days remaining / Due Today: URGENT AMBER/RED
                 // 1-15 days: AMBER
                 // > 15 days: NORMAL / SAFE
                 const isOverdue = item.isOverdue;
@@ -708,9 +796,9 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     key={item.vehicleId}
                     className={`rounded-2xl p-4 sm:p-5 border transition shadow-xs ${
                       isOverdue
-                        ? 'bg-rose-50/60 border-rose-300 shadow-rose-100/50'
+                        ? 'bg-rose-50/80 border-2 border-rose-500 shadow-md shadow-rose-100 ring-1 ring-rose-400'
                         : isDueToday
-                          ? 'bg-amber-50/60 border-amber-300 shadow-amber-100/50'
+                          ? 'bg-amber-50/90 border-2 border-amber-500 shadow-md shadow-amber-100 ring-1 ring-amber-400'
                           : 'bg-white border-slate-200 hover:border-indigo-300'
                     }`}
                   >
@@ -770,31 +858,35 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                         {isOverdue ? (
                           <div className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs flex items-center space-x-1.5 shadow-sm">
                             <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>OVERDUE BY {Math.abs(item.daysRemaining)} DAYS</span>
+                            <span>
+                              {item.daysRemaining < 0 
+                                ? `OVERDUE BY ${Math.abs(item.daysRemaining)} DAYS • SERVICE REQUIRED`
+                                : `OVERDUE • 5,000 KM EXCEEDED (+${(item.currentOdometer - item.nextServiceDueKm).toLocaleString()} km)`}
+                            </span>
                           </div>
                         ) : isDueToday ? (
                           <div className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-sm">
                             <Clock className="w-3.5 h-3.5" />
-                            <span>0 DAYS REMAINING • SERVICE DUE TODAY!</span>
+                            <span>0 Days Remaining • Service Due Today!</span>
+                          </div>
+                        ) : item.daysRemaining === 120 || item.isRecentlyServiced ? (
+                          <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs flex items-center space-x-1.5 shadow-xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{item.daysRemaining} Days Remaining • Recently Serviced</span>
                           </div>
                         ) : (
                           <div className={`px-3 py-1 rounded-xl text-xs font-bold border flex items-center space-x-1.5 ${
                             item.isDueSoon
                               ? 'bg-amber-100 text-amber-900 border-amber-300'
-                              : item.daysRemaining > 90
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-slate-100 text-slate-800 border-slate-200'
+                              : 'bg-slate-100 text-slate-800 border-slate-200'
                           }`}>
                             <Clock className="w-3.5 h-3.5 text-slate-500" />
                             <span>{item.daysRemaining} Days Remaining</span>
-                            {item.daysRemaining > 90 && (
-                              <span className="text-[10px] font-normal text-emerald-700">(Recently Serviced)</span>
-                            )}
                           </div>
                         )}
 
                         <span className="text-[10px] text-slate-500 font-mono">
-                          Threshold: 120 Days / 5,000 km
+                          Interval Rule: 120 Days (4 Mos) / 5,000 km (Whichever First)
                         </span>
                       </div>
                     </div>
@@ -838,7 +930,18 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                         <span className="font-mono text-emerald-700 font-semibold">Total Spent: NPR {(item.totalBilledAmount || 0).toLocaleString()}</span>
                       </div>
 
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Quick Action: Record Service Performed Today */}
+                        <button
+                          type="button"
+                          onClick={() => handleRecordServiceToday(item)}
+                          className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1 shadow-xs transition"
+                          title="Record service performed today: resets interval to exactly 120 days & Odometer + 5,000 km"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Record Service Today</span>
+                        </button>
+
                         {/* Copy Pre-made Text */}
                         <button
                           type="button"
