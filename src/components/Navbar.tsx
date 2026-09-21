@@ -7,10 +7,12 @@ import {
   CheckCircle2, 
   User, 
   ChevronDown, 
-  FileText,
-  AlertCircle,
-  LogOut,
-  UserPlus
+  FileText, 
+  AlertCircle, 
+  LogOut, 
+  UserPlus,
+  Menu,
+  X
 } from 'lucide-react';
 import { UserAccount, WorkshopProfile } from '../types';
 
@@ -25,6 +27,9 @@ interface NavbarProps {
   lastSyncTime: string;
   onOpenCloudModal: () => void;
   onOpenProfileModal?: () => void;
+  onToggleMobileMenu?: () => void;
+  isMobileMenuOpen?: boolean;
+  activeTab?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,10 +42,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   isCloudSynced,
   lastSyncTime,
   onOpenCloudModal,
-  onOpenProfileModal
+  onOpenProfileModal,
+  onToggleMobileMenu,
+  isMobileMenuOpen = false,
+  activeTab
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
       {/* Top Nepal IRD & Fiscal Year Banner */}
       <div className="bg-slate-900 text-slate-300 text-xs px-4 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center space-x-2">
@@ -48,15 +56,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span>
             IRD CBMS Realtime E-Billing Connected
           </span>
-          <span className="text-slate-400">|</span>
-          <span className="text-slate-300 font-medium">Fiscal Year:</span>
-          <span className="text-amber-400 font-mono font-bold">{profile.fiscalYear} B.S.</span>
-          <span className="text-slate-400">|</span>
-          <span className="text-slate-300">PAN/VAT:</span>
-          <span className="font-mono text-white font-semibold">{profile.panVatNumber}</span>
-          <span className="text-slate-400">|</span>
-          <span className="text-slate-300">Standard VAT:</span>
-          <span className="text-indigo-300 font-bold">13%</span>
+          <span className="text-slate-400 hidden sm:inline">|</span>
+          <span className="text-slate-300 font-medium hidden sm:inline">Fiscal Year:</span>
+          <span className="text-amber-400 font-mono font-bold hidden sm:inline">{profile.fiscalYear} B.S.</span>
+          <span className="text-slate-400 hidden md:inline">|</span>
+          <span className="text-slate-300 hidden md:inline">PAN/VAT:</span>
+          <span className="font-mono text-white font-semibold hidden md:inline">{profile.panVatNumber}</span>
+          <span className="text-slate-400 hidden lg:inline">|</span>
+          <span className="text-slate-300 hidden lg:inline">VAT:</span>
+          <span className="text-indigo-300 font-bold hidden lg:inline">13% Standard</span>
         </div>
 
         <div className="flex items-center space-x-3">
@@ -72,25 +80,37 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Main Workshop Bar */}
       <div className="px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
-        {/* Workshop Brand & Details */}
+        {/* Left: Mobile Toggle & Brand / Breadcrumb */}
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-md shadow-indigo-100 flex-shrink-0">
-            <Wrench className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
-                {profile.name}
-              </h1>
-              <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                Independent Single Workshop
-              </span>
+          {onToggleMobileMenu && (
+            <button
+              onClick={onToggleMobileMenu}
+              className="lg:hidden p-2 -ml-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition border border-slate-200 shadow-sm"
+              aria-label="Toggle navigation drawer"
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
+
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-md shadow-indigo-100 flex-shrink-0">
+              <Wrench className="w-4 h-4" />
             </div>
-            <p className="text-xs text-slate-500 flex items-center space-x-1.5">
-              <span>{profile.address}, {profile.city}</span>
-              <span>•</span>
-              <span>{profile.contactNumber}</span>
-            </p>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h1 className="text-base font-extrabold text-slate-900 tracking-tight leading-tight">
+                  {profile.name}
+                </h1>
+                <span className="hidden xl:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  Independent Single Workshop
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 hidden sm:flex items-center space-x-1.5">
+                <span>{profile.address}, {profile.city}</span>
+                <span>•</span>
+                <span>{profile.contactNumber}</span>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -154,7 +174,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Log Out of System"
           >
             <LogOut className="w-3.5 h-3.5 text-rose-500" />
-            <span className="font-bold">Logout</span>
+            <span className="font-bold hidden sm:inline">Logout</span>
           </button>
         </div>
       </div>

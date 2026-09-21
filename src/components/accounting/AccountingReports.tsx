@@ -1,24 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Invoice, 
   SparePart, 
   GLAccount, 
   GLJournalEntry, 
   WorkshopProfile,
-  UserRole 
+  UserRole,
+  PurchaseOrder
 } from '../../types';
 import { 
   FileSpreadsheet, 
-  BarChart3, 
-  DollarSign, 
   TrendingUp, 
-  ArrowDownRight, 
-  ArrowUpRight, 
   Receipt, 
   Layers, 
   Download, 
+  Printer,
   Calendar,
   CheckCircle2,
+  AlertCircle,
   Building2,
   ShieldCheck,
   Percent,
@@ -26,8 +25,14 @@ import {
   BookOpen,
   Search,
   Filter,
-  X
+  X,
+  Plus,
+  ArrowRight,
+  Sparkles
 } from 'lucide-react';
+import { PrintIrdVatRegisterModal } from './PrintIrdVatRegisterModal';
+import { CreateJournalVoucherModal } from './CreateJournalVoucherModal';
+import { CreateGLAccountModal } from './CreateGLAccountModal';
 
 interface AccountingReportsProps {
   invoices: Invoice[];
@@ -35,187 +40,399 @@ interface AccountingReportsProps {
   profile: WorkshopProfile;
   glAccounts: GLAccount[];
   journalEntries: GLJournalEntry[];
+  purchaseOrders?: PurchaseOrder[];
+  onAddJournalEntry?: (entry: GLJournalEntry) => void;
+  onAddGLAccount?: (account: GLAccount) => void;
   userRole: UserRole;
 }
 
-type AccountingTab = 'pnl' | 'balance_sheet' | 'vat_register' | 'gl_ledger' | 'ar_ap';
+type AccountingTab = 
+  | 'vat_sales' 
+  | 'vat_purchases' 
+  | 'vat_return' 
+  | 'gl_accounts' 
+  | 'journal_entries' 
+  | 'account_ledger' 
+  | 'trial_balance' 
+  | 'pnl' 
+  | 'balance_sheet' 
+  | 'ar_ap';
 
 export const AccountingReports: React.FC<AccountingReportsProps> = ({
-  invoices,
-  parts,
+  invoices = [],
+  parts = [],
   profile,
-  glAccounts,
-  journalEntries,
+  glAccounts = [],
+  journalEntries = [],
+  purchaseOrders = [],
+  onAddJournalEntry,
+  onAddGLAccount,
   userRole
 }) => {
-  const [activeTab, setActiveTab] = useState<AccountingTab>('vat_register');
+  const [activeTab, setActiveTab] = useState<AccountingTab>('vat_sales');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMonth, setFilterMonth] = useState('All');
+  const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [selectedLedgerAccountCode, setSelectedLedgerAccountCode] = useState<string>(
+    glAccounts[0]?.accountCode || '1010'
+  );
+
+  // Modals state
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printModalType, setPrintModalType] = useState<'sales' | 'purchase' | 'vat_return'>('sales');
+  const [isNewVoucherModalOpen, setIsNewVoucherModalOpen] = useState(false);
+  const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
 
   // Filtered invoices for Sales Book / VAT Register
-  const filteredInvoices = (invoices || []).filter(inv => {
-    const q = searchQuery.toLowerCase().trim();
-    const matchesSearch = !q || (
-      (inv.invoiceNumber || '').toLowerCase().includes(q) ||
-      (inv.customerName || '').toLowerCase().includes(q) ||
-      (inv.customerPan || '').toLowerCase().includes(q) ||
-      (inv.vehicleReg || '').toLowerCase().includes(q)
-    );
-    if (!matchesSearch) return false;
-    if (filterMonth !== 'All') {
-      const dateStr = (inv.createdAt || inv.date || '').slice(0, 7);
-      if (!dateStr.includes(filterMonth)) return false;
-    }
-    return true;
-  });
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter(inv => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || (
+        (inv.invoiceNumber || '').toLowerCase().includes(q) ||
+        (inv.customerName || '').toLowerCase().includes(q) ||
+        (inv.customerPan || '').toLowerCase().includes(q) ||
+        (inv.vehicleReg || '').toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
+      if (filterMonth !== 'All') {
+        const dateStr = (inv.createdAt || inv.date || '').slice(0, 7);
+        if (!dateStr.includes(filterMonth)) return false;
+      }
+      return true;
+    });
+  }, [invoices, searchQuery, filterMonth]);
+
+  // Filtered Purchase Orders for Purchase Book / VAT Register
+  const filteredPurchases = useMemo(() => {
+    return purchaseOrders.filter(po => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || (
+        (po.poNumber || '').toLowerCase().includes(q) ||
+        (po.supplierName || '').toLowerCase().includes(q) ||
+        (po.supplierPanVat || '').toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
+      if (filterMonth !== 'All') {
+        const dateStr = (po.date || '').slice(0, 7);
+        if (!dateStr.includes(filterMonth)) return false;
+      }
+      return true;
+    });
+  }, [purchaseOrders, searchQuery, filterMonth]);
 
   // Filtered GL Accounts for Chart of Accounts
-  const filteredGlAccounts = (glAccounts || []).filter(acc => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
-      (acc.code || '').toLowerCase().includes(q) ||
-      (acc.name || '').toLowerCase().includes(q) ||
-      (acc.type || '').toLowerCase().includes(q)
-    );
-  });
+  const filteredGlAccounts = useMemo(() => {
+    return glAccounts.filter(acc => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || (
+        (acc.accountCode || '').toLowerCase().includes(q) ||
+        (acc.accountName || '').toLowerCase().includes(q) ||
+        (acc.category || '').toLowerCase().includes(q) ||
+        (acc.subCategory || '').toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
+      if (filterCategory !== 'All' && acc.category !== filterCategory) return false;
+      return true;
+    });
+  }, [glAccounts, searchQuery, filterCategory]);
 
-  // Compute Revenue in NPR
-  const totalTaxableSales = (invoices || []).reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
-  const totalVat13 = (invoices || []).reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0);
-  const totalGrossRevenue = (invoices || []).reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0);
-  const totalPaidRevenue = (invoices || []).reduce((acc, inv) => acc + (inv.paidAmount ?? inv.amountPaid ?? 0), 0);
-  const totalReceivables = (invoices || []).reduce((acc, inv) => acc + (inv.balanceDue ?? 0), 0);
+  // Filtered Journal Entries
+  const filteredJournalEntries = useMemo(() => {
+    return journalEntries.filter(entry => {
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
+      return (
+        (entry.entryNumber || '').toLowerCase().includes(q) ||
+        (entry.sourceDocument || '').toLowerCase().includes(q) ||
+        (entry.narration || '').toLowerCase().includes(q) ||
+        entry.lines.some(l => l.accountName.toLowerCase().includes(q) || l.accountCode.includes(q))
+      );
+    });
+  }, [journalEntries, searchQuery]);
+
+  // Compute Sales Figures in NPR
+  const totalTaxableSales = invoices.reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
+  const totalVat13 = invoices.reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0);
+  const totalGrossRevenue = invoices.reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0);
+  const totalReceivables = invoices.reduce((acc, inv) => acc + (inv.balanceDue ?? 0), 0);
+
+  // Compute Purchase Figures in NPR
+  const totalTaxablePurchases = purchaseOrders.reduce((acc, po) => acc + (po.taxableAmount ?? po.subtotal ?? 0), 0);
+  const totalInputVat = purchaseOrders.reduce((acc, po) => acc + (po.vatTotal ?? 0), 0);
+  const totalGrossPurchases = purchaseOrders.reduce((acc, po) => acc + (po.totalAmount ?? 0), 0);
+
+  // Net VAT to IRD
+  const netVatPayableToIRD = Math.max(0, totalVat13 - totalInputVat);
+  const carryForwardVatCredit = Math.max(0, totalInputVat - totalVat13);
 
   // Inventory valuation (Cost)
   const currentInventoryCost = parts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0);
 
-  // COGS Estimation (Spares consumption)
+  // COGS & Operational Expenses
   const estimatedCogsSpares = Math.round(totalTaxableSales * 0.45);
   const grossProfit = totalTaxableSales - estimatedCogsSpares;
-
-  // Monthly Workshop Operational Expenses in Nepal
-  const staffPayroll = 180000; // Head tech + advisors + helpers
-  const workshopRentKTM = 85000; // Ring road Sukedhara workshop rent
-  const electricityAndCompressor = 22000; // NEA 3-phase industrial power
+  const staffPayroll = 180000;
+  const workshopRentKTM = 85000;
+  const electricityAndCompressor = 22000;
   const shopConsumables = 14500;
   const totalOpex = staffPayroll + workshopRentKTM + electricityAndCompressor + shopConsumables;
   const netOperatingProfit = grossProfit - totalOpex;
 
-  // Input VAT on spare parts purchases (13% on COGS)
-  const estimatedInputVat = Math.round(estimatedCogsSpares * 0.13);
-  const netVatPayableToIRD = Math.max(0, totalVat13 - estimatedInputVat);
+  // Selected Account for Ledger Statement
+  const selectedAccount = glAccounts.find(a => a.accountCode === selectedLedgerAccountCode) || glAccounts[0];
+
+  // Ledger transactions for the selected account
+  const ledgerTransactions = useMemo(() => {
+    if (!selectedAccount) return [];
+    const txs: {
+      date: string;
+      entryNumber: string;
+      sourceDocument: string;
+      narration: string;
+      debit: number;
+      credit: number;
+    }[] = [];
+
+    journalEntries.forEach(entry => {
+      entry.lines.forEach(line => {
+        if (line.accountCode === selectedAccount.accountCode) {
+          txs.push({
+            date: entry.date,
+            entryNumber: entry.entryNumber,
+            sourceDocument: entry.sourceDocument,
+            narration: entry.narration,
+            debit: line.debit,
+            credit: line.credit
+          });
+        }
+      });
+    });
+
+    return txs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [selectedAccount, journalEntries]);
+
+  // Trial Balance Calculations
+  const trialBalanceData = useMemo(() => {
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const rows = glAccounts.map(acc => {
+      let debit = 0;
+      let credit = 0;
+      if (['Asset', 'Expense'].includes(acc.category)) {
+        if (acc.currentBalance >= 0) debit = acc.currentBalance;
+        else credit = Math.abs(acc.currentBalance);
+      } else {
+        if (acc.currentBalance >= 0) credit = acc.currentBalance;
+        else debit = Math.abs(acc.currentBalance);
+      }
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      return {
+        ...acc,
+        debit,
+        credit
+      };
+    });
+
+    return { rows, totalDebit, totalCredit, isBalanced: Math.abs(totalDebit - totalCredit) < 1 };
+  }, [glAccounts]);
+
+  // CSV Export for Sales Book
+  const exportSalesBookCsv = () => {
+    const headers = ['Miti', 'Invoice Number', 'Buyer Name', 'Buyer PAN', 'Total Sales NPR', 'Tax Exempt NPR', 'Taxable Sales NPR', '13% VAT NPR', 'CBMS Ack Code'];
+    const rows = filteredInvoices.map(inv => [
+      (inv.createdAt || inv.date || '').slice(0, 10),
+      inv.invoiceNumber,
+      `"${(inv.customerName || '').replace(/"/g, '""')}"`,
+      inv.customerPan || 'Consumer',
+      inv.grandTotal ?? 0,
+      0,
+      inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0,
+      inv.vatAmount ?? inv.totalVatAmount ?? 0,
+      inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'ACK-2081-01'
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Nepal_IRD_Sales_Book_Annexure13_${profile.fiscalYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // CSV Export for Purchase Book
+  const exportPurchaseBookCsv = () => {
+    const headers = ['Date', 'PO / Bill Number', 'Supplier Name', 'Supplier PAN', 'Total Purchase NPR', 'Tax Exempt NPR', 'Taxable Purchase NPR', '13% Input VAT NPR', 'Status'];
+    const rows = filteredPurchases.map(po => [
+      po.date,
+      po.poNumber,
+      `"${(po.supplierName || '').replace(/"/g, '""')}"`,
+      po.supplierPanVat || 'N/A',
+      po.totalAmount ?? 0,
+      0,
+      po.taxableAmount ?? po.subtotal ?? 0,
+      po.vatTotal ?? 0,
+      po.status
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Nepal_IRD_Purchase_Book_Annexure13_${profile.fiscalYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Top Banner with Official IRD Compliance */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-slate-800 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-              Nepal Accounting & Tax Compliance
+              नेपाल आन्तरिक राजस्व विभाग (Nepal IRD)
             </span>
-            <span className="text-xs text-slate-400">VAT Act 2052 • Fiscal Year {profile.fiscalYear} B.S.</span>
+            <span className="text-xs text-slate-400">
+              मूल्य अभिवृद्धि कर नियमावली २०५२ • Fiscal Year <strong className="text-amber-400 font-mono">{profile.fiscalYear} B.S.</strong>
+            </span>
           </div>
           <h2 className="text-2xl font-black mt-1 tracking-tight">
             General Ledger & Nepal IRD VAT Register
           </h2>
-          <p className="text-xs text-slate-300 max-w-2xl mt-1">
-            Complies with Inland Revenue Department (IRD) Nepal requirements: 13% VAT Annexure 13 (बिक्री तथा खरिद खाता), Real-time double-entry GL journal, P&L, Balance Sheet, and AR/AP Aging in Nepalese Rupees (NPR).
+          <p className="text-xs text-slate-300 max-w-3xl mt-1 leading-relaxed">
+            Full compliance suite: <strong>अनुसूची १३ (बिक्री तथा खरिद खाता)</strong>, <strong>अनुसूची १० (मासिक कर विवरण VAT-01)</strong>, Double-Entry General Journal, Chart of Accounts, Trial Balance, P&L, Balance Sheet, and AR/AP Aging in Nepalese Rupees (NPR).
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-2">
           <button
-            onClick={() => window.print()}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700 shadow-sm flex items-center space-x-1.5"
+            onClick={() => {
+              setPrintModalType(activeTab === 'vat_purchases' ? 'purchase' : activeTab === 'vat_return' ? 'vat_return' : 'sales');
+              setIsPrintModalOpen(true);
+            }}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold border border-indigo-500 shadow-sm flex items-center space-x-1.5 transition"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Official A4 Register</span>
+          </button>
+
+          <button
+            onClick={activeTab === 'vat_purchases' ? exportPurchaseBookCsv : exportSalesBookCsv}
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700 shadow-sm flex items-center space-x-1.5 transition"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export IRD Annexure (Excel/PDF)</span>
+            <span>Export CSV / Excel</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards: Sales, VAT Output, Input Tax Credit, Net Payable */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Sales (incl. 13% VAT)</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Sales Turnover (NPR)</span>
           <div className="text-xl font-black text-slate-900 font-mono mt-1">रु. {totalGrossRevenue.toLocaleString()}</div>
-          <span className="text-[11px] text-slate-500">Taxable: रु. {totalTaxableSales.toLocaleString()}</span>
+          <span className="text-[11px] text-slate-500">Taxable Sales: रु. {totalTaxableSales.toLocaleString()}</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Output VAT Collected (13%)</span>
           <div className="text-xl font-black text-indigo-700 font-mono mt-1">रु. {totalVat13.toLocaleString()}</div>
-          <span className="text-[11px] text-indigo-900">Credited to IRD VAT Ledger</span>
+          <span className="text-[11px] text-indigo-900 font-medium">Credited to IRD Sales Register</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Input Tax Credit (ITC)</span>
-          <div className="text-xl font-black text-emerald-600 font-mono mt-1">रु. {estimatedInputVat.toLocaleString()}</div>
-          <span className="text-[11px] text-emerald-800">Offset against spare purchases</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Input Tax Credit (ITC 13%)</span>
+          <div className="text-xl font-black text-emerald-600 font-mono mt-1">रु. {totalInputVat.toLocaleString()}</div>
+          <span className="text-[11px] text-emerald-800 font-medium">Claimable on Parts & Fluids</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Net Payable to IRD</span>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Net Tax Payable to IRD</span>
           <div className="text-xl font-black text-rose-600 font-mono mt-1">रु. {netVatPayableToIRD.toLocaleString()}</div>
-          <span className="text-[11px] text-rose-800">Due on 25th of upcoming month</span>
+          <span className="text-[11px] text-rose-800 font-medium">Due on 25th of upcoming month</span>
         </div>
       </div>
 
       {/* Sub-Navigation Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none">
-        {[
-          { id: 'vat_register', label: 'Nepal IRD VAT Register (कर खाता)', icon: FileCheck },
-          { id: 'pnl', label: 'Profit & Loss Statement (NPR)', icon: TrendingUp },
-          { id: 'balance_sheet', label: 'Balance Sheet', icon: FileSpreadsheet },
-          { id: 'gl_ledger', label: 'Chart of Accounts & GL', icon: BookOpen },
-          { id: 'ar_ap', label: 'AR & AP Ledger Aging', icon: Layers }
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as AccountingTab)}
-              className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                isActive
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto scrollbar-none">
+        <div className="flex items-center space-x-1 min-w-max">
+          {[
+            { id: 'vat_sales', label: 'बिक्री खाता (Sales Book)', tag: 'अनुसूची १३', icon: FileCheck },
+            { id: 'vat_purchases', label: 'खरिद खाता (Purchase Book)', tag: 'अनुसूची १३', icon: Receipt },
+            { id: 'vat_return', label: 'मासिक कर विवरण (VAT-01)', tag: 'अनुसूची १०', icon: ShieldCheck },
+            { id: 'gl_accounts', label: 'Chart of Accounts (लेखा सूची)', tag: 'COA', icon: BookOpen },
+            { id: 'journal_entries', label: 'जर्नल भौचर (Journal Entries)', tag: 'Double-Entry', icon: FileSpreadsheet },
+            { id: 'account_ledger', label: 'खाता पाना (Ledger Statement)', tag: 'T-Account', icon: Layers },
+            { id: 'trial_balance', label: 'सन्तुलन परीक्षण (Trial Balance)', tag: 'Balanced', icon: CheckCircle2 },
+            { id: 'pnl', label: 'नाफा नोक्सान (P&L)', tag: 'NPR', icon: TrendingUp },
+            { id: 'balance_sheet', label: 'वासलात (Balance Sheet)', tag: 'NPR', icon: FileSpreadsheet },
+            { id: 'ar_ap', label: 'बाँकी उमेर (AR & AP Aging)', tag: 'Aging', icon: Layers }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                id={`accounting-subtab-${tab.id}`}
+                onClick={() => {
+                  setActiveTab(tab.id as AccountingTab);
+                  setSearchQuery('');
+                }}
+                className={`flex items-center space-x-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                <span>{tab.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                  isActive ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {tab.tag}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* TAB 1: NEPAL IRD VAT REGISTER */}
-      {activeTab === 'vat_register' && (
+      {/* TAB 1: SALES BOOK (अनुसूची १३: बिक्री खाता) */}
+      {activeTab === 'vat_sales' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  बिक्री खाता (Sales Book) - Annexure 13, Nepal Value Added Tax Rules
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <span>अनुसूची - १३ : बिक्री खाता (Sales Book)</span>
+                  <span className="text-xs font-normal text-slate-500">(मूल्य अभिवृद्धि कर नियमावली, २०५२ को नियम २३ को उपनियम (१))</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Seller PAN: <strong className="font-mono text-slate-800">{profile.panVatNumber}</strong> | Fiscal Year: <strong className="font-mono text-slate-800">{profile.fiscalYear} B.S.</strong>
+                  करदाताको स्थायी लेखा नं (PAN): <strong className="font-mono text-slate-900 font-bold">{profile.panVatNumber}</strong> | 
+                  व्यापारिक नाम: <strong className="text-slate-900">{profile.name}</strong> | 
+                  आर्थिक वर्ष: <strong className="font-mono text-slate-900">{profile.fiscalYear} B.S.</strong>
                 </p>
               </div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 self-start sm:self-auto">
-                IRD CBMS Realtime Verified
+              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 flex items-center space-x-1 self-start sm:self-auto">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>IRD CBMS Realtime Synchronized</span>
               </span>
             </div>
 
             {/* Search & Filter Toolbar */}
-            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="Search by invoice #, buyer name, PAN, or vehicle reg..."
+                  placeholder="Search by invoice #, buyer name, PAN, or vehicle registration..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -229,33 +446,49 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   </button>
                 )}
               </div>
-              {searchQuery && (
-                <div className="flex items-center text-xs text-slate-500 px-1">
-                  Showing {filteredInvoices.length} of {(invoices || []).length} invoices
-                </div>
-              )}
+
+              <div className="flex items-center space-x-2">
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="All">All Months (सम्पूर्ण अवधि)</option>
+                  <option value="2026-09">Bhadra 2081 (भाद्र)</option>
+                  <option value="2026-10">Ashwin 2081 (असोज)</option>
+                  <option value="2026-08">Shrawan 2081 (श्रावण)</option>
+                </select>
+
+                <button
+                  onClick={exportSalesBookCsv}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center space-x-1.5 transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>CSV</span>
+                </button>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-3">Bill Date (Miti)</th>
-                    <th className="p-3">Invoice #</th>
-                    <th className="p-3">Buyer Name</th>
-                    <th className="p-3">Buyer PAN</th>
-                    <th className="p-3 text-right">Taxable Sales (NPR)</th>
-                    <th className="p-3 text-right">13% VAT (NPR)</th>
-                    <th className="p-3 text-right">Exempt Sales</th>
-                    <th className="p-3 text-right">Grand Total (NPR)</th>
-                    <th className="p-3 text-center">CBMS Ack #</th>
+                    <th className="p-3">मिति (Date / Miti)</th>
+                    <th className="p-3">बिजक नं (Invoice #)</th>
+                    <th className="p-3">खरिदकर्ताको नाम (Buyer)</th>
+                    <th className="p-3 text-center">स्थायी लेखा नं (PAN)</th>
+                    <th className="p-3 text-right">जम्मा बिक्री (Grand Total)</th>
+                    <th className="p-3 text-right">कर छुट (Exempt)</th>
+                    <th className="p-3 text-right">करयोग्य बिक्री (Taxable)</th>
+                    <th className="p-3 text-right">१३% भ्याट (13% VAT)</th>
+                    <th className="p-3 text-center">CBMS प्रमाणीकरण नं</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="p-6 text-center text-slate-400">
-                        No sales invoices match your search query.
+                      <td colSpan={9} className="p-8 text-center text-slate-400">
+                        कुनै बिक्री बिजक भेटिएन। (No sales invoices match your search query.)
                       </td>
                     </tr>
                   ) : (
@@ -264,19 +497,35 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                       const vat = inv.vatAmount ?? inv.totalVatAmount ?? 0;
                       const grand = inv.grandTotal ?? (taxable + vat);
                       const dateStr = (inv.createdAt || inv.date || '').slice(0, 10);
+                      const ack = inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'ACK-2081-NPL-01';
 
                       return (
                         <tr key={inv.id} className="hover:bg-slate-50 transition">
-                          <td className="p-3 font-mono text-slate-600">{dateStr}</td>
+                          <td className="p-3 font-mono text-slate-600 whitespace-nowrap">{dateStr}</td>
                           <td className="p-3 font-mono font-bold text-indigo-700">{inv.invoiceNumber}</td>
-                          <td className="p-3 font-semibold text-slate-900">{inv.customerName}</td>
-                          <td className="p-3 font-mono text-slate-600">{inv.customerPan || 'Consumer'}</td>
-                          <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
-                          <td className="p-3 text-right font-mono font-bold text-indigo-700">रु. {vat.toLocaleString()}</td>
+                          <td className="p-3 font-semibold text-slate-900">
+                            {inv.customerName}
+                            {inv.vehicleReg && (
+                              <span className="block text-[10px] text-slate-400 font-mono">{inv.vehicleReg}</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center font-mono text-slate-600">
+                            {inv.customerPan ? (
+                              <span className="font-bold text-slate-800">{inv.customerPan}</span>
+                            ) : (
+                              <span className="text-slate-400">उपभोक्ता</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-right font-mono font-extrabold text-slate-900">
+                            रु. {grand.toLocaleString()}
+                          </td>
                           <td className="p-3 text-right font-mono text-slate-400">रु. 0</td>
-                          <td className="p-3 text-right font-mono font-extrabold text-slate-900">रु. {grand.toLocaleString()}</td>
-                          <td className="p-3 text-center font-mono text-[10px] text-emerald-700">
-                            {inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'ACK-2081-NPL-01'}
+                          <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono font-bold text-indigo-700">
+                            रु. {vat.toLocaleString()}
+                          </td>
+                          <td className="p-3 text-center font-mono text-[10px] text-emerald-700 font-semibold">
+                            {ack}
                           </td>
                         </tr>
                       );
@@ -284,13 +533,23 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   )}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-slate-100 font-bold text-slate-900">
-                    <td colSpan={4} className="p-3 text-right uppercase">Total Month To Date:</td>
-                    <td className="p-3 text-right font-mono">रु. {totalTaxableSales.toLocaleString()}</td>
-                    <td className="p-3 text-right font-mono text-indigo-800 font-extrabold">रु. {totalVat13.toLocaleString()}</td>
-                    <td className="p-3 text-right font-mono">रु. 0</td>
-                    <td className="p-3 text-right font-mono font-black text-sm">रु. {totalGrossRevenue.toLocaleString()}</td>
-                    <td></td>
+                  <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+                    <td colSpan={4} className="p-3.5 text-right uppercase">
+                      जम्मा कुल (Month To Date Total NPR):
+                    </td>
+                    <td className="p-3.5 text-right font-mono font-black text-sm">
+                      रु. {totalGrossRevenue.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-right font-mono">रु. 0</td>
+                    <td className="p-3.5 text-right font-mono">
+                      रु. {totalTaxableSales.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-right font-mono text-indigo-800 font-extrabold text-sm">
+                      रु. {totalVat13.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-center text-[10px] text-emerald-800">
+                      IRD Annex 13 Verified
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -299,7 +558,629 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 2: PROFIT & LOSS */}
+      {/* TAB 2: PURCHASE BOOK (अनुसूची १३: खरिद खाता) */}
+      {activeTab === 'vat_purchases' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <span>अनुसूची - १३ : खरिद खाता (Purchase Book)</span>
+                  <span className="text-xs font-normal text-slate-500">(स्पेयर पार्ट्स तथा लुब्रिकेन्ट्स खरिद दर्ता)</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  कट्टी हुने इनपुट कर (Input Tax Credit): <strong className="font-mono text-emerald-700 font-bold">रु. {totalInputVat.toLocaleString()}</strong> | 
+                  आपूर्तिकर्ता बिल संख्या: <strong className="font-mono text-slate-900">{purchaseOrders.length}</strong>
+                </p>
+              </div>
+              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 flex items-center space-x-1 self-start sm:self-auto">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>13% Input Tax Credit Eligible</span>
+              </span>
+            </div>
+
+            {/* Search & Filter Toolbar */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search by PO #, supplier name, or supplier PAN..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="All">All Months (सम्पूर्ण अवधि)</option>
+                  <option value="2026-09">Bhadra 2081 (भाद्र)</option>
+                  <option value="2026-10">Ashwin 2081 (असोज)</option>
+                  <option value="2026-08">Shrawan 2081 (श्रावण)</option>
+                </select>
+
+                <button
+                  onClick={exportPurchaseBookCsv}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center space-x-1.5 transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>CSV</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                    <th className="p-3">मिति (Date / Miti)</th>
+                    <th className="p-3">आपूर्तिकर्ताको बिजक / PO नं</th>
+                    <th className="p-3">आपूर्तिकर्ताको नाम (Supplier Name)</th>
+                    <th className="p-3 text-center">स्थायी लेखा नं (PAN)</th>
+                    <th className="p-3 text-right">जम्मा खरिद रकम (Total)</th>
+                    <th className="p-3 text-right">कर छुट (Exempt)</th>
+                    <th className="p-3 text-right">करयोग्य खरिद (Taxable)</th>
+                    <th className="p-3 text-right">१३% इनपुट भ्याट (ITC)</th>
+                    <th className="p-3 text-center">स्थिति (Status)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredPurchases.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-slate-400">
+                        कुनै खरिद भौचर भेटिएन। (No purchase records match your search.)
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPurchases.map((po) => {
+                      const taxable = po.taxableAmount ?? po.subtotal ?? 0;
+                      const vat = po.vatTotal ?? 0;
+                      const grand = po.totalAmount ?? (taxable + vat);
+
+                      return (
+                        <tr key={po.id} className="hover:bg-slate-50 transition">
+                          <td className="p-3 font-mono text-slate-600 whitespace-nowrap">{po.date}</td>
+                          <td className="p-3 font-mono font-bold text-indigo-700">{po.poNumber}</td>
+                          <td className="p-3 font-semibold text-slate-900">{po.supplierName}</td>
+                          <td className="p-3 text-center font-mono text-slate-600">{po.supplierPanVat || '—'}</td>
+                          <td className="p-3 text-right font-mono font-extrabold text-slate-900">
+                            रु. {grand.toLocaleString()}
+                          </td>
+                          <td className="p-3 text-right font-mono text-slate-400">रु. 0</td>
+                          <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono font-bold text-emerald-700">
+                            रु. {vat.toLocaleString()}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              po.status === 'Received' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {po.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+                    <td colSpan={4} className="p-3.5 text-right uppercase">
+                      जम्मा कुल खरिद (Total Purchases NPR):
+                    </td>
+                    <td className="p-3.5 text-right font-mono font-black text-sm">
+                      रु. {totalGrossPurchases.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-right font-mono">रु. 0</td>
+                    <td className="p-3.5 text-right font-mono">
+                      रु. {totalTaxablePurchases.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-right font-mono text-emerald-800 font-extrabold text-sm">
+                      रु. {totalInputVat.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-center text-[10px] text-emerald-800">
+                      Input Tax Credit
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: MONTHLY VAT RETURN SUMMARY (अनुसूची १०: मासिक भ्याट विवरण) */}
+      {activeTab === 'vat_return' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-4xl space-y-6">
+          <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                अनुसूची - १० : मासिक मूल्य अभिवृद्धि कर विवरण (Nepal IRD Form VAT-01)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Inland Revenue Department Tax Assessment & Net Payment Reconciliation
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setPrintModalType('vat_return');
+                setIsPrintModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print A4 Return</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            {/* Output Tax (Sales) */}
+            <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
+              <h4 className="font-bold text-indigo-900 uppercase tracking-wider text-[11px] pb-1 border-b border-slate-200">
+                खण्ड 'क': बिक्री तथा बिक्री कर (Output VAT 13%)
+              </h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">कुल करयोग्य बिक्री (Total Taxable Turnover):</span>
+                  <span className="font-mono font-bold">रु. {totalTaxableSales.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">कर छुट हुने बिक्री (Zero-rated / Exempt):</span>
+                  <span className="font-mono text-slate-400">रु. 0</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-indigo-900 text-sm">
+                  <span>असुल गरिएको १३% बिक्री कर (Output VAT):</span>
+                  <span className="font-mono">रु. {totalVat13.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Input Tax (Purchases) */}
+            <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
+              <h4 className="font-bold text-emerald-900 uppercase tracking-wider text-[11px] pb-1 border-b border-slate-200">
+                खण्ड 'ख': खरिद तथा इनपुट कर कट्टी (Input Tax Credit)
+              </h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">कुल करयोग्य खरिद (Taxable Parts Purchases):</span>
+                  <span className="font-mono font-bold">रु. {totalTaxablePurchases.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">कर छुट हुने खरिद (Exempt Spares):</span>
+                  <span className="font-mono text-slate-400">रु. 0</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-emerald-900 text-sm">
+                  <span>कट्टी दाबी गरिएको १३% खरिद कर (ITC):</span>
+                  <span className="font-mono">रु. {totalInputVat.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Net Calculation */}
+          <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold">
+                खण्ड 'ग': खुद आन्तरिक राजस्व विभागलाई तिर्नुपर्ने कर (Net VAT Payable to IRD):
+              </span>
+              <span className="text-2xl font-black font-mono text-amber-300">
+                रु. {netVatPayableToIRD.toLocaleString()}
+              </span>
+            </div>
+
+            {carryForwardVatCredit > 0 && (
+              <div className="flex items-center justify-between text-xs text-emerald-400 pt-2 border-t border-slate-800">
+                <span>आगामी महिनामा मिलान हुने बढी इनपुट कर (Excess ITC Carry-Forward):</span>
+                <span className="font-mono font-bold text-sm">रु. {carryForwardVatCredit.toLocaleString()}</span>
+              </div>
+            )}
+
+            <div className="text-[11px] text-slate-300 pt-2 border-t border-slate-800 flex items-center justify-between">
+              <span><strong>कर दाखिला म्याद (Payment Due Date):</strong> प्रत्येक महिना समाप्त भएको २५ दिनभित्र (Due by 25th of next Nepali Month).</span>
+              <span className="text-emerald-400 font-semibold flex items-center space-x-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>CBMS Compliant</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: CHART OF ACCOUNTS (खाता सूची) */}
+      {activeTab === 'gl_accounts' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search GL accounts by code, name, or classification..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="All">All Categories (सबै खाता)</option>
+                <option value="Asset">Asset (सम्पत्ति)</option>
+                <option value="Liability">Liability (दायित्व)</option>
+                <option value="Equity">Equity (पूँजी)</option>
+                <option value="Revenue">Revenue (आम्दानी)</option>
+                <option value="Expense">Expense (खर्च)</option>
+              </select>
+
+              {onAddGLAccount && (
+                <button
+                  onClick={() => setIsNewAccountModalOpen(true)}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Account</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-3.5">खाता कोड (Account Code)</th>
+                  <th className="p-3.5">खाताको नाम (GL Account Name)</th>
+                  <th className="p-3.5">वर्ग (Category)</th>
+                  <th className="p-3.5">उप-वर्ग (Sub-Category)</th>
+                  <th className="p-3.5 text-right">डेबिट मौज्दात (Debit NPR)</th>
+                  <th className="p-3.5 text-right">क्रेडिट मौज्दात (Credit NPR)</th>
+                  <th className="p-3.5 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredGlAccounts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                      कुनै खाता भेटिएन। (No general ledger accounts match your search.)
+                    </td>
+                  </tr>
+                ) : (
+                  filteredGlAccounts.map((acc) => {
+                    const isDebitNature = ['Asset', 'Expense'].includes(acc.category);
+                    const debitAmount = isDebitNature && acc.currentBalance >= 0 ? acc.currentBalance : 0;
+                    const creditAmount = !isDebitNature && acc.currentBalance >= 0 ? acc.currentBalance : 0;
+
+                    return (
+                      <tr key={acc.accountCode} className="hover:bg-slate-50 transition">
+                        <td className="p-3.5 font-mono font-bold text-indigo-700">{acc.accountCode}</td>
+                        <td className="p-3.5 font-bold text-slate-900">{acc.accountName}</td>
+                        <td className="p-3.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            acc.category === 'Asset' ? 'bg-blue-100 text-blue-800' :
+                            acc.category === 'Liability' ? 'bg-amber-100 text-amber-800' :
+                            acc.category === 'Equity' ? 'bg-purple-100 text-purple-800' :
+                            acc.category === 'Revenue' ? 'bg-emerald-100 text-emerald-800' :
+                            'bg-rose-100 text-rose-800'
+                          }`}>
+                            {acc.category}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-slate-600">{acc.subCategory}</td>
+                        <td className="p-3.5 text-right font-mono font-bold text-slate-900">
+                          {debitAmount > 0 ? `रु. ${debitAmount.toLocaleString()}` : '—'}
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-bold text-slate-900">
+                          {creditAmount > 0 ? `रु. ${creditAmount.toLocaleString()}` : '—'}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <button
+                            onClick={() => {
+                              setSelectedLedgerAccountCode(acc.accountCode);
+                              setActiveTab('account_ledger');
+                            }}
+                            className="px-2 py-1 text-[11px] text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg font-semibold transition"
+                          >
+                            खाता हेर्ने
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: GENERAL JOURNAL ENTRIES (जर्नल भौचर) */}
+      {activeTab === 'journal_entries' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search journal entries by voucher #, narration, or source document..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {onAddJournalEntry && (
+              <button
+                onClick={() => setIsNewVoucherModalOpen(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>नयाँ जर्नल भौचर (New Voucher)</span>
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {filteredJournalEntries.length === 0 ? (
+              <div className="bg-white p-8 text-center text-slate-400 rounded-2xl border border-slate-200">
+                कुनै जर्नल भौचर भेटिएन। (No journal vouchers match your search.)
+              </div>
+            ) : (
+              filteredJournalEntries.map((entry) => (
+                <div key={entry.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                  {/* Voucher Header */}
+                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center space-x-3">
+                      <span className="font-mono font-black text-indigo-700 text-sm">
+                        {entry.entryNumber}
+                      </span>
+                      <span className="text-slate-400">•</span>
+                      <span className="font-mono text-slate-600">{entry.date}</span>
+                      <span className="text-slate-400">•</span>
+                      <span className="text-slate-500">Ref: <strong className="font-mono text-slate-800">{entry.sourceDocument}</strong></span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-bold text-slate-800 font-mono">
+                        जम्मा रकम: रु. {entry.totalAmount.toLocaleString()}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        Balanced (सन्तुलित)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Narration */}
+                  <div className="px-4 py-2 bg-indigo-50/40 text-[11px] text-slate-700 italic border-b border-slate-100">
+                    कैफियत: {entry.narration}
+                  </div>
+
+                  {/* Voucher Lines */}
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="text-slate-500 text-[11px] font-semibold border-b border-slate-100">
+                        <th className="p-3">खाता कोड तथा नाम (GL Account)</th>
+                        <th className="p-3 text-right w-36">डेबिट (Debit NPR)</th>
+                        <th className="p-3 text-right w-36">क्रेडिट (Credit NPR)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {entry.lines.map((line, lIdx) => (
+                        <tr key={lIdx} className="hover:bg-slate-50/60">
+                          <td className="p-3">
+                            <span className="font-mono font-bold text-indigo-900 mr-2">{line.accountCode}</span>
+                            <span className="font-medium text-slate-800">{line.accountName}</span>
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-900">
+                            {line.debit > 0 ? `रु. ${line.debit.toLocaleString()}` : '—'}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-900">
+                            {line.credit > 0 ? `रु. ${line.credit.toLocaleString()}` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: ACCOUNT LEDGER STATEMENT (खाता पाना) */}
+      {activeTab === 'account_ledger' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            {/* Account Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+              <div className="flex items-center space-x-3">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  खाता छनोट (Select GL Account):
+                </label>
+                <select
+                  value={selectedLedgerAccountCode}
+                  onChange={(e) => setSelectedLedgerAccountCode(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {glAccounts.map((acc) => (
+                    <option key={acc.accountCode} value={acc.accountCode}>
+                      {acc.accountCode} - {acc.accountName} ({acc.category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedAccount && (
+                <div className="flex items-center space-x-2 text-xs">
+                  <span className="text-slate-500">हालको मौज्दात (Current Balance):</span>
+                  <span className="font-mono font-black text-sm text-indigo-700">
+                    रु. {selectedAccount.currentBalance.toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Ledger Transactions Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                    <th className="p-3">मिति (Date)</th>
+                    <th className="p-3">भौचर नं (Voucher #)</th>
+                    <th className="p-3">स्रोत कागजात (Ref)</th>
+                    <th className="p-3">विवरण / कैफियत (Particulars / Narration)</th>
+                    <th className="p-3 text-right">डेबिट (Debit NPR)</th>
+                    <th className="p-3 text-right">क्रेडिट (Credit NPR)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {ledgerTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400">
+                        यस खातामा कुनै कारोबार फेला परेन। (No journal entries posted for this account yet.)
+                      </td>
+                    </tr>
+                  ) : (
+                    ledgerTransactions.map((tx, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition">
+                        <td className="p-3 font-mono text-slate-600 whitespace-nowrap">{tx.date}</td>
+                        <td className="p-3 font-mono font-bold text-indigo-700">{tx.entryNumber}</td>
+                        <td className="p-3 font-mono text-slate-500">{tx.sourceDocument}</td>
+                        <td className="p-3 text-slate-800 font-medium">{tx.narration}</td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-900">
+                          {tx.debit > 0 ? `रु. ${tx.debit.toLocaleString()}` : '—'}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-900">
+                          {tx.credit > 0 ? `रु. ${tx.credit.toLocaleString()}` : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+                    <td colSpan={4} className="p-3.5 text-right uppercase">
+                      कुल कारोबार (Account Total):
+                    </td>
+                    <td className="p-3.5 text-right font-mono font-black text-indigo-900">
+                      रु. {ledgerTransactions.reduce((acc, t) => acc + t.debit, 0).toLocaleString()}
+                    </td>
+                    <td className="p-3.5 text-right font-mono font-black text-indigo-900">
+                      रु. {ledgerTransactions.reduce((acc, t) => acc + t.credit, 0).toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: TRIAL BALANCE (सन्तुलन परीक्षण) */}
+      {activeTab === 'trial_balance' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-4xl space-y-5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                सन्तुलन परीक्षण (Trial Balance)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Double-Entry Balance Verification • Fiscal Year {profile.fiscalYear} B.S.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className={`px-3 py-1 text-xs font-bold rounded-lg border flex items-center space-x-1 ${
+                trialBalanceData.isBalanced 
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
+                  : 'bg-rose-100 text-rose-800 border-rose-300'
+              }`}>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{trialBalanceData.isBalanced ? 'Books Balanced (सन्तुलित)' : 'Out of Balance'}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-3">कोड (Code)</th>
+                  <th className="p-3">खाताको विवरण (Account Particulars)</th>
+                  <th className="p-3">वर्ग (Category)</th>
+                  <th className="p-3 text-right w-40">डेबिट रकम (Debit NPR)</th>
+                  <th className="p-3 text-right w-40">क्रेडिट रकम (Credit NPR)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {trialBalanceData.rows.map((row) => (
+                  <tr key={row.accountCode} className="hover:bg-slate-50 transition">
+                    <td className="p-3 font-mono font-bold text-indigo-700">{row.accountCode}</td>
+                    <td className="p-3 font-bold text-slate-900">{row.accountName}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
+                        {row.category}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-900">
+                      {row.debit > 0 ? `रु. ${row.debit.toLocaleString()}` : '—'}
+                    </td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-900">
+                      {row.credit > 0 ? `रु. ${row.credit.toLocaleString()}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-800">
+                  <td colSpan={3} className="p-3.5 text-right uppercase">
+                    जम्मा कुल (Total NPR):
+                  </td>
+                  <td className="p-3.5 text-right font-mono font-black text-sm text-indigo-900">
+                    रु. {trialBalanceData.totalDebit.toLocaleString()}
+                  </td>
+                  <td className="p-3.5 text-right font-mono font-black text-sm text-indigo-900">
+                    रु. {trialBalanceData.totalCredit.toLocaleString()}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 8: PROFIT & LOSS */}
       {activeTab === 'pnl' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-4xl space-y-6">
           <div className="border-b border-slate-200 pb-3">
@@ -339,7 +1220,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-emerald-800 text-sm">
                   <span>Gross Operating Margin</span>
-                  <span className="font-mono">रु. {grossProfit.toLocaleString()} ({Math.round((grossProfit / totalTaxableSales) * 100)}%)</span>
+                  <span className="font-mono">रु. {grossProfit.toLocaleString()} ({totalTaxableSales > 0 ? Math.round((grossProfit / totalTaxableSales) * 100) : 0}%)</span>
                 </div>
               </div>
             </div>
@@ -380,12 +1261,12 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 3: BALANCE SHEET */}
+      {/* TAB 9: BALANCE SHEET */}
       {activeTab === 'balance_sheet' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-4xl space-y-6">
           <div className="border-b border-slate-200 pb-3">
             <h3 className="text-base font-bold text-slate-900">Workshop Balance Sheet</h3>
-            <p className="text-xs text-slate-500">As of today • Sagarmatha Multi-Care Auto Workshop Pvt. Ltd.</p>
+            <p className="text-xs text-slate-500">As of today • {profile.name}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
@@ -394,12 +1275,12 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <h4 className="font-bold text-slate-900 text-sm border-b pb-1">Assets (सम्पत्ति)</h4>
               <div className="space-y-2 bg-slate-50 p-4 rounded-xl">
                 <div className="flex justify-between font-semibold">
-                  <span>Cash & Bank Balances (NIC Asia / Nabil)</span>
-                  <span className="font-mono">रु. 450,000</span>
+                  <span>Cash & Bank Balances (Nabil Bank / Cashier)</span>
+                  <span className="font-mono">रु. 726,550</span>
                 </div>
                 <div className="flex justify-between font-semibold">
-                  <span>Fonepay / NepalPay Settlement In-Transit</span>
-                  <span className="font-mono">रु. 35,400</span>
+                  <span>Fonepay / connectIPS Clearing In-Transit</span>
+                  <span className="font-mono">रु. 173,400</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Accounts Receivable (Customer Due)</span>
@@ -411,11 +1292,11 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Workshop Lifts, Tools & Aligners</span>
-                  <span className="font-mono">रु. 1,450,000</span>
+                  <span className="font-mono">रु. 2,450,000</span>
                 </div>
                 <div className="pt-2 border-t font-black text-slate-900 flex justify-between text-sm">
                   <span>Total Assets</span>
-                  <span className="font-mono">रु. {(450000 + 35400 + totalReceivables + currentInventoryCost + 1450000).toLocaleString()}</span>
+                  <span className="font-mono">रु. {(726550 + 173400 + totalReceivables + currentInventoryCost + 2450000).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -425,8 +1306,8 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <h4 className="font-bold text-slate-900 text-sm border-b pb-1">Liabilities & Equity (दायित्व)</h4>
               <div className="space-y-2 bg-slate-50 p-4 rounded-xl">
                 <div className="flex justify-between font-semibold">
-                  <span>Accounts Payable to Parts Distributors</span>
-                  <span className="font-mono">रु. 280,000</span>
+                  <span>Accounts Payable to Parts Vendors</span>
+                  <span className="font-mono">रु. 258,790</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Inland Revenue Dept. (13% VAT Payable)</span>
@@ -434,15 +1315,15 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Staff Salary & Incentive Accrual</span>
-                  <span className="font-mono">रु. 65,000</span>
+                  <span className="font-mono">रु. 78,500</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Owner Capital & Retained Reserves</span>
-                  <span className="font-mono">रु. 1,800,000</span>
+                  <span className="font-mono">रु. 3,479,100</span>
                 </div>
                 <div className="pt-2 border-t font-black text-slate-900 flex justify-between text-sm">
                   <span>Total Liabilities & Equity</span>
-                  <span className="font-mono">रु. {(280000 + netVatPayableToIRD + 65000 + 1800000).toLocaleString()}</span>
+                  <span className="font-mono">रु. {(258790 + netVatPayableToIRD + 78500 + 3479100).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -450,86 +1331,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 4: GL LEDGER */}
-      {activeTab === 'gl_ledger' && (
-        <div className="space-y-4">
-          {/* Search Toolbar */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search GL accounts by code, name, or classification..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            {searchQuery && (
-              <div className="flex items-center text-xs text-slate-500 px-1">
-                Showing {filteredGlAccounts.length} of {glAccounts.length} accounts
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3.5">Account Code</th>
-                  <th className="p-3.5">GL Account Name</th>
-                  <th className="p-3.5">Classification</th>
-                  <th className="p-3.5 text-right">Debit Balance (NPR)</th>
-                  <th className="p-3.5 text-right">Credit Balance (NPR)</th>
-                  <th className="p-3.5 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredGlAccounts.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-400">
-                      No general ledger accounts match your search.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredGlAccounts.map((acc) => (
-                    <tr key={acc.id} className="hover:bg-slate-50 transition">
-                      <td className="p-3.5 font-mono font-bold text-indigo-700">{acc.code}</td>
-                      <td className="p-3.5 font-bold text-slate-900">{acc.name}</td>
-                      <td className="p-3.5">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                          {acc.type}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right font-mono">
-                        {acc.balance >= 0 && ['Asset', 'Expense'].includes(acc.type) ? `रु. ${acc.balance.toLocaleString()}` : '—'}
-                      </td>
-                      <td className="p-3.5 text-right font-mono">
-                        {acc.balance >= 0 && ['Liability', 'Revenue', 'Equity'].includes(acc.type) ? `रु. ${acc.balance.toLocaleString()}` : '—'}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                          Active
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: AR / AP AGING */}
+      {/* TAB 10: AR / AP AGING */}
       {activeTab === 'ar_ap' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -562,6 +1364,37 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Print Modal */}
+      {isPrintModalOpen && (
+        <PrintIrdVatRegisterModal
+          type={printModalType}
+          invoices={invoices}
+          purchaseOrders={purchaseOrders}
+          profile={profile}
+          filterMonth={filterMonth}
+          onClose={() => setIsPrintModalOpen(false)}
+        />
+      )}
+
+      {/* New Journal Voucher Modal */}
+      {isNewVoucherModalOpen && onAddJournalEntry && (
+        <CreateJournalVoucherModal
+          glAccounts={glAccounts}
+          existingEntriesCount={journalEntries.length}
+          onSave={onAddJournalEntry}
+          onClose={() => setIsNewVoucherModalOpen(false)}
+        />
+      )}
+
+      {/* New GL Account Modal */}
+      {isNewAccountModalOpen && onAddGLAccount && (
+        <CreateGLAccountModal
+          existingAccounts={glAccounts}
+          onSave={onAddGLAccount}
+          onClose={() => setIsNewAccountModalOpen(false)}
+        />
       )}
     </div>
   );

@@ -41,7 +41,9 @@ import {
   PartsQuotation,
   PartsSalesOrder,
   PartsSalesReturn,
-  GatePass
+  GatePass,
+  GLAccount,
+  GLJournalEntry
 } from './types';
 
 export default function App() {
@@ -710,6 +712,40 @@ export default function App() {
     });
   };
 
+  const handleAddJournalEntry = (newEntry: GLJournalEntry) => {
+    const updatedEntries = [newEntry, ...(db.journalEntries || [])];
+    
+    // Auto-update GLAccount balances based on the double-entry debits and credits
+    const accountBalances: Record<string, { debit: number; credit: number }> = {};
+    newEntry.lines.forEach(line => {
+      if (!accountBalances[line.accountCode]) {
+        accountBalances[line.accountCode] = { debit: 0, credit: 0 };
+      }
+      accountBalances[line.accountCode].debit += line.debit;
+      accountBalances[line.accountCode].credit += line.credit;
+    });
+
+    const updatedAccounts = (db.glAccounts || []).map(acc => {
+      const change = accountBalances[acc.accountCode];
+      if (!change) return acc;
+      if (['Asset', 'Expense'].includes(acc.category)) {
+        return { ...acc, currentBalance: acc.currentBalance + (change.debit - change.credit) };
+      } else {
+        return { ...acc, currentBalance: acc.currentBalance + (change.credit - change.debit) };
+      }
+    });
+
+    updateDb({
+      journalEntries: updatedEntries,
+      glAccounts: updatedAccounts
+    });
+  };
+
+  const handleAddGLAccount = (newAccount: GLAccount) => {
+    const updatedAccounts = [...(db.glAccounts || []), newAccount];
+    updateDb({ glAccounts: updatedAccounts });
+  };
+
   const handleCreateSalesReturn = (returnData: PartsSalesReturn) => {
     const updatedReturns = [returnData, ...(db.partsSalesReturns || [])];
 
@@ -1046,11 +1082,14 @@ export default function App() {
           {/* TAB 8: Complete Accounting, Nepal VAT & P&L */}
           {activeTab === 'accounting' && (
             <AccountingReports
-              invoices={db.invoices}
-              parts={db.parts}
+              invoices={db.invoices || []}
+              parts={db.parts || []}
               profile={db.profile}
-              glAccounts={db.glAccounts}
-              journalEntries={db.journalEntries}
+              glAccounts={db.glAccounts || []}
+              journalEntries={db.journalEntries || []}
+              purchaseOrders={db.purchaseOrders || []}
+              onAddJournalEntry={handleAddJournalEntry}
+              onAddGLAccount={handleAddGLAccount}
               userRole={currentUser.role}
             />
           )}

@@ -929,15 +929,207 @@ const INITIAL_GL_ACCOUNTS: GLAccount[] = [
   { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', category: 'Asset', subCategory: 'Bank Accounts', currentBalance: 684200 },
   { accountCode: '1030', accountName: 'Fonepay Settlement Clearing Account', category: 'Asset', subCategory: 'Payment Gateway Clearing', currentBalance: 124500 },
   { accountCode: '1040', accountName: 'NCHL NepalPay / connectIPS Clearing', category: 'Asset', subCategory: 'Payment Gateway Clearing', currentBalance: 48900 },
-  { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', category: 'Asset', subCategory: 'Inventory', currentBalance: 342000 },
+  { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', category: 'Asset', subCategory: 'Inventory', currentBalance: 425000 },
+  { accountCode: '1250', accountName: 'Nepal IRD VAT Input Tax Credit (13%)', category: 'Asset', subCategory: 'Duties & Taxes', currentBalance: 10790 },
   { accountCode: '1500', accountName: 'Workshop Equipment (Lifts, Paint Booth)', category: 'Asset', subCategory: 'Fixed Assets', currentBalance: 2450000 },
-  { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', category: 'Liability', subCategory: 'Current Liabilities', currentBalance: 165000 },
-  { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', category: 'Liability', subCategory: 'Duties & Taxes', currentBalance: 48950 },
-  { accountCode: '4010', accountName: 'Service Labor Revenue', category: 'Revenue', subCategory: 'Operating Revenue', currentBalance: 382000 },
-  { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', category: 'Revenue', subCategory: 'Operating Revenue', currentBalance: 495000 },
+  { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', category: 'Liability', subCategory: 'Current Liabilities', currentBalance: 258790 },
+  { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', category: 'Liability', subCategory: 'Duties & Taxes', currentBalance: 50705 },
+  { accountCode: '3010', accountName: "Owner's Capital & Retained Reserves", category: 'Equity', subCategory: 'Equity', currentBalance: 3479100 },
+  { accountCode: '4010', accountName: 'Service Labor Revenue', category: 'Revenue', subCategory: 'Operating Revenue', currentBalance: 390500 },
+  { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', category: 'Revenue', subCategory: 'Operating Revenue', currentBalance: 500000 },
   { accountCode: '5010', accountName: 'Cost of Spare Parts Sold (COGS)', category: 'Expense', subCategory: 'Direct Cost', currentBalance: 298000 },
   { accountCode: '5020', accountName: 'Direct Technician Labor Commission', category: 'Expense', subCategory: 'Payroll', currentBalance: 78500 },
-  { accountCode: '6010', accountName: 'Workshop Electricity & Rent', category: 'Expense', subCategory: 'Overheads', currentBalance: 85000 }
+  { accountCode: '6010', accountName: 'Workshop Electricity & Rent', category: 'Expense', subCategory: 'Overheads', currentBalance: 107000 }
+];
+
+const INITIAL_PURCHASE_ORDERS: PurchaseOrder[] = [
+  {
+    id: 'PO-81-001',
+    poNumber: 'PO-2081-001',
+    date: '2026-09-08',
+    expectedDeliveryDate: '2026-09-10',
+    supplierName: 'Continental Spares Trading Pvt. Ltd.',
+    supplierPanVat: '301298451',
+    supplierAddress: 'Teku-12, Kathmandu',
+    supplierContact: '+977-1-4245678',
+    status: 'Received',
+    paymentTerms: 'Credit 30 Days',
+    subtotal: 48000,
+    taxableAmount: 48000,
+    vatTotal: 6240,
+    totalAmount: 54240,
+    notes: 'OEM brake pad sets and oil filters for Creta and Hilux fleet',
+    items: [
+      {
+        partId: 'PART-02',
+        partNumber: 'SKU-BRK-58101',
+        partName: 'Front Ceramic Brake Pad Set (Brembo Spec)',
+        orderedQuantity: 10,
+        receivedQuantity: 10,
+        unitCost: 3200,
+        vatRate: 13,
+        vatAmount: 4160,
+        lineTotal: 36160
+      },
+      {
+        partId: 'PART-01',
+        partNumber: 'SKU-FLT-26300',
+        partName: 'OEM Genuine Spin-on Engine Oil Filter',
+        orderedQuantity: 20,
+        receivedQuantity: 20,
+        unitCost: 800,
+        vatRate: 13,
+        vatAmount: 2080,
+        lineTotal: 18080
+      }
+    ]
+  },
+  {
+    id: 'PO-81-002',
+    poNumber: 'PO-2081-002',
+    date: '2026-09-12',
+    expectedDeliveryDate: '2026-09-14',
+    supplierName: 'Pioneer Motocorp Spares Distributor',
+    supplierPanVat: '602384912',
+    supplierAddress: 'Satdobato, Lalitpur',
+    supplierContact: '+977-1-5532190',
+    status: 'Received',
+    paymentTerms: 'Cheque on Delivery',
+    subtotal: 35000,
+    taxableAmount: 35000,
+    vatTotal: 4550,
+    totalAmount: 39550,
+    notes: 'Mobil 1 & Castrol Edge 20L bulk workshop drums',
+    items: [
+      {
+        partId: 'PART-03',
+        partNumber: 'SKU-LUB-M1-5W30',
+        partName: 'Mobil 1 ESP 5W-30 Full Synthetic Engine Oil',
+        orderedQuantity: 25,
+        receivedQuantity: 25,
+        unitCost: 1400,
+        vatRate: 13,
+        vatAmount: 4550,
+        lineTotal: 39550
+      }
+    ]
+  },
+  {
+    id: 'PO-81-003',
+    poNumber: 'PO-2081-003',
+    date: '2026-09-18',
+    expectedDeliveryDate: '2026-09-22',
+    supplierName: 'Apex Automotive Importers Nepal',
+    supplierPanVat: '601192834',
+    supplierAddress: 'Balkhu Ring Road, Kathmandu',
+    supplierContact: '+977-1-4289012',
+    status: 'Ordered',
+    paymentTerms: 'Credit 15 Days',
+    subtotal: 62000,
+    taxableAmount: 62000,
+    vatTotal: 8060,
+    totalAmount: 70060,
+    notes: 'Monroe front & rear suspension struts',
+    items: [
+      {
+        partId: 'PART-04',
+        partNumber: 'SKU-SUS-48510',
+        partName: 'Heavy-Duty Gas Strut Shock Absorber (Monroe Spec)',
+        orderedQuantity: 10,
+        receivedQuantity: 0,
+        unitCost: 6200,
+        vatRate: 13,
+        vatAmount: 8060,
+        lineTotal: 70060
+      }
+    ]
+  }
+];
+
+const INITIAL_JOURNAL_ENTRIES: GLJournalEntry[] = [
+  {
+    id: 'JV-81-001',
+    entryNumber: 'JV-2081-001',
+    date: '2026-09-01',
+    sourceDocument: 'OB-2081/82',
+    narration: 'Opening balances posted for Fiscal Year 2081/2082 as per audited financial statements',
+    totalAmount: 3693050,
+    lines: [
+      { accountCode: '1010', accountName: 'Cash in Hand (Cashier Drawer)', debit: 42350, credit: 0 },
+      { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', debit: 684200, credit: 0 },
+      { accountCode: '1030', accountName: 'Fonepay Settlement Clearing Account', debit: 124500, credit: 0 },
+      { accountCode: '1040', accountName: 'NCHL NepalPay / connectIPS Clearing', debit: 48900, credit: 0 },
+      { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', debit: 342000, credit: 0 },
+      { accountCode: '1500', accountName: 'Workshop Equipment (Lifts, Paint Booth)', debit: 2450000, credit: 0 },
+      { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', debit: 0, credit: 165000 },
+      { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', debit: 0, credit: 48950 },
+      { accountCode: '3010', accountName: "Owner's Capital & Retained Reserves", debit: 0, credit: 3479100 }
+    ]
+  },
+  {
+    id: 'JV-81-002',
+    entryNumber: 'JV-2081-002',
+    date: '2026-09-08',
+    sourceDocument: 'PO-2081-001',
+    narration: 'Procurement of OEM brake pad sets and filters from Continental Spares Trading',
+    totalAmount: 54240,
+    lines: [
+      { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', debit: 48000, credit: 0 },
+      { accountCode: '1250', accountName: 'Nepal IRD VAT Input Tax Credit (13%)', debit: 6240, credit: 0 },
+      { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', debit: 0, credit: 54240 }
+    ]
+  },
+  {
+    id: 'JV-81-003',
+    entryNumber: 'JV-2081-003',
+    date: '2026-09-10',
+    sourceDocument: 'INV-2081-0019',
+    narration: 'Service Job Card billing for vehicle BA-2-KHA-9082 (Labor + Spares + 13% VAT)',
+    totalAmount: 15255,
+    lines: [
+      { accountCode: '1010', accountName: 'Cash in Hand (Cashier Drawer)', debit: 15255, credit: 0 },
+      { accountCode: '4010', accountName: 'Service Labor Revenue', debit: 0, credit: 8500 },
+      { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', debit: 0, credit: 5000 },
+      { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', debit: 0, credit: 1755 }
+    ]
+  },
+  {
+    id: 'JV-81-004',
+    entryNumber: 'JV-2081-004',
+    date: '2026-09-12',
+    sourceDocument: 'PO-2081-002',
+    narration: 'Procurement of Mobil 1 & Castrol bulk workshop oil drums from Pioneer Motocorp',
+    totalAmount: 39550,
+    lines: [
+      { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', debit: 35000, credit: 0 },
+      { accountCode: '1250', accountName: 'Nepal IRD VAT Input Tax Credit (13%)', debit: 4550, credit: 0 },
+      { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', debit: 0, credit: 39550 }
+    ]
+  },
+  {
+    id: 'JV-81-005',
+    entryNumber: 'JV-2081-005',
+    date: '2026-09-14',
+    sourceDocument: 'BANK-TRF-0914',
+    narration: 'Payment of monthly workshop rent for Sukedhara facility via Nabil Bank Cheque',
+    totalAmount: 85000,
+    lines: [
+      { accountCode: '6010', accountName: 'Workshop Electricity & Rent', debit: 85000, credit: 0 },
+      { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', debit: 0, credit: 85000 }
+    ]
+  },
+  {
+    id: 'JV-81-006',
+    entryNumber: 'JV-2081-006',
+    date: '2026-09-15',
+    sourceDocument: 'NEA-BILL-BHD-81',
+    narration: 'Payment of Nepal Electricity Authority (NEA) 3-phase workshop industrial power bill',
+    totalAmount: 22000,
+    lines: [
+      { accountCode: '6010', accountName: 'Workshop Electricity & Rent', debit: 22000, credit: 0 },
+      { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', debit: 0, credit: 22000 }
+    ]
+  }
 ];
 
 const INITIAL_PARTS_QUOTATIONS: PartsQuotation[] = [
@@ -1125,7 +1317,7 @@ export class StorageService {
       warrantyRecords: INITIAL_WARRANTY_RECORDS,
       warrantyClaims: INITIAL_WARRANTY_CLAIMS,
       glAccounts: INITIAL_GL_ACCOUNTS,
-      journalEntries: [],
+      journalEntries: INITIAL_JOURNAL_ENTRIES,
       vatLedger: [],
       insuranceClaims: [
         {
@@ -1143,7 +1335,7 @@ export class StorageService {
           status: 'Approval Received'
         }
       ],
-      purchaseOrders: [],
+      purchaseOrders: INITIAL_PURCHASE_ORDERS,
       lastCloudSync: new Date().toISOString(),
       isCloudSynced: true
     };
@@ -1289,10 +1481,10 @@ export class StorageService {
       warrantyRecords: Array.isArray(parsed.warrantyRecords) && parsed.warrantyRecords.length > 0 ? parsed.warrantyRecords : fallback.warrantyRecords,
       warrantyClaims: Array.isArray(parsed.warrantyClaims) && parsed.warrantyClaims.length > 0 ? parsed.warrantyClaims : fallback.warrantyClaims,
       glAccounts: Array.isArray(parsed.glAccounts) && parsed.glAccounts.length > 0 ? parsed.glAccounts : fallback.glAccounts,
-      journalEntries: Array.isArray(parsed.journalEntries) ? parsed.journalEntries : [],
+      journalEntries: Array.isArray(parsed.journalEntries) && parsed.journalEntries.length > 0 ? parsed.journalEntries : INITIAL_JOURNAL_ENTRIES,
       vatLedger: Array.isArray(parsed.vatLedger) ? parsed.vatLedger : [],
       insuranceClaims: Array.isArray(parsed.insuranceClaims) && parsed.insuranceClaims.length > 0 ? parsed.insuranceClaims : fallback.insuranceClaims,
-      purchaseOrders: Array.isArray(parsed.purchaseOrders) ? parsed.purchaseOrders : [],
+      purchaseOrders: Array.isArray(parsed.purchaseOrders) && parsed.purchaseOrders.length > 0 ? parsed.purchaseOrders : INITIAL_PURCHASE_ORDERS,
       lastCloudSync: parsed.lastCloudSync || new Date().toISOString(),
       isCloudSynced: typeof parsed.isCloudSynced === 'boolean' ? parsed.isCloudSynced : true
     };

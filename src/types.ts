@@ -667,6 +667,7 @@ export interface WarrantyClaim {
 
 // Accounting & General Ledger (Business Central Standard)
 export interface GLAccount {
+  id?: string;
   accountCode: string; // e.g. "1010", "4010"
   accountName: string;
   category: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
