@@ -734,3 +734,46 @@ export interface GatePass {
   paymentStatus?: string;
 }
 
+// Daybook Register Types (दैनिक खाता)
+export interface DaybookTransaction {
+  id: string;
+  time: string;
+  date: string;
+  bsDate?: string;
+  type: 'Tax Invoice' | 'OTC Counter Sale' | 'Payment Receipt' | 'Cashless Insurance Invoice' | 'Credit Note';
+  referenceNumber: string;
+  particulars: string;
+  customerName: string;
+  customerPan?: string;
+  vehicleReg?: string;
+  jobCardNumber?: string;
+  paymentMode: string;
+  paymentReference?: string;
+  taxableAmount: number;
+  vatAmount: number;
+  grossTotal: number;
+  amountReceived: number;
+  balanceDue: number;
+  irdCbmsStatus: 'Synced' | 'Pending' | 'Exempt';
+  cashierName?: string;
+}
+
+// Master Settings Theme Customizer Types
+export type ThemeColorPreset = 'indigo' | 'blue' | 'emerald' | 'crimson' | 'amber' | 'purple' | 'cyan' | 'slate';
+export type ThemeMode = 'light' | 'dark' | 'slate' | 'warm';
+export type ThemeFont = 'Plus Jakarta Sans' | 'Outfit' | 'Inter' | 'DM Sans' | 'JetBrains Mono' | 'Noto Sans Devanagari';
+export type ThemeIconStyle = 'stroke' | 'badge' | 'minimal' | 'bold';
+export type ThemeBorderRadius = 'rounded-md' | 'rounded-xl' | 'rounded-2xl';
+export type ThemeSidebarStyle = 'slate-dark' | 'navy-dark' | 'charcoal-dark' | 'clean-light';
+
+export interface AppThemeConfig {
+  preset: string;
+  primaryColor: ThemeColorPreset;
+  mode: ThemeMode;
+  fontFamily: ThemeFont;
+  iconStyle: ThemeIconStyle;
+  borderRadius: ThemeBorderRadius;
+  sidebarStyle: ThemeSidebarStyle;
+  fontSize: 'compact' | 'standard' | 'spacious';
+}
+

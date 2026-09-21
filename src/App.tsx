@@ -51,6 +51,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => storage.isAuthenticated());
   const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [printGatePass, setPrintGatePass] = useState<GatePass | null>(null);
@@ -920,38 +921,51 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900 font-sans pb-24 md:pb-12">
-      {/* Top Universal Navbar */}
-      <Navbar
+    <div className="min-h-screen bg-slate-100 text-slate-900 font-sans">
+      {/* Fixed Responsive Left Sidebar (Ungrouped Independent Buttons) */}
+      <Navigation
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setIsMobileNavOpen(false);
+        }}
+        userRole={currentUser.role}
+        badges={{
+          lowStockCount,
+          activeJobCardsCount,
+          pendingInsuranceCount,
+          unpaidInvoicesCount,
+          pendingWarrantyCount
+        }}
         profile={db.profile}
         currentUser={currentUser}
-        users={db.users}
-        onSwitchUser={handleSwitchUser}
         onLogout={handleLogout}
-        onOpenNewAccountModal={handleOpenNewAccountModal}
+        isMobileOpen={isMobileNavOpen}
+        onCloseMobile={() => setIsMobileNavOpen(false)}
         isCloudSynced={db.isCloudSynced}
-        lastSyncTime={db.lastCloudSync}
         onOpenCloudModal={() => setIsCloudModalOpen(true)}
       />
 
-      {/* Main Responsive Layout */}
-      <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4 flex-1 flex flex-col space-y-4">
-        {/* Role-Based Navigation Tabs */}
-        <Navigation
+      {/* Main Content Area (Offset on desktop screens by fixed left sidebar) */}
+      <div className="lg:pl-64 xl:pl-72 flex flex-col min-h-screen transition-[padding] duration-200">
+        {/* Top Universal Navbar */}
+        <Navbar
+          profile={db.profile}
+          currentUser={currentUser}
+          users={db.users}
+          onSwitchUser={handleSwitchUser}
+          onLogout={handleLogout}
+          onOpenNewAccountModal={handleOpenNewAccountModal}
+          isCloudSynced={db.isCloudSynced}
+          lastSyncTime={db.lastCloudSync}
+          onOpenCloudModal={() => setIsCloudModalOpen(true)}
+          onToggleMobileMenu={() => setIsMobileNavOpen(!isMobileNavOpen)}
+          isMobileMenuOpen={isMobileNavOpen}
           activeTab={activeTab}
-          onTabChange={setActiveTab}
-          userRole={currentUser.role}
-          badges={{
-            lowStockCount,
-            activeJobCardsCount,
-            pendingInsuranceCount,
-            unpaidInvoicesCount,
-            pendingWarrantyCount
-          }}
         />
 
         {/* View Routing */}
-        <main className="flex-1">
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 pb-24 md:pb-12">
           {/* TAB 1: Workshop Dashboard */}
           {activeTab === 'dashboard' && (
             <WorkshopOverview

@@ -19,18 +19,20 @@ import {
   Clock, 
   AlertCircle, 
   CreditCard, 
-  DollarSign,
-  QrCode,
-  ShieldCheck,
-  Shield,
-  Zap,
-  ArrowUpRight,
-  Lock,
-  Smartphone,
-  Building2,
-  X
+  DollarSign, 
+  QrCode, 
+  ShieldCheck, 
+  Shield, 
+  Zap, 
+  ArrowUpRight, 
+  Lock, 
+  Smartphone, 
+  Building2, 
+  X,
+  CalendarDays
 } from 'lucide-react';
 import { PrintInvoiceModal } from '../common/PrintInvoiceModal';
+import { DaybookView } from './DaybookView';
 
 interface BillingManagementProps {
   invoices: Invoice[];
@@ -62,6 +64,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Partially Paid' | 'Unpaid'>('All');
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<Invoice | null>(null);
+  const [billingSubTab, setBillingSubTab] = useState<'invoices' | 'daybook'>('invoices');
 
   // Dynamic QR Payment Modal State
   const [qrModalInvoice, setQrModalInvoice] = useState<Invoice | null>(null);
@@ -131,7 +134,53 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Financial Dashboard Strip */}
+      {/* Sub-Navigation Switcher: Invoices vs Daybook */}
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-3">
+        <button
+          id="billing-subtab-invoices"
+          onClick={() => setBillingSubTab('invoices')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+            billingSubTab === 'invoices'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Tax Invoices & CBMS (कर बिजक सूची)</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+            billingSubTab === 'invoices' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {invoices.length}
+          </span>
+        </button>
+
+        <button
+          id="billing-subtab-daybook"
+          onClick={() => setBillingSubTab('daybook')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+            billingSubTab === 'daybook'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <CalendarDays className="w-4 h-4 text-indigo-400" />
+          <span>Daybook Register (दैनिक खाता)</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            Daily Audit & Filter
+          </span>
+        </button>
+      </div>
+
+      {billingSubTab === 'daybook' ? (
+        <DaybookView
+          invoices={invoices}
+          profile={profile}
+          userRole={userRole}
+          onPrintInvoice={(inv) => setSelectedInvoiceForPrint(inv)}
+        />
+      ) : (
+        <>
+          {/* Top Financial Dashboard Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Billed</span>
@@ -363,6 +412,8 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
       {/* DYNAMIC QR PAYMENT MODAL (FONEPAY & NEPALPAY NCHL) */}
       {qrModalInvoice && (

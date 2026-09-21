@@ -15,8 +15,10 @@ import {
   X,
   FileCheck,
   ShieldAlert,
-  Server
+  Server,
+  Palette
 } from 'lucide-react';
+import { ThemeCustomizer } from './ThemeCustomizer';
 import { 
   UserAccount, 
   WorkshopProfile, 
@@ -48,7 +50,7 @@ interface AdminMasterSettingsProps {
   onUpdateTechnicians: (technicians: Technician[]) => void;
 }
 
-type AdminSubTab = 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'profile' | 'ird_config';
+type AdminSubTab = 'theme' | 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'profile' | 'ird_config';
 
 export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   profile,
@@ -231,6 +233,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
       {/* Sub-Navigation Tabs */}
       <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none">
         {[
+          { id: 'theme', label: 'Theme & Appearance (थीम तथा युआई)', icon: Palette },
           { id: 'staff', label: 'Staff & Roles (RBAC)', icon: Users },
           { id: 'services', label: 'Labor Price Book (NPR)', icon: DollarSign },
           { id: 'bays', label: 'Workshop Bays & Lifts', icon: Layers },
@@ -256,6 +259,11 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
           );
         })}
       </div>
+
+      {/* SUBTAB 0: THEME & UI CUSTOMIZER */}
+      {activeSubTab === 'theme' && (
+        <ThemeCustomizer onNotify={showNotification} />
+      )}
 
       {/* SUBTAB 1: STAFF & USER ROLES (RBAC) */}
       {activeSubTab === 'staff' && (
