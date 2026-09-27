@@ -19,6 +19,7 @@ import {
   Palette
 } from 'lucide-react';
 import { ThemeCustomizer } from './ThemeCustomizer';
+import { DraggableTabBar } from '../common/DraggableTabBar';
 import { 
   UserAccount, 
   WorkshopProfile, 
@@ -230,12 +231,12 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
         )}
       </div>
 
-      {/* Sub-Navigation Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none">
+      {/* Sub-Navigation Tabs with Click & Drag Scrolling */}
+      <DraggableTabBar className="mb-4">
         {[
-          { id: 'theme', label: 'Theme & Appearance (थीम तथा युआई)', icon: Palette },
+          { id: 'theme', label: 'Theme & Appearance', icon: Palette },
           { id: 'staff', label: 'Staff & Roles (RBAC)', icon: Users },
-          { id: 'services', label: 'Labor Price Book (NPR)', icon: DollarSign },
+          { id: 'services', label: 'Labor Price Book (Fixed Price)', icon: DollarSign },
           { id: 'bays', label: 'Workshop Bays & Lifts', icon: Layers },
           { id: 'technicians', label: 'Technician Master', icon: Wrench },
           { id: 'profile', label: 'Workshop Profile', icon: Building2 },
@@ -247,7 +248,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveSubTab(tab.id as AdminSubTab)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex-shrink-0 ${
                 isActive
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -258,7 +259,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
             </button>
           );
         })}
-      </div>
+      </DraggableTabBar>
 
       {/* SUBTAB 0: THEME & UI CUSTOMIZER */}
       {activeSubTab === 'theme' && (
@@ -343,13 +344,15 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
         </div>
       )}
 
-      {/* SUBTAB 2: LABOR PRICE BOOK (NPR) */}
+      {/* SUBTAB 2: LABOR PRICE BOOK (FIXED PRICE) */}
       {activeSubTab === 'services' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-slate-900">Standard Service & Labor Price Book</h3>
-              <p className="text-xs text-slate-500">Customizable base hourly rates and flat rates in Nepalese Rupees (NPR) subject to 13% VAT.</p>
+              <h3 className="text-base font-bold text-slate-900">Standard Labor Price Book (Fixed Price Master)</h3>
+              <p className="text-xs text-slate-500">
+                Admin-editable fixed labor prices in Nepalese Rupees (NPR). Used automatically across Job Cards by typing Task Codes.
+              </p>
             </div>
             <button
               onClick={() => {
@@ -359,7 +362,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               className="inline-flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Service Item</span>
+              <span>Add Fixed Price Task</span>
             </button>
           </div>
 
@@ -367,20 +370,20 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3.5">Service Code</th>
-                  <th className="p-3.5">Service Name & Description</th>
+                  <th className="p-3.5">Task Code</th>
+                  <th className="p-3.5">Labor Task Name & Description</th>
                   <th className="p-3.5">Category</th>
-                  <th className="p-3.5 text-center">Std. Hours</th>
-                  <th className="p-3.5 text-right">Base Labor (NPR)</th>
+                  <th className="p-3.5 text-right">Fixed Price (excl. VAT)</th>
                   <th className="p-3.5 text-center">VAT Rate</th>
-                  <th className="p-3.5 text-right">Total with 13% VAT</th>
-                  <th className="p-3.5 text-center">Action</th>
+                  <th className="p-3.5 text-right">Total (incl. 13% VAT)</th>
+                  <th className="p-3.5 text-center">Quick Edit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {safePriceBook.map((srv) => {
-                  const vatAmount = srv.isTaxable ? srv.baseLaborRate * 0.13 : 0;
-                  const totalWithVat = srv.baseLaborRate + vatAmount;
+                  const fixedPrice = srv.fixedPrice ?? srv.baseLaborRate;
+                  const vatAmount = srv.isTaxable ? fixedPrice * 0.13 : 0;
+                  const totalWithVat = fixedPrice + vatAmount;
                   return (
                     <tr key={srv.id} className="hover:bg-slate-50/80 transition">
                       <td className="p-3.5 font-mono font-bold text-indigo-700">{srv.code}</td>
@@ -393,9 +396,28 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                           {srv.category}
                         </span>
                       </td>
-                      <td className="p-3.5 text-center font-mono font-semibold">{srv.standardHours} hrs</td>
-                      <td className="p-3.5 text-right font-mono font-bold text-slate-800">
-                        रु. {srv.baseLaborRate.toLocaleString()}
+                      <td className="p-3.5 text-right">
+                        <div className="inline-flex items-center space-x-1.5 font-mono font-bold text-slate-900">
+                          <span>Rs.</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            defaultValue={fixedPrice}
+                            onBlur={(e) => {
+                              const newRate = parseFloat(e.target.value) || 0;
+                              if (newRate !== fixedPrice) {
+                                handleSaveService({
+                                  ...srv,
+                                  baseLaborRate: newRate,
+                                  fixedPrice: newRate
+                                });
+                              }
+                            }}
+                            className="w-24 text-right px-2 py-1 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                            title="Edit fixed price directly"
+                          />
+                        </div>
                       </td>
                       <td className="p-3.5 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700">
@@ -403,7 +425,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                         </span>
                       </td>
                       <td className="p-3.5 text-right font-mono font-extrabold text-emerald-700">
-                        रु. {totalWithVat.toLocaleString()}
+                        Rs. {Math.round(totalWithVat).toLocaleString()}
                       </td>
                       <td className="p-3.5 text-center">
                         <button
@@ -412,6 +434,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                             setIsNewServiceModal(true);
                           }}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100"
+                          title="Full Edit Details"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -888,8 +911,9 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                   code: getVal('code', `SRV-${Math.floor(100 + Math.random()*900)}`),
                   name: getVal('name', 'Service Item'),
                   category: (getVal('category', 'Mechanical') as any),
-                  standardHours: getNum('hours', 1),
-                  baseLaborRate: getNum('rate', 1000),
+                  standardHours: 1,
+                  fixedPrice: getNum('fixedPrice', 1500),
+                  baseLaborRate: getNum('fixedPrice', 1500),
                   vatRate: 13,
                   isTaxable: true,
                   description: getVal('desc', '')
@@ -899,20 +923,23 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               className="mt-4 space-y-3 text-xs"
             >
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Service Code</label>
+                <label className="block font-semibold text-slate-700 mb-1">Task Code *</label>
                 <input
                   name="code"
                   defaultValue={editingService?.code || `SRV-${Math.floor(100 + Math.random()*900)}`}
-                  className="w-full font-mono font-bold border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. SRV-GEN-01, SRV-BRK-02"
+                  className="w-full font-mono font-bold uppercase border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
+                <p className="text-[10px] text-slate-400 mt-0.5">Typing this code in Job Card labor section will automatically pull this service task and its price.</p>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Service Name</label>
+                <label className="block font-semibold text-slate-700 mb-1">Labor Task Name *</label>
                 <input
                   name="name"
                   defaultValue={editingService?.name || ''}
+                  placeholder="e.g. Periodic Full Maintenance & Oil Inspection"
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
                   required
                 />
@@ -931,30 +958,21 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                     <option value="Engine & Transmission">Engine & Transmission</option>
                     <option value="Electrical & AC">Electrical & AC</option>
                     <option value="Dent & Paint">Dent & Paint</option>
+                    <option value="Detailing">Detailing</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Standard Hours</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Fixed Labor Price (NPR, excl. 13% VAT) *</label>
                   <input
-                    name="hours"
+                    name="fixedPrice"
                     type="number"
-                    step="0.5"
-                    defaultValue={editingService?.standardHours || 2}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none"
+                    min="0"
+                    step="50"
+                    defaultValue={editingService?.fixedPrice ?? editingService?.baseLaborRate ?? 1500}
+                    className="w-full font-mono font-bold text-indigo-700 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
                     required
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Base Labor Rate (NPR, excl. 13% VAT)</label>
-                <input
-                  name="rate"
-                  type="number"
-                  defaultValue={editingService?.baseLaborRate || 2000}
-                  className="w-full font-mono font-bold border border-slate-300 rounded-xl px-3 py-2 outline-none"
-                  required
-                />
               </div>
 
               <div>

@@ -106,7 +106,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
               PAN / VAT Registration No.: <span className="text-indigo-800 font-extrabold text-sm">{workshopPan}</span>
             </p>
             <div className="inline-block mt-3 px-6 py-1.5 border-2 border-slate-900 rounded font-black text-sm uppercase tracking-wider bg-slate-100">
-              WORKSHOP REPAIR JOB CARD & ESTIMATE (मर्मत कार्य आदेश पत्र)
+              WORKSHOP REPAIR JOB CARD & ESTIMATE 
             </div>
           </div>
 
@@ -130,7 +130,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
           <div className="grid grid-cols-2 gap-4 py-3 border-b border-slate-200">
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
               <span className="font-bold text-[11px] text-slate-900 uppercase tracking-wide block border-b border-slate-200 pb-1">
-                Customer Details (ग्राहक विवरण)
+                Customer Details 
               </span>
               <p><strong className="text-slate-500">Name:</strong> <span className="font-bold text-slate-900">{jobCard.customerName}</span></p>
               <p><strong className="text-slate-500">Mobile Phone:</strong> {jobCard.customerPhone}</p>
@@ -140,7 +140,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
               <span className="font-bold text-[11px] text-slate-900 uppercase tracking-wide block border-b border-slate-200 pb-1">
-                Vehicle Details (सवारी साधन विवरण)
+                Vehicle Details 
               </span>
               <p><strong className="text-slate-500">Registration No:</strong> <span className="font-mono font-bold text-slate-900 text-sm">{jobCard.vehicleReg}</span></p>
               <p><strong className="text-slate-500">Make & Model:</strong> {jobCard.vehicleBrand || ''} {jobCard.vehicleModel || ''}</p>
@@ -155,7 +155,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
           {/* Reported Complaints / Customer Voice */}
           <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <span className="font-bold text-[11px] text-slate-900 uppercase tracking-wide block mb-1.5">
-              Customer Reported Complaints & Demanded Jobs (ग्राहकको गुनासो तथा अनुरोध)
+              Customer Reported Complaints & Demanded Jobs 
             </span>
             {Array.isArray(jobCard.demandedJobs || jobCard.complaints) && (jobCard.demandedJobs || jobCard.complaints).length > 0 ? (
               <ul className="list-disc list-inside space-y-1 text-slate-700">
@@ -186,7 +186,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
               </div>
               <div className="flex items-center space-x-1.5">
                 <span className="w-3.5 h-3.5 border border-slate-400 rounded-sm inline-flex items-center justify-center font-bold text-[9px]">✓</span>
-                <span>Vehicle Bluebook (दार्ता)</span>
+                <span>Vehicle Bluebook </span>
               </div>
               <div className="flex items-center space-x-1.5">
                 <span className="w-3.5 h-3.5 border border-slate-400 rounded-sm inline-flex items-center justify-center font-bold text-[9px]">✓</span>
@@ -206,7 +206,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 flex justify-between">
                 <span>Spare Parts & Consumables</span>
-                <span className="font-mono">रु. {partsTotal.toLocaleString()}</span>
+                <span className="font-mono">Rs. {partsTotal.toLocaleString()}</span>
               </div>
               <table className="w-full text-left text-[11px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
@@ -229,9 +229,9 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
                       <tr key={idx}>
                         <td className="p-2 font-medium">{p.partName || p.name}</td>
                         <td className="p-2 text-center font-mono">{p.quantity || 1}</td>
-                        <td className="p-2 text-right font-mono">रु. {(p.unitPrice || 0).toLocaleString()}</td>
+                        <td className="p-2 text-right font-mono">Rs. {(p.unitPrice || 0).toLocaleString()}</td>
                         <td className="p-2 text-right font-mono font-bold">
-                          रु. {((p.quantity || 1) * (p.unitPrice || 0)).toLocaleString()}
+                          Rs. {((p.quantity || 1) * (p.unitPrice || 0)).toLocaleString()}
                         </td>
                       </tr>
                     ))
@@ -244,7 +244,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="bg-slate-100 px-3 py-2 font-bold text-slate-800 flex justify-between">
                 <span>Labor & Mechanical Services</span>
-                <span className="font-mono">रु. {laborTotal.toLocaleString()}</span>
+                <span className="font-mono">Rs. {laborTotal.toLocaleString()}</span>
               </div>
               <table className="w-full text-left text-[11px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
@@ -265,7 +265,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
                       <tr key={idx}>
                         <td className="p-2 font-medium">{l.description || l.name || l.serviceName}</td>
                         <td className="p-2 text-right font-mono font-bold">
-                          रु. {(l.price || l.cost || 0).toLocaleString()}
+                          Rs. {(l.price || l.cost || 0).toLocaleString()}
                         </td>
                       </tr>
                     ))
@@ -280,23 +280,23 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
             <div className="w-64 border border-slate-300 rounded-xl p-3 bg-slate-50 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Parts & Materials:</span>
-                <span className="font-mono font-semibold">रु. {partsTotal.toLocaleString()}</span>
+                <span className="font-mono font-semibold">Rs. {partsTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Labor Operations:</span>
-                <span className="font-mono font-semibold">रु. {laborTotal.toLocaleString()}</span>
+                <span className="font-mono font-semibold">Rs. {laborTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-700 font-bold border-t border-slate-200 pt-1">
                 <span>Taxable Amount:</span>
-                <span className="font-mono">रु. {subtotal.toLocaleString()}</span>
+                <span className="font-mono">Rs. {subtotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-indigo-700 font-bold">
                 <span>Nepal 13% VAT:</span>
-                <span className="font-mono">रु. {vat.toLocaleString()}</span>
+                <span className="font-mono">Rs. {vat.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-900 font-black text-sm border-t-2 border-slate-900 pt-1">
                 <span>Est. Grand Total:</span>
-                <span className="font-mono">रु. {grandTotal.toLocaleString()}</span>
+                <span className="font-mono">Rs. {grandTotal.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -304,7 +304,7 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
           {/* Workshop Terms & Customer Declaration */}
           <div className="mt-4 p-3 border border-slate-200 rounded-xl bg-slate-50/70 text-[10px] text-slate-600 space-y-1">
             <p className="font-bold text-slate-800 uppercase tracking-wider">
-              Terms of Service & Customer Authorization (शर्तहरू तथा स्वीकृति):
+              Terms of Service & Customer Authorization :
             </p>
             <ol className="list-decimal list-inside space-y-0.5">
               <li>I hereby authorize the above repair work along with necessary materials. Permission is granted to drive the vehicle on streets for testing and inspection.</li>

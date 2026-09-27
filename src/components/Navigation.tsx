@@ -58,7 +58,6 @@ export interface NavigationProps {
 interface NavItemConfig {
   id: TabType;
   label: string;
-  nepaliLabel?: string;
   icon: React.FC<{ className?: string }>;
   allowedRoles: UserRole[];
   badge?: number;
@@ -68,7 +67,6 @@ interface NavItemConfig {
 
 interface NavSection {
   title: string;
-  nepaliTitle: string;
   items: NavItemConfig[];
 }
 
@@ -149,14 +147,12 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'dashboard',
       label: 'Workshop Pulse',
-      nepaliLabel: 'ड्यासबोर्ड',
       icon: LayoutDashboard,
       allowedRoles: ['Admin', 'Service Advisor', 'Technician', 'Inventory Manager', 'Cashier']
     },
     {
       id: 'jobcards',
       label: 'Job Cards & Bays',
-      nepaliLabel: 'जब कार्ड तथा बे',
       icon: Wrench,
       allowedRoles: ['Admin', 'Service Advisor', 'Technician'],
       badge: activeJobCardsCount,
@@ -165,14 +161,12 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'customers',
       label: 'Customer Garages',
-      nepaliLabel: 'ग्राहक तथा सवारी',
       icon: Users,
       allowedRoles: ['Admin', 'Service Advisor', 'Cashier']
     },
     {
       id: 'inventory',
       label: 'Spare Parts Master',
-      nepaliLabel: 'स्पेयर पार्ट्स मौज्दात',
       icon: Package,
       allowedRoles: ['Admin', 'Inventory Manager'],
       badge: lowStockCount,
@@ -181,7 +175,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'warranty',
       label: 'Warranty & Claims',
-      nepaliLabel: 'वारेन्टी दाबी',
       icon: ShieldCheck,
       allowedRoles: ['Admin', 'Service Advisor', 'Inventory Manager'],
       badge: pendingWarrantyCount,
@@ -190,7 +183,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'insurance',
       label: 'Cashless Insurance',
-      nepaliLabel: 'नगदरहित बीमा दाबी',
       icon: ShieldCheck,
       allowedRoles: ['Admin', 'Service Advisor', 'Cashier'],
       badge: pendingInsuranceCount,
@@ -199,7 +191,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'billing',
       label: 'Invoicing & IRD Tax',
-      nepaliLabel: 'बिजक तथा बिलिङ',
       icon: Receipt,
       allowedRoles: ['Admin', 'Cashier'],
       badge: unpaidInvoicesCount,
@@ -208,21 +199,18 @@ export const Navigation: React.FC<NavigationProps> = ({
     {
       id: 'accounting',
       label: 'GL & VAT Ledger',
-      nepaliLabel: 'खाता तथा भ्याट दर्ता',
       icon: FileSpreadsheet,
       allowedRoles: ['Admin', 'Cashier']
     },
     {
       id: 'analytics',
       label: 'BI & Performance',
-      nepaliLabel: 'विश्लेषण तथा रिपोर्ट',
       icon: BarChart3,
       allowedRoles: ['Admin', 'Service Advisor', 'Technician', 'Inventory Manager', 'Cashier']
     },
     {
       id: 'admin_settings',
       label: 'Master Settings',
-      nepaliLabel: 'सेटिङ्स तथा कन्फिग',
       icon: Settings,
       allowedRoles: ['Admin', 'Service Advisor', 'Technician', 'Inventory Manager', 'Cashier'],
       adminOnly: true
@@ -314,17 +302,6 @@ export const Navigation: React.FC<NavigationProps> = ({
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-xs font-semibold leading-tight">{item.label}</div>
-                  {item.nepaliLabel && (
-                    <div className={`text-[10px] truncate leading-tight mt-0.5 ${
-                      isActive 
-                        ? 'text-white/80' 
-                        : isLightSidebar 
-                          ? 'text-slate-500 group-hover:text-slate-700' 
-                          : 'text-slate-400 group-hover:text-slate-300'
-                    }`}>
-                      {item.nepaliLabel}
-                    </div>
-                  )}
                 </div>
               </div>
 

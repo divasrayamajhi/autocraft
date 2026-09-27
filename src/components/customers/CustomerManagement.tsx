@@ -467,41 +467,6 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Quick action: record service performed today -> resets to exactly 120 days & currentOdo + 5,000 km
-  const handleRecordServiceToday = (item: ServiceReminderItem) => {
-    const cust = customers.find(c => c.id === item.customerId);
-    if (!cust) return;
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const nextDueDateStr = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const nextDueKm = item.currentOdometer + 5000;
-
-    const updatedVehicles = cust.vehicles.map(v => {
-      const vId = typeof v === 'object' ? v.id : v;
-      if (vId === item.vehicleId) {
-        if (typeof v === 'object') {
-          return {
-            ...v,
-            lastServiceDate: todayStr,
-            lastServiceKm: item.currentOdometer,
-            lastServiceType: 'PMS Scheduled Inspection & Servicing',
-            nextServiceDueDate: nextDueDateStr,
-            nextServiceDueKm: nextDueKm
-          };
-        }
-      }
-      return v;
-    });
-
-    const updatedCustomer: Customer = {
-      ...cust,
-      lastVisit: todayStr,
-      vehicles: updatedVehicles
-    };
-
-    onUpdateCustomer(updatedCustomer);
-  };
-
   const handleSaveCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName || !newCustPhone || !newVehReg) {
@@ -931,17 +896,6 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        {/* Quick Action: Record Service Performed Today */}
-                        <button
-                          type="button"
-                          onClick={() => handleRecordServiceToday(item)}
-                          className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1 shadow-xs transition"
-                          title="Record service performed today: resets interval to exactly 120 days & Odometer + 5,000 km"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Record Service Today</span>
-                        </button>
-
                         {/* Copy Pre-made Text */}
                         <button
                           type="button"
@@ -1053,7 +1007,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     {/* Spend & Service countdown preview */}
                     <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                       <span className="font-mono text-emerald-700 font-bold">
-                        रु. {(cust.totalSpent || 0).toLocaleString()}
+                        Rs. {(cust.totalSpent || 0).toLocaleString()}
                       </span>
                       {custReminders[0] && (
                         <span className={`font-medium ${
@@ -1106,7 +1060,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                           });
                           const invoiceTotal = customerInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
                           const total = Math.max(selectedCustomer.totalSpent || 0, invoiceTotal);
-                          return `रु. ${(total || 0).toLocaleString()}`;
+                          return `Rs. ${(total || 0).toLocaleString()}`;
                         })()}
                       </span>
                     </div>
@@ -1218,7 +1172,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                               <div className="text-right">
                                 <span className="text-[10px] text-slate-400 uppercase font-bold block">Vehicle Bill Total</span>
                                 <span className="font-mono text-xs font-bold text-emerald-700">
-                                  रु. {(totalBilledOnVehicle || 0).toLocaleString()}
+                                  Rs. {(totalBilledOnVehicle || 0).toLocaleString()}
                                 </span>
                               </div>
                             </div>
@@ -1393,7 +1347,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                                   <td className="p-2.5 font-mono font-bold text-indigo-700">{inv.invoiceNumber}</td>
                                   <td className="p-2.5 font-mono font-semibold text-slate-800">{inv.vehicleReg}</td>
                                   <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                                    रु. {(inv.grandTotal || 0).toLocaleString()}
+                                    Rs. {(inv.grandTotal || 0).toLocaleString()}
                                   </td>
                                   <td className="p-2.5 text-center">
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1431,7 +1385,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
             </div>
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Workshop Billed</span>
-              <span className="font-mono text-lg font-black text-slate-900">रु. {(totalInvoicedSales || 0).toLocaleString()}</span>
+              <span className="font-mono text-lg font-black text-slate-900">Rs. {(totalInvoicedSales || 0).toLocaleString()}</span>
             </div>
           </div>
 
@@ -1461,7 +1415,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                     </span>
                   </td>
                   <td className="p-3 text-right font-mono font-bold text-emerald-700 text-sm">
-                    रु. {(c.totalSpent || 0).toLocaleString()}
+                    Rs. {(c.totalSpent || 0).toLocaleString()}
                   </td>
                 </tr>
               ))}

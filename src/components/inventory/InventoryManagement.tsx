@@ -29,6 +29,7 @@ import {
   Clock,
   Wrench
 } from 'lucide-react';
+import { DraggableTabBar } from '../common/DraggableTabBar';
 import { 
   SparePart, 
   PartsQuotation, 
@@ -258,8 +259,8 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Stock Valuation (Cost)</span>
-          <div className="text-xl font-black text-slate-900 font-mono mt-0.5">रु. {totalValuationCost.toLocaleString()}</div>
-          <span className="text-[11px] text-slate-500">Retail: रु. {totalValuationSelling.toLocaleString()}</span>
+          <div className="text-xl font-black text-slate-900 font-mono mt-0.5">Rs. {totalValuationCost.toLocaleString()}</div>
+          <span className="text-[11px] text-slate-500">Retail: Rs. {totalValuationSelling.toLocaleString()}</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -275,42 +276,40 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         </div>
       </div>
 
-      {/* Sub-Navigation Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none">
-        <div className="flex items-center space-x-2">
-          {[
-            { id: 'master', label: 'Parts Master & Barcodes', icon: Package },
-            { id: 'purchase_orders', label: 'Purchase Orders (PO)', icon: ShoppingBag, badge: pendingPOsCount },
-            { id: 'replenishment', label: 'Replenishment & Alerts', icon: AlertTriangle, badge: lowStockParts.length },
-            { id: 'fms_abc', label: 'FMS & ABC Classification', icon: Layers },
-            { id: 'sales_flow', label: 'Quotation → Order → Dispatch', icon: ArrowRight },
-            { id: 'substitutes', label: 'Cross-References & Substitutes', icon: Sparkles },
-            { id: 'returns', label: 'Sales Returns (Credit Notes)', icon: RotateCcw }
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeSubTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveSubTab(tab.id as InventorySubTab)}
-                className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                  isActive
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-                {typeof tab.badge === 'number' && tab.badge > 0 && (
-                  <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Sub-Navigation Tabs with Draggable & Click Scrolling */}
+      <DraggableTabBar className="mb-4">
+        {[
+          { id: 'master', label: 'Parts Master & Barcodes', icon: Package },
+          { id: 'purchase_orders', label: 'Purchase Orders (PO)', icon: ShoppingBag, badge: pendingPOsCount },
+          { id: 'replenishment', label: 'Replenishment & Alerts', icon: AlertTriangle, badge: lowStockParts.length },
+          { id: 'fms_abc', label: 'FMS & ABC Classification', icon: Layers },
+          { id: 'sales_flow', label: 'Quotation → Order → Dispatch', icon: ArrowRight },
+          { id: 'substitutes', label: 'Cross-References & Substitutes', icon: Sparkles },
+          { id: 'returns', label: 'Sales Returns (Credit Notes)', icon: RotateCcw }
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeSubTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSubTab(tab.id as InventorySubTab)}
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex-shrink-0 ${
+                isActive
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+              {typeof tab.badge === 'number' && tab.badge > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </DraggableTabBar>
 
       {/* SUBTAB 1: PARTS MASTER & BARCODE TRACKING */}
       {activeSubTab === 'master' && (
@@ -444,11 +443,11 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                       </td>
 
                       <td className="p-3.5 text-right font-mono text-slate-600">
-                        रु. {part.costPrice.toLocaleString()}
+                        Rs. {part.costPrice.toLocaleString()}
                       </td>
 
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                        रु. {part.sellingPrice.toLocaleString()}
+                        Rs. {part.sellingPrice.toLocaleString()}
                       </td>
 
                       <td className="p-3.5 text-center">
@@ -490,7 +489,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div className="flex items-center space-x-2">
-                  <h3 className="text-sm font-bold text-slate-900">Spares Purchase Orders (खरिद आदेश)</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Spares Purchase Orders </h3>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
                     Nepal IRD 13% VAT & Stock Accounting
                   </span>
@@ -535,7 +534,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
               <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
                 <span className="text-[11px] text-indigo-800 block font-semibold">Procurement Value</span>
                 <span className="text-base font-extrabold text-indigo-900 font-mono">
-                  रु. {safePOs.reduce((acc, po) => acc + (po.totalAmount || 0), 0).toLocaleString()}
+                  Rs. {safePOs.reduce((acc, po) => acc + (po.totalAmount || 0), 0).toLocaleString()}
                 </span>
                 <span className="text-[10px] text-indigo-600 block font-semibold">Incl. 13% Nepal VAT</span>
               </div>
@@ -617,7 +616,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                             </span>
                           </td>
                           <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                            रु. {(po.totalAmount || 0).toLocaleString()}
+                            Rs. {(po.totalAmount || 0).toLocaleString()}
                           </td>
                           <td className="p-3.5 text-center">
                             <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1352,7 +1351,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
               <div className="flex justify-between text-[11px] font-mono font-bold text-slate-700 pt-2 border-t border-slate-200">
                 <span>Rack: {barcodeModalPart.rackLocation}</span>
-                <span>रु. {barcodeModalPart.sellingPrice} + 13% VAT</span>
+                <span>Rs. {barcodeModalPart.sellingPrice} + 13% VAT</span>
               </div>
             </div>
 

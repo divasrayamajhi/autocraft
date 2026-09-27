@@ -125,7 +125,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
             </div>
             <div>
               <h3 className="text-base font-bold text-white leading-tight">
-                नयाँ जर्नल भौचर प्रविष्टि (New General Journal Voucher)
+                New General Journal Voucher
               </h3>
               <p className="text-xs text-slate-300">
                 Double-Entry Accounting • Total Debits must equal Total Credits
@@ -147,7 +147,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                भौचर नम्बर (Voucher #)
+                Voucher #
               </label>
               <input
                 type="text"
@@ -160,7 +160,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                मिति (Voucher Date)
+                Voucher Date
               </label>
               <input
                 type="date"
@@ -173,7 +173,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                स्रोत कागजात (Source Doc #)
+                Source Document #
               </label>
               <input
                 type="text"
@@ -187,7 +187,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
 
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              भौचर विवरण / कैफियत (Narration) <span className="text-rose-500">*</span>
+              Narration / Description <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -203,7 +203,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-700 uppercase">
-                डेबिट तथा क्रेडिट खाताहरू (Debit & Credit Ledger Lines)
+                Debit & Credit Ledger Lines
               </label>
               <button
                 type="button"
@@ -219,9 +219,9 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-2.5">खाता (GL Account)</th>
-                    <th className="p-2.5 text-right w-32">डेबिट (Debit NPR)</th>
-                    <th className="p-2.5 text-right w-32">क्रेडिट (Credit NPR)</th>
+                    <th className="p-2.5">GL Account</th>
+                    <th className="p-2.5 text-right w-32">Debit (NPR)</th>
+                    <th className="p-2.5 text-right w-32">Credit (NPR)</th>
                     <th className="p-2.5 w-10 text-center"></th>
                   </tr>
                 </thead>
@@ -279,12 +279,12 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-100 font-bold border-t border-slate-300">
-                    <td className="p-2.5 text-right uppercase text-slate-700">जम्मा कुल (Totals NPR):</td>
+                    <td className="p-2.5 text-right uppercase text-slate-700">Totals (NPR):</td>
                     <td className="p-2.5 text-right font-mono font-black text-indigo-900">
-                      रु. {totalDebit.toLocaleString()}
+                      Rs. {totalDebit.toLocaleString()}
                     </td>
                     <td className="p-2.5 text-right font-mono font-black text-indigo-900">
-                      रु. {totalCredit.toLocaleString()}
+                      Rs. {totalCredit.toLocaleString()}
                     </td>
                     <td></td>
                   </tr>
@@ -306,12 +306,12 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
                 )}
                 <span>
                   {isBalanced 
-                    ? 'भौचर सन्तुलित छ (Voucher is Balanced: Total Debits = Total Credits)'
-                    : `भौचर सन्तुलित छैन! फरक रकम: रु. ${difference.toLocaleString()} (Total Debits must equal Total Credits)`}
+                    ? 'Voucher is Balanced (Total Debits = Total Credits)'
+                    : `Voucher is Out of Balance! Difference: Rs. ${difference.toLocaleString()} (Total Debits must equal Total Credits)`}
                 </span>
               </div>
               <span className="font-mono text-xs">
-                Net: रु. {difference.toLocaleString()}
+                Net: Rs. {difference.toLocaleString()}
               </span>
             </div>
           </div>
@@ -331,7 +331,7 @@ export const CreateJournalVoucherModal: React.FC<CreateJournalVoucherModalProps>
               className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-md transition text-xs flex items-center space-x-1.5"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Post Journal Voucher (भौचर प्रविष्टि)</span>
+              <span>Post Journal Voucher</span>
             </button>
           </div>
         </form>

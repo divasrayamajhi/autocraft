@@ -248,7 +248,7 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
 
                     <div className="text-right">
                       <div className="text-sm font-mono font-extrabold text-slate-900">
-                        रु. {claim.totalClaimAmount.toLocaleString()}
+                        Rs. {claim.totalClaimAmount.toLocaleString()}
                       </div>
                       <span className="text-[10px] text-slate-400">Total Claimable</span>
                     </div>
@@ -312,15 +312,15 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
                 <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl space-y-1.5 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-600">Parts Replacement Cost:</span>
-                    <span className="font-mono font-bold text-slate-800">रु. {(selectedClaim.claimPartsAmount || 0).toLocaleString()}</span>
+                    <span className="font-mono font-bold text-slate-800">Rs. {(selectedClaim.claimPartsAmount || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">OEM Labor Allowance:</span>
-                    <span className="font-mono font-bold text-slate-800">रु. {(selectedClaim.claimLaborAmount || 0).toLocaleString()}</span>
+                    <span className="font-mono font-bold text-slate-800">Rs. {(selectedClaim.claimLaborAmount || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between pt-1 border-t border-indigo-200 text-indigo-900 font-extrabold text-sm">
                     <span>Total Claimable to OEM:</span>
-                    <span>रु. {(selectedClaim.totalClaimAmount || 0).toLocaleString()}</span>
+                    <span>Rs. {(selectedClaim.totalClaimAmount || 0).toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -442,13 +442,13 @@ export const WarrantyManagement: React.FC<WarrantyManagementProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
                 <span className="text-xs font-semibold text-emerald-800">Total Settled Claims</span>
-                <div className="text-xl font-black text-emerald-950 font-mono mt-1">रु. 11,200</div>
+                <div className="text-xl font-black text-emerald-950 font-mono mt-1">Rs. 11,200</div>
                 <span className="text-[11px] text-emerald-700">Offset against parts purchases</span>
               </div>
 
               <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
                 <span className="text-xs font-semibold text-amber-800">Claims Under Review</span>
-                <div className="text-xl font-black text-amber-950 font-mono mt-1">रु. 14,500</div>
+                <div className="text-xl font-black text-amber-950 font-mono mt-1">Rs. 14,500</div>
                 <span className="text-[11px] text-amber-700">Awaiting surveyor verification</span>
               </div>
 

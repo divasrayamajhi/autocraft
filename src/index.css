@@ -1,1 +1,114 @@
 @import "tailwindcss";
+
+/* ==========================================================================
+   Comprehensive Standard A4 Print & PDF Styles for Workshop Management System
+   Covers: Tax Invoices, Job Cards, Gate Passes, Purchase Orders, Quotations, VAT Register
+   ========================================================================== */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  /* Force color printing and clean page resets */
+  *, *:before, *:after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10.5pt !important;
+    line-height: 1.35 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Hide app navigation, headers, sidebars, alerts, buttons, backdrops in print */
+  #app-fixed-sidebar,
+  #app-universal-navbar,
+  #sidebar-mobile-backdrop,
+  header,
+  nav,
+  aside,
+  button,
+  .print\:hidden,
+  [data-print="hidden"] {
+    display: none !important;
+  }
+
+  /* Remove fixed overlay positioning so the modal prints naturally on A4 pages */
+  .fixed.inset-0 {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* The print container card inside the modal */
+  .fixed.inset-0 > div,
+  .print-page-a4 {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  /* Tables: clean borders and auto page breaks */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  /* Avoid breakages inside signature blocks, terms, and total cards */
+  .print-avoid-break,
+  .signature-block,
+  .financial-totals-block {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Ensure text and borders are sharp and dark in print */
+  .text-slate-900, .text-slate-800, .text-slate-700 {
+    color: #000000 !important;
+  }
+
+  .border-slate-200, .border-slate-300 {
+    border-color: #cbd5e1 !important;
+  }
+}

@@ -137,7 +137,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
             <div className="bg-white p-3 rounded-xl border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Workshop Billed</span>
               <span className="font-mono font-bold text-indigo-700 text-sm block">
-                रु. {(totalSpent || 0).toLocaleString()}
+                Rs. {(totalSpent || 0).toLocaleString()}
               </span>
               <span className="text-slate-500 text-[11px] block">{matchedInvoices.length} Settled Tax Invoices</span>
             </div>
@@ -231,7 +231,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Billed Gross</span>
                         <span className="font-mono font-bold text-slate-900 text-sm">
-                          रु. {(gross || 0).toLocaleString()}
+                          Rs. {(gross || 0).toLocaleString()}
                         </span>
                       </div>
                       {matchingInvoice && (
@@ -271,7 +271,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                             <Package className="w-3.5 h-3.5 text-teal-600" />
                             <span>Spare Parts Replaced / Fitted ({parts.length})</span>
                           </h5>
-                          <span className="font-mono font-bold text-slate-700">Parts Total: रु. {(partsTotal || 0).toLocaleString()}</span>
+                          <span className="font-mono font-bold text-slate-700">Parts Total: Rs. {(partsTotal || 0).toLocaleString()}</span>
                         </div>
 
                         {parts.length === 0 ? (
@@ -296,9 +296,9 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                                     <td className="p-2 font-mono font-bold text-teal-700">{p.partNumber}</td>
                                     <td className="p-2 text-slate-800 font-medium">{p.partName || p.name}</td>
                                     <td className="p-2 text-center font-mono">{p.quantity}</td>
-                                    <td className="p-2 text-right font-mono">रु. {(p.unitPrice || 0).toLocaleString()}</td>
+                                    <td className="p-2 text-right font-mono">Rs. {(p.unitPrice || 0).toLocaleString()}</td>
                                     <td className="p-2 text-right font-mono font-bold text-slate-900">
-                                      रु. {(p.totalAmount || (p.quantity * p.unitPrice) || 0).toLocaleString()}
+                                      Rs. {(p.totalAmount || (p.quantity * p.unitPrice) || 0).toLocaleString()}
                                     </td>
                                   </tr>
                                 ))}
@@ -315,7 +315,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                             <Wrench className="w-3.5 h-3.5 text-indigo-600" />
                             <span>Labor Operations & Diagnostics ({labor.length})</span>
                           </h5>
-                          <span className="font-mono font-bold text-slate-700">Labor Total: रु. {(laborTotal || 0).toLocaleString()}</span>
+                          <span className="font-mono font-bold text-slate-700">Labor Total: Rs. {(laborTotal || 0).toLocaleString()}</span>
                         </div>
 
                         {labor.length === 0 ? (
@@ -338,9 +338,9 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
                                   <tr key={idx} className="hover:bg-slate-50/50">
                                     <td className="p-2 text-slate-800 font-medium">{l.description}</td>
                                     <td className="p-2 text-center font-mono">{l.hours || l.hoursEstimated || 1} hrs</td>
-                                    <td className="p-2 text-right font-mono">रु. {(l.ratePerHour || 1000).toLocaleString()}</td>
+                                    <td className="p-2 text-right font-mono">Rs. {(l.ratePerHour || 1000).toLocaleString()}</td>
                                     <td className="p-2 text-right font-mono font-bold text-slate-900">
-                                      रु. {(l.totalAmount || ((l.hours || 1) * (l.ratePerHour || 1000))).toLocaleString()}
+                                      Rs. {(l.totalAmount || ((l.hours || 1) * (l.ratePerHour || 1000))).toLocaleString()}
                                     </td>
                                   </tr>
                                 ))}

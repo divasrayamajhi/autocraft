@@ -111,7 +111,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
     const refNum = `${qrGateway.toUpperCase()}-TXN-${Math.floor(100000 + Math.random()*900000)}`;
     onRecordPayment(qrModalInvoice.id, qrModalInvoice.balanceDue, qrGateway, refNum);
     setQrPaymentSimulated(true);
-    notify(`Payment of NPR रु. ${qrModalInvoice.balanceDue.toLocaleString()} confirmed via ${qrGateway} Dynamic QR Webhook!`);
+    notify(`Payment of NPR Rs. ${qrModalInvoice.balanceDue.toLocaleString()} confirmed via ${qrGateway} Dynamic QR Webhook!`);
     setTimeout(() => {
       setQrModalInvoice(null);
     }, 1800);
@@ -122,12 +122,12 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
     if (!paymentInvoice || payAmount <= 0) return;
     onRecordPayment(paymentInvoice.id, payAmount, payMethod, payRef || `REC-${Date.now().toString().slice(-4)}`);
     setPaymentInvoice(null);
-    notify(`Payment of NPR रु. ${payAmount.toLocaleString()} recorded via ${payMethod}`);
+    notify(`Payment of NPR Rs. ${payAmount.toLocaleString()} recorded via ${payMethod}`);
   };
 
   const handleSendWhatsApp = (inv: Invoice) => {
     const cleanPhone = inv.customerPhone.replace(/[^0-9]/g, '');
-    const text = `Namaste ${inv.customerName}! Your tax invoice ${inv.invoiceNumber} for vehicle ${inv.vehicleReg} is ready at Sagarmatha Auto Workshop. Total Amount: NPR रु. ${inv.grandTotal.toLocaleString()} (incl. 13% VAT). Balance Due: NPR रु. ${inv.balanceDue.toLocaleString()}. You can pay instantly using Fonepay/eSewa. Thank you!`;
+    const text = `Namaste ${inv.customerName}! Your tax invoice ${inv.invoiceNumber} for vehicle ${inv.vehicleReg} is ready at Sagarmatha Auto Workshop. Total Amount: NPR Rs. ${inv.grandTotal.toLocaleString()} (incl. 13% VAT). Balance Due: NPR Rs. ${inv.balanceDue.toLocaleString()}. You can pay instantly using Fonepay/eSewa. Thank you!`;
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
@@ -146,7 +146,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Tax Invoices & CBMS (कर बिजक सूची)</span>
+          <span>Tax Invoices & CBMS </span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
             billingSubTab === 'invoices' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
           }`}>
@@ -164,7 +164,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
           }`}
         >
           <CalendarDays className="w-4 h-4 text-indigo-400" />
-          <span>Daybook Register (दैनिक खाता)</span>
+          <span>Daybook Register </span>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
             Daily Audit & Filter
           </span>
@@ -184,25 +184,25 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Billed</span>
-          <div className="text-xl font-black text-slate-900 font-mono mt-1">रु. {totalInvoiced.toLocaleString()}</div>
+          <div className="text-xl font-black text-slate-900 font-mono mt-1">Rs. {totalInvoiced.toLocaleString()}</div>
           <span className="text-[11px] text-slate-500">{invoices.length} IRD Tax Bills</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Payments Collected</span>
-          <div className="text-xl font-black text-emerald-600 font-mono mt-1">रु. {totalPaid.toLocaleString()}</div>
+          <div className="text-xl font-black text-emerald-600 font-mono mt-1">Rs. {totalPaid.toLocaleString()}</div>
           <span className="text-[11px] text-emerald-700">Fonepay, NepalPay, Cash, eSewa</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Accounts Receivable (Due)</span>
-          <div className="text-xl font-black text-rose-600 font-mono mt-1">रु. {totalReceivables.toLocaleString()}</div>
+          <div className="text-xl font-black text-rose-600 font-mono mt-1">Rs. {totalReceivables.toLocaleString()}</div>
           <span className="text-[11px] text-rose-700">Pending collections</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nepal 13% VAT Output</span>
-          <div className="text-xl font-black text-indigo-700 font-mono mt-1">रु. {totalVatCollected.toLocaleString()}</div>
+          <div className="text-xl font-black text-indigo-700 font-mono mt-1">Rs. {totalVatCollected.toLocaleString()}</div>
           <span className="text-[11px] text-indigo-800">Payable to Inland Revenue Dept.</span>
         </div>
       </div>
@@ -290,15 +290,15 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                   </td>
 
                   <td className="p-3.5 text-right font-mono text-slate-700">
-                    रु. {taxable.toLocaleString()}
+                    Rs. {taxable.toLocaleString()}
                   </td>
 
                   <td className="p-3.5 text-right font-mono font-bold text-indigo-700">
-                    रु. {vat.toLocaleString()}
+                    Rs. {vat.toLocaleString()}
                   </td>
 
                   <td className="p-3.5 text-right font-mono font-extrabold text-slate-900">
-                    रु. {grand.toLocaleString()}
+                    Rs. {grand.toLocaleString()}
                   </td>
 
                   <td className="p-3.5 text-center">
@@ -310,7 +310,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                     </span>
                     {invStatus !== 'Paid' && (
                       <div className="text-[10px] font-mono font-bold text-rose-600 mt-0.5">
-                        Due: रु. {due.toLocaleString()}
+                        Due: Rs. {due.toLocaleString()}
                       </div>
                     )}
                   </td>
@@ -391,7 +391,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                           onViewGatePass(pass);
                         }}
                         className="p-1 text-slate-500 hover:text-emerald-700 rounded"
-                        title="View / Print Vehicle Gate Pass (गेट पास)"
+                        title="View / Print Vehicle Gate Pass "
                       >
                         <Shield className="w-3.5 h-3.5 text-emerald-600" />
                       </button>
@@ -465,7 +465,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
               <div className="pt-2 border-t border-slate-200">
                 <span className="text-[10px] text-slate-400 block">Exact Payable Amount</span>
                 <span className="font-mono text-xl font-black text-slate-900 block">
-                  रु. {qrModalInvoice.balanceDue.toLocaleString()}
+                  Rs. {qrModalInvoice.balanceDue.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-indigo-600 font-semibold">Includes 13% Nepal VAT</span>
               </div>
@@ -510,11 +510,11 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                 </div>
                 <div className="flex justify-between mt-1">
                   <span className="text-slate-500">Total Bill:</span>
-                  <span className="font-mono font-bold text-slate-900">रु. {paymentInvoice.grandTotal.toLocaleString()}</span>
+                  <span className="font-mono font-bold text-slate-900">Rs. {paymentInvoice.grandTotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between mt-1 text-rose-600 font-bold">
                   <span>Balance Due:</span>
-                  <span className="font-mono">रु. {paymentInvoice.balanceDue.toLocaleString()}</span>
+                  <span className="font-mono">Rs. {paymentInvoice.balanceDue.toLocaleString()}</span>
                 </div>
               </div>
 

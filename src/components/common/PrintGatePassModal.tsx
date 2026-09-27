@@ -87,7 +87,7 @@ export const PrintGatePassModal: React.FC<PrintGatePassModalProps> = ({
               PAN / VAT Registration No.: <span className="text-indigo-800 font-extrabold text-sm">{profile.panVatNumber}</span>
             </p>
             <div className="inline-block mt-3 px-5 py-1.5 border-2 border-slate-900 rounded font-black text-sm uppercase tracking-wider bg-slate-100">
-              VEHICLE GATE PASS & EXIT PERMIT (सवारी साधन गेट पास)
+              VEHICLE GATE PASS & EXIT PERMIT 
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
               Authorized security exit voucher for vehicle and passenger dispatch
@@ -172,7 +172,7 @@ export const PrintGatePassModal: React.FC<PrintGatePassModalProps> = ({
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Total Invoice (NPR):</span>
-                  <span className="font-mono font-bold text-slate-900">रु. {gatePass.totalInvoiceAmount?.toLocaleString() || 'Cleared'}</span>
+                  <span className="font-mono font-bold text-slate-900">Rs. {gatePass.totalInvoiceAmount?.toLocaleString() || 'Cleared'}</span>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Payment Status:</span>

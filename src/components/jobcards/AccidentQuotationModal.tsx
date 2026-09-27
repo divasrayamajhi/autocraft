@@ -319,7 +319,7 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
                 <span className="text-xs text-slate-500 font-normal">({quotedParts.length} line items)</span>
               </h4>
               <span className="font-mono font-bold text-teal-700">
-                Parts Total: रु. {partsSubtotal.toLocaleString()}
+                Parts Total: Rs. {partsSubtotal.toLocaleString()}
               </span>
             </div>
 
@@ -333,7 +333,7 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
               >
                 <option value="">-- Choose Stock Part to Add --</option>
                 {availableParts.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.partNumber}) - रु. {p.sellingPrice.toLocaleString()}</option>
+                  <option key={p.id} value={p.id}>{p.name} ({p.partNumber}) - Rs. {p.sellingPrice.toLocaleString()}</option>
                 ))}
               </select>
               <button
@@ -365,9 +365,9 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
                       <td className="p-2.5 font-medium text-slate-900">{p.partName}</td>
                       <td className="p-2.5 font-mono text-teal-700">{p.sku}</td>
                       <td className="p-2.5 text-center font-mono">{p.quantity}</td>
-                      <td className="p-2.5 text-right font-mono">रु. {p.unitPrice.toLocaleString()}</td>
+                      <td className="p-2.5 text-right font-mono">Rs. {p.unitPrice.toLocaleString()}</td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                        रु. {p.total.toLocaleString()}
+                        Rs. {p.total.toLocaleString()}
                       </td>
                       <td className="p-2.5 text-center">
                         <button
@@ -436,7 +436,7 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
                 <span className="text-xs text-slate-500 font-normal">({quotedLabor.length} operations)</span>
               </h4>
               <span className="font-mono font-bold text-indigo-700">
-                Labor Total: रु. {laborSubtotal.toLocaleString()}
+                Labor Total: Rs. {laborSubtotal.toLocaleString()}
               </span>
             </div>
 
@@ -456,9 +456,9 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
                     <tr key={idx} className="hover:bg-slate-50/50">
                       <td className="p-2.5 font-medium text-slate-900">{l.description}</td>
                       <td className="p-2.5 text-center font-mono">{l.hours} hrs</td>
-                      <td className="p-2.5 text-right font-mono">रु. {l.ratePerHour.toLocaleString()}</td>
+                      <td className="p-2.5 text-right font-mono">Rs. {l.ratePerHour.toLocaleString()}</td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                        रु. {l.totalAmount.toLocaleString()}
+                        Rs. {l.totalAmount.toLocaleString()}
                       </td>
                       <td className="p-2.5 text-center">
                         <button
@@ -521,21 +521,21 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Estimated Insurance Share</span>
                 <span className="font-mono font-bold text-purple-800 text-sm">
-                  रु. {insuranceLiabilityEstimate.toLocaleString()}
+                  Rs. {insuranceLiabilityEstimate.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-slate-500 block">Payable directly via Cashless Insurer</span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Customer Liability (Deductible/Compulsory)</span>
                 <span className="font-mono font-bold text-slate-900 text-sm">
-                  रु. {customerShareEstimate.toLocaleString()}
+                  Rs. {customerShareEstimate.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-slate-500 block">Owner depreciation & policy excess</span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Scrap / Salvage Deduction</span>
                 <span className="font-mono font-bold text-amber-700 text-sm">
-                  रु. {estimatedSalvage.toLocaleString()}
+                  Rs. {estimatedSalvage.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-slate-500 block">Recovered old parts salvage value</span>
               </div>
@@ -554,16 +554,16 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
           <div className="flex items-center space-x-6 text-xs">
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Taxable Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">रु. {totalTaxable.toLocaleString()}</span>
+              <span className="font-mono font-bold text-slate-800">Rs. {totalTaxable.toLocaleString()}</span>
             </div>
             <div>
               <span className="text-[10px] text-indigo-500 font-bold uppercase block">Nepal 13% VAT</span>
-              <span className="font-mono font-bold text-indigo-700">रु. {vatAmount.toLocaleString()}</span>
+              <span className="font-mono font-bold text-indigo-700">Rs. {vatAmount.toLocaleString()}</span>
             </div>
             <div className="pl-4 border-l border-slate-300">
               <span className="text-[10px] text-slate-500 font-bold uppercase block">Gross Quotation Amount</span>
               <span className="font-mono font-black text-lg text-slate-900">
-                रु. {grandTotal.toLocaleString()}
+                Rs. {grandTotal.toLocaleString()}
               </span>
             </div>
           </div>

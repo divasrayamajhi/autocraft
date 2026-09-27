@@ -636,10 +636,10 @@ export const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({
                         />
                       </td>
                       <td className="p-2.5 text-right font-mono text-slate-600">
-                        रु. {(item.vatAmount || 0).toLocaleString()}
+                        Rs. {(item.vatAmount || 0).toLocaleString()}
                       </td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                        रु. {(item.lineTotal || 0).toLocaleString()}
+                        Rs. {(item.lineTotal || 0).toLocaleString()}
                       </td>
                       <td className="p-2.5 text-center">
                         <button
@@ -673,15 +673,15 @@ export const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 font-mono text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal (Excl. VAT):</span>
-                <span className="font-bold">रु. {subtotal.toLocaleString()}</span>
+                <span className="font-bold">Rs. {subtotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Nepal VAT (13%):</span>
-                <span>रु. {vatTotal.toLocaleString()}</span>
+                <span>Rs. {vatTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-300 text-sm font-black text-slate-900">
                 <span>Grand Total (NPR):</span>
-                <span className="text-indigo-700">रु. {totalAmount.toLocaleString()}</span>
+                <span className="text-indigo-700">Rs. {totalAmount.toLocaleString()}</span>
               </div>
             </div>
           </div>

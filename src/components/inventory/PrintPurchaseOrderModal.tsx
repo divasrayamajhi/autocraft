@@ -86,7 +86,7 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
               PAN / VAT No.: <span className="text-indigo-800 font-extrabold text-sm">{workshopPan}</span>
             </p>
             <div className="inline-block mt-2 px-5 py-1 border border-slate-800 rounded font-black text-sm uppercase tracking-wider bg-slate-100">
-              PURCHASE ORDER (खरिद आदेश)
+              PURCHASE ORDER 
             </div>
           </div>
 
@@ -147,9 +147,9 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
                       <td className="p-2 border-r border-slate-200 font-medium text-slate-900">{item.partName}</td>
                       <td className="p-2 border-r border-slate-200 text-center font-mono text-slate-600">{item.partNumber}</td>
                       <td className="p-2 border-r border-slate-200 text-center font-bold">{qty}</td>
-                      <td className="p-2 border-r border-slate-200 text-right font-mono">रु. {rate.toLocaleString()}</td>
-                      <td className="p-2 border-r border-slate-200 text-right font-mono">रु. {vat.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono font-bold text-slate-900">रु. {total.toLocaleString()}</td>
+                      <td className="p-2 border-r border-slate-200 text-right font-mono">Rs. {rate.toLocaleString()}</td>
+                      <td className="p-2 border-r border-slate-200 text-right font-mono">Rs. {vat.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono font-bold text-slate-900">Rs. {total.toLocaleString()}</td>
                     </tr>
                   );
                 })}
@@ -174,15 +174,15 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
             <div className="w-64 space-y-1.5 text-right font-mono text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal (Excl. VAT):</span>
-                <span>रु. {(purchaseOrder.subtotal || 0).toLocaleString()}</span>
+                <span>Rs. {(purchaseOrder.subtotal || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Nepal VAT (13%):</span>
-                <span>रु. {(purchaseOrder.vatTotal || 0).toLocaleString()}</span>
+                <span>Rs. {(purchaseOrder.vatTotal || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between pt-1.5 border-t-2 border-slate-900 text-sm font-bold text-slate-900">
                 <span>Grand Total (NPR):</span>
-                <span>रु. {(purchaseOrder.totalAmount || 0).toLocaleString()}</span>
+                <span>Rs. {(purchaseOrder.totalAmount || 0).toLocaleString()}</span>
               </div>
             </div>
           </div>

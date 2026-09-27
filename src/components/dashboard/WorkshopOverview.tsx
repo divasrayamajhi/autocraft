@@ -147,7 +147,7 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
               <QrCode className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-emerald-600 font-mono mt-2">रु. {collectedRevenue.toLocaleString()}</div>
+          <div className="text-2xl font-black text-emerald-600 font-mono mt-2">Rs. {collectedRevenue.toLocaleString()}</div>
           <div className="text-[11px] text-emerald-700 mt-1 flex items-center space-x-1">
             <Zap className="w-3.5 h-3.5" />
             <span>Fonepay, NepalPay, eSewa</span>
@@ -164,7 +164,7 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-indigo-700 font-mono mt-2">रु. {totalVat13Collected.toLocaleString()}</div>
+          <div className="text-2xl font-black text-indigo-700 font-mono mt-2">Rs. {totalVat13Collected.toLocaleString()}</div>
           <div className="text-[11px] text-slate-500 mt-1">
             <span>Due to IRD: 25th of month</span>
           </div>

@@ -33,7 +33,7 @@ export const PrintQuotationModal: React.FC<PrintQuotationModalProps> = ({
     if (onWhatsAppShare) {
       onWhatsAppShare(quotation);
     } else {
-      const message = `Namaste ${quotation.customerName}! Here is your Accident Repair Quotation ${quotation.quotationNumber} for vehicle ${quotation.vehicleReg}. Total Estimate: NPR रु. ${quotation.totalAmount.toLocaleString()}. - ${workshopName}`;
+      const message = `Namaste ${quotation.customerName}! Here is your Accident Repair Quotation ${quotation.quotationNumber} for vehicle ${quotation.vehicleReg}. Total Estimate: NPR Rs. ${quotation.totalAmount.toLocaleString()}. - ${workshopName}`;
       const cleanPhone = (quotation.customerPhone || '').replace(/[^0-9]/g, '');
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
@@ -97,7 +97,7 @@ export const PrintQuotationModal: React.FC<PrintQuotationModalProps> = ({
               PAN / VAT Registration No.: <span className="text-indigo-800 font-extrabold text-sm">{workshopPan}</span>
             </p>
             <div className="inline-block mt-3 px-6 py-1.5 border-2 border-slate-900 rounded font-black text-sm uppercase tracking-wider bg-slate-100">
-              ACCIDENTAL REPAIR ESTIMATE & QUOTATION (दुर्घटना मर्मत कोटेशन)
+              ACCIDENTAL REPAIR ESTIMATE & QUOTATION 
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
               Prepared for Insurance Survey & Owner Approval
@@ -165,9 +165,9 @@ export const PrintQuotationModal: React.FC<PrintQuotationModalProps> = ({
                       <td className="p-2.5 font-medium text-slate-900">{item.partName}</td>
                       <td className="p-2.5 font-mono text-teal-700">{item.sku}</td>
                       <td className="p-2.5 text-center font-mono">{item.quantity}</td>
-                      <td className="p-2.5 text-right font-mono">रु. {item.unitPrice.toLocaleString()}</td>
+                      <td className="p-2.5 text-right font-mono">Rs. {item.unitPrice.toLocaleString()}</td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                        रु. {item.total.toLocaleString()}
+                        Rs. {item.total.toLocaleString()}
                       </td>
                     </tr>
                   ))}
@@ -185,13 +185,13 @@ export const PrintQuotationModal: React.FC<PrintQuotationModalProps> = ({
               <div className="flex justify-between text-slate-600">
                 <span>Insurer Estimated Share:</span>
                 <span className="font-mono font-bold text-indigo-700">
-                  रु. {Math.round(quotation.totalAmount * 0.75).toLocaleString()}
+                  Rs. {Math.round(quotation.totalAmount * 0.75).toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Customer Deductible & Dep:</span>
                 <span className="font-mono font-bold text-slate-800">
-                  रु. {Math.round(quotation.totalAmount * 0.25).toLocaleString()}
+                  Rs. {Math.round(quotation.totalAmount * 0.25).toLocaleString()}
                 </span>
               </div>
               <p className="text-[10px] text-slate-500 italic mt-2">
@@ -202,15 +202,15 @@ export const PrintQuotationModal: React.FC<PrintQuotationModalProps> = ({
             <div className="border border-slate-300 rounded-xl p-3 bg-slate-50 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Taxable Amount (Excl. VAT):</span>
-                <span className="font-mono font-semibold">रु. {quotation.subtotal.toLocaleString()}</span>
+                <span className="font-mono font-semibold">Rs. {quotation.subtotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-indigo-700 font-bold">
                 <span>Nepal 13% VAT:</span>
-                <span className="font-mono">रु. {quotation.vatAmount.toLocaleString()}</span>
+                <span className="font-mono">Rs. {quotation.vatAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-900 font-black text-sm border-t-2 border-slate-900 pt-1">
                 <span>Gross Quotation Total:</span>
-                <span className="font-mono">रु. {quotation.totalAmount.toLocaleString()}</span>
+                <span className="font-mono">Rs. {quotation.totalAmount.toLocaleString()}</span>
               </div>
             </div>
           </div>

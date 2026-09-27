@@ -5,7 +5,7 @@ const THEME_STORAGE_KEY = 'NEPAL_WORKSHOP_THEME_CONFIG';
 export interface ThemePreset {
   id: string;
   name: string;
-  nepaliName: string;
+  nepaliName?: string;
   description: string;
   primaryColor: ThemeColorPreset;
   mode: ThemeMode;
@@ -21,7 +21,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'sagarmatha',
     name: 'Sagarmatha Classic',
-    nepaliName: 'सगरमाथा क्लासिक',
     description: 'Signature Royal Indigo with Slate 900 fixed sidebar and crisp light cards.',
     primaryColor: 'indigo',
     mode: 'light',
@@ -35,7 +34,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'himalayan_emerald',
     name: 'Himalayan Emerald',
-    nepaliName: 'हिमालयन पन्ना',
     description: 'Fresh organic Emerald Green with clean slate canvas and high-contrast text.',
     primaryColor: 'emerald',
     mode: 'light',
@@ -49,7 +47,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'kathmandu_crimson',
     name: 'Kathmandu Crimson',
-    nepaliName: 'काठमाडौं रातो',
     description: 'High-octane Automotive Racing Crimson paired with charcoal stealth borders.',
     primaryColor: 'crimson',
     mode: 'light',
@@ -63,7 +60,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'pokhara_amber',
     name: 'Pokhara Amber Glow',
-    nepaliName: 'पोखरा एम्बर',
     description: 'Warm gold-amber accents with warm neutral background and soft curvature.',
     primaryColor: 'amber',
     mode: 'warm',
@@ -77,7 +73,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'monsoon_ocean',
     name: 'Monsoon Blue & Navy',
-    nepaliName: 'मनसुन निलो',
     description: 'Deep Pacific Royal Blue with dark navy sidebar and crystal clarity.',
     primaryColor: 'blue',
     mode: 'light',
@@ -91,7 +86,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'midnight_luxury',
     name: 'Midnight Dark Luxury',
-    nepaliName: 'मिडनाइट डार्क',
     description: 'Eye-friendly deep dark canvas with vibrant violet neon accents for service bays.',
     primaryColor: 'purple',
     mode: 'dark',
@@ -105,7 +99,6 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'stealth_titanium',
     name: 'Stealth Titanium',
-    nepaliName: 'स्टिल्थ टाइटानियम',
     description: 'Executive monochrome slate palette with crisp typography and minimal noise.',
     primaryColor: 'slate',
     mode: 'slate',
@@ -118,12 +111,11 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: 'devanagari_heritage',
-    name: 'Nepali Bilingual Heritage',
-    nepaliName: 'नेपाली सम्पदा',
-    description: 'Optimized typography for Devanagari Unicode and English with rounded borders.',
+    name: 'Modern Glacier Cyan',
+    description: 'Crisp arctic cyan with high precision typography and modern rounded borders.',
     primaryColor: 'cyan',
     mode: 'light',
-    fontFamily: 'Noto Sans Devanagari',
+    fontFamily: 'Plus Jakarta Sans',
     iconStyle: 'badge',
     borderRadius: 'rounded-2xl',
     sidebarStyle: 'navy-dark',
@@ -160,7 +152,7 @@ export const FONT_CONFIG: Record<ThemeFont, { name: string; description: string;
   'Inter': { name: 'Inter', description: 'High-precision UI typeface with supreme data legibility', sample: 'Sagarmatha Multi-Care Auto Workshop' },
   'DM Sans': { name: 'DM Sans', description: 'Friendly, warm geometric sans with open apertures', sample: 'Sagarmatha Multi-Care Auto Workshop' },
   'JetBrains Mono': { name: 'JetBrains Mono', description: 'Technical monospace - ideal for VINs, part numbers & data', sample: 'VIN: MBH41-9820-KATH' },
-  'Noto Sans Devanagari': { name: 'Noto Sans Devanagari', description: 'Native Nepali Unicode legibility paired with English', sample: 'सगरमाथा वर्कसप - IRD कर बिजक दर्ता' },
+  'Noto Sans Devanagari': { name: 'Noto Sans', description: 'Clean universal font paired with high-contrast UI', sample: 'Sagarmatha Auto Workshop - Tax Invoice Register' },
 };
 
 export const SIDEBAR_CONFIG: Record<ThemeSidebarStyle, { name: string; bgClass: string; hex: string }> = {

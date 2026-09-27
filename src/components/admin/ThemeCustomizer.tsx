@@ -266,7 +266,7 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({ onNotify }) =>
             </div>
             <div className="p-2.5 bg-slate-900/80 rounded-lg border border-slate-700 text-xs flex items-center justify-between">
               <span className="text-slate-400">Total Billed:</span>
-              <span className="font-mono font-black text-emerald-400">रु. 24,500.00</span>
+              <span className="font-mono font-black text-emerald-400">Rs. 24,500.00</span>
             </div>
           </div>
 
@@ -274,7 +274,7 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({ onNotify }) =>
           <div className="bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 space-y-2">
             <div className="text-[11px] font-bold text-slate-400 uppercase">Typography Specimen</div>
             <div className="text-sm font-bold text-white">
-              सगरमाथा वर्कसप ईआरपी
+              Sagarmatha Workshop ERP
             </div>
             <div className="text-xs text-slate-300">
               Multi-Brand Diagnostic & Nepal IRD E-Billing Suite
@@ -448,7 +448,7 @@ export const ThemeCustomizer: React.FC<ThemeCustomizerProps> = ({ onNotify }) =>
                         )}
                         {fontKey === 'Noto Sans Devanagari' && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold uppercase">
-                            नेपाली
+                            English
                           </span>
                         )}
                       </div>

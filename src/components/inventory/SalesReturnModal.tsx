@@ -493,7 +493,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                     <div className="sm:col-span-2 text-right">
                       <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Total Refund</label>
                       <span className="font-mono font-bold text-rose-700 text-xs block py-1.5">
-                        रु. {item.refundAmount.toLocaleString()}
+                        Rs. {item.refundAmount.toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -506,7 +506,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                       placeholder="e.g. Bin-A1-04"
                       className="border border-slate-200 rounded px-1.5 py-0.5 font-mono text-[10px] w-24 uppercase"
                     />
-                    <span className="text-slate-400">• Includes 13% VAT: रु. {item.vatAmount.toLocaleString()}</span>
+                    <span className="text-slate-400">• Includes 13% VAT: Rs. {item.vatAmount.toLocaleString()}</span>
                   </div>
                 </div>
               ))}
@@ -575,15 +575,15 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 font-medium">
             <div className="flex justify-between text-slate-600">
               <span>Return Taxable Subtotal:</span>
-              <span className="font-mono">रु. {subtotalRefund.toLocaleString()}</span>
+              <span className="font-mono">Rs. {subtotalRefund.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>Nepal 13% VAT Reversal:</span>
-              <span className="font-mono text-rose-600 font-semibold">+ रु. {totalVatRefund.toLocaleString()}</span>
+              <span className="font-mono text-rose-600 font-semibold">+ Rs. {totalVatRefund.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-slate-900 font-bold text-sm pt-2 border-t border-slate-200">
               <span>Total IRD Credit Note Value:</span>
-              <span className="font-mono text-rose-700 font-black text-base">रु. {totalRefundAmount.toLocaleString()}</span>
+              <span className="font-mono text-rose-700 font-black text-base">Rs. {totalRefundAmount.toLocaleString()}</span>
             </div>
           </div>
 

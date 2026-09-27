@@ -297,17 +297,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         <div>
           <div className="flex items-center space-x-2 flex-wrap gap-y-1">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-              नेपाल आन्तरिक राजस्व विभाग (Nepal IRD)
+              Nepal Inland Revenue Department (IRD)
             </span>
             <span className="text-xs text-slate-400">
-              मूल्य अभिवृद्धि कर नियमावली २०५२ • Fiscal Year <strong className="text-amber-400 font-mono">{profile.fiscalYear} B.S.</strong>
+              Value Added Tax Rules 2052 • Fiscal Year <strong className="text-amber-400 font-mono">{profile.fiscalYear} B.S.</strong>
             </span>
           </div>
           <h2 className="text-2xl font-black mt-1 tracking-tight">
             General Ledger & Nepal IRD VAT Register
           </h2>
           <p className="text-xs text-slate-300 max-w-3xl mt-1 leading-relaxed">
-            Full compliance suite: <strong>अनुसूची १३ (बिक्री तथा खरिद खाता)</strong>, <strong>अनुसूची १० (मासिक कर विवरण VAT-01)</strong>, Double-Entry General Journal, Chart of Accounts, Trial Balance, P&L, Balance Sheet, and AR/AP Aging in Nepalese Rupees (NPR).
+            Full compliance suite: <strong>Schedule 13 (Sales & Purchase Register)</strong>, <strong>Schedule 10 (Monthly VAT Return VAT-01)</strong>, Double-Entry General Journal, Chart of Accounts, Trial Balance, P&L, Balance Sheet, and AR/AP Aging in Nepalese Rupees (NPR).
           </p>
         </div>
 
@@ -337,25 +337,25 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Sales Turnover (NPR)</span>
-          <div className="text-xl font-black text-slate-900 font-mono mt-1">रु. {totalGrossRevenue.toLocaleString()}</div>
-          <span className="text-[11px] text-slate-500">Taxable Sales: रु. {totalTaxableSales.toLocaleString()}</span>
+          <div className="text-xl font-black text-slate-900 font-mono mt-1">Rs. {totalGrossRevenue.toLocaleString()}</div>
+          <span className="text-[11px] text-slate-500">Taxable Sales: Rs. {totalTaxableSales.toLocaleString()}</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Output VAT Collected (13%)</span>
-          <div className="text-xl font-black text-indigo-700 font-mono mt-1">रु. {totalVat13.toLocaleString()}</div>
+          <div className="text-xl font-black text-indigo-700 font-mono mt-1">Rs. {totalVat13.toLocaleString()}</div>
           <span className="text-[11px] text-indigo-900 font-medium">Credited to IRD Sales Register</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Input Tax Credit (ITC 13%)</span>
-          <div className="text-xl font-black text-emerald-600 font-mono mt-1">रु. {totalInputVat.toLocaleString()}</div>
+          <div className="text-xl font-black text-emerald-600 font-mono mt-1">Rs. {totalInputVat.toLocaleString()}</div>
           <span className="text-[11px] text-emerald-800 font-medium">Claimable on Parts & Fluids</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Net Tax Payable to IRD</span>
-          <div className="text-xl font-black text-rose-600 font-mono mt-1">रु. {netVatPayableToIRD.toLocaleString()}</div>
+          <div className="text-xl font-black text-rose-600 font-mono mt-1">Rs. {netVatPayableToIRD.toLocaleString()}</div>
           <span className="text-[11px] text-rose-800 font-medium">Due on 25th of upcoming month</span>
         </div>
       </div>
@@ -364,16 +364,16 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
       <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto scrollbar-none">
         <div className="flex items-center space-x-1 min-w-max">
           {[
-            { id: 'vat_sales', label: 'बिक्री खाता (Sales Book)', tag: 'अनुसूची १३', icon: FileCheck },
-            { id: 'vat_purchases', label: 'खरिद खाता (Purchase Book)', tag: 'अनुसूची १३', icon: Receipt },
-            { id: 'vat_return', label: 'मासिक कर विवरण (VAT-01)', tag: 'अनुसूची १०', icon: ShieldCheck },
-            { id: 'gl_accounts', label: 'Chart of Accounts (लेखा सूची)', tag: 'COA', icon: BookOpen },
-            { id: 'journal_entries', label: 'जर्नल भौचर (Journal Entries)', tag: 'Double-Entry', icon: FileSpreadsheet },
-            { id: 'account_ledger', label: 'खाता पाना (Ledger Statement)', tag: 'T-Account', icon: Layers },
-            { id: 'trial_balance', label: 'सन्तुलन परीक्षण (Trial Balance)', tag: 'Balanced', icon: CheckCircle2 },
-            { id: 'pnl', label: 'नाफा नोक्सान (P&L)', tag: 'NPR', icon: TrendingUp },
-            { id: 'balance_sheet', label: 'वासलात (Balance Sheet)', tag: 'NPR', icon: FileSpreadsheet },
-            { id: 'ar_ap', label: 'बाँकी उमेर (AR & AP Aging)', tag: 'Aging', icon: Layers }
+            { id: 'vat_sales', label: 'Sales Book (Schedule 13)', tag: 'Sched 13', icon: FileCheck },
+            { id: 'vat_purchases', label: 'Purchase Book (Schedule 13)', tag: 'Sched 13', icon: Receipt },
+            { id: 'vat_return', label: 'Monthly VAT Return (VAT-01)', tag: 'Sched 10', icon: ShieldCheck },
+            { id: 'gl_accounts', label: 'Chart of Accounts', tag: 'COA', icon: BookOpen },
+            { id: 'journal_entries', label: 'Journal Entries (JV)', tag: 'Double-Entry', icon: FileSpreadsheet },
+            { id: 'account_ledger', label: 'Ledger Statement', tag: 'T-Account', icon: Layers },
+            { id: 'trial_balance', label: 'Trial Balance', tag: 'Balanced', icon: CheckCircle2 },
+            { id: 'pnl', label: 'Profit & Loss (P&L)', tag: 'NPR', icon: TrendingUp },
+            { id: 'balance_sheet', label: 'Balance Sheet', tag: 'NPR', icon: FileSpreadsheet },
+            { id: 'ar_ap', label: 'AR & AP Aging', tag: 'Aging', icon: Layers }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -404,20 +404,20 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       </div>
 
-      {/* TAB 1: SALES BOOK (अनुसूची १३: बिक्री खाता) */}
+      {/* TAB 1: SALES BOOK (Schedule 13) */}
       {activeTab === 'vat_sales' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                  <span>अनुसूची - १३ : बिक्री खाता (Sales Book)</span>
-                  <span className="text-xs font-normal text-slate-500">(मूल्य अभिवृद्धि कर नियमावली, २०५२ को नियम २३ को उपनियम (१))</span>
+                  <span>Schedule 13: Sales Register (Sales Book)</span>
+                  <span className="text-xs font-normal text-slate-500">(Value Added Tax Rules 2052, Rule 23(1))</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  करदाताको स्थायी लेखा नं (PAN): <strong className="font-mono text-slate-900 font-bold">{profile.panVatNumber}</strong> | 
-                  व्यापारिक नाम: <strong className="text-slate-900">{profile.name}</strong> | 
-                  आर्थिक वर्ष: <strong className="font-mono text-slate-900">{profile.fiscalYear} B.S.</strong>
+                  Taxpayer PAN: <strong className="font-mono text-slate-900 font-bold">{profile.panVatNumber}</strong> | 
+                  Trading Name: <strong className="text-slate-900">{profile.name}</strong> | 
+                  Fiscal Year: <strong className="font-mono text-slate-900">{profile.fiscalYear} B.S.</strong>
                 </p>
               </div>
               <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 flex items-center space-x-1 self-start sm:self-auto">
@@ -453,10 +453,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   onChange={(e) => setFilterMonth(e.target.value)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="All">All Months (सम्पूर्ण अवधि)</option>
-                  <option value="2026-09">Bhadra 2081 (भाद्र)</option>
-                  <option value="2026-10">Ashwin 2081 (असोज)</option>
-                  <option value="2026-08">Shrawan 2081 (श्रावण)</option>
+                  <option value="All">All Months (Full Fiscal Year)</option>
+                  <option value="2026-09">Bhadra 2081 </option>
+                  <option value="2026-10">Ashwin 2081 </option>
+                  <option value="2026-08">Shrawan 2081 </option>
                 </select>
 
                 <button
@@ -473,22 +473,22 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-3">मिति (Date / Miti)</th>
-                    <th className="p-3">बिजक नं (Invoice #)</th>
-                    <th className="p-3">खरिदकर्ताको नाम (Buyer)</th>
-                    <th className="p-3 text-center">स्थायी लेखा नं (PAN)</th>
-                    <th className="p-3 text-right">जम्मा बिक्री (Grand Total)</th>
-                    <th className="p-3 text-right">कर छुट (Exempt)</th>
-                    <th className="p-3 text-right">करयोग्य बिक्री (Taxable)</th>
-                    <th className="p-3 text-right">१३% भ्याट (13% VAT)</th>
-                    <th className="p-3 text-center">CBMS प्रमाणीकरण नं</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Invoice #</th>
+                    <th className="p-3">Buyer Name</th>
+                    <th className="p-3 text-center">Buyer PAN / VAT</th>
+                    <th className="p-3 text-right">Grand Total</th>
+                    <th className="p-3 text-right">Exempt</th>
+                    <th className="p-3 text-right">Taxable Sales</th>
+                    <th className="p-3 text-right">13% Output VAT</th>
+                    <th className="p-3 text-center">CBMS Ack Number</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredInvoices.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="p-8 text-center text-slate-400">
-                        कुनै बिक्री बिजक भेटिएन। (No sales invoices match your search query.)
+                        No sales invoices match your search query.
                       </td>
                     </tr>
                   ) : (
@@ -513,16 +513,16 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                             {inv.customerPan ? (
                               <span className="font-bold text-slate-800">{inv.customerPan}</span>
                             ) : (
-                              <span className="text-slate-400">उपभोक्ता</span>
+                              <span className="text-slate-400">Consumer</span>
                             )}
                           </td>
                           <td className="p-3 text-right font-mono font-extrabold text-slate-900">
-                            रु. {grand.toLocaleString()}
+                            Rs. {grand.toLocaleString()}
                           </td>
-                          <td className="p-3 text-right font-mono text-slate-400">रु. 0</td>
-                          <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono text-slate-400">Rs. 0</td>
+                          <td className="p-3 text-right font-mono">Rs. {taxable.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono font-bold text-indigo-700">
-                            रु. {vat.toLocaleString()}
+                            Rs. {vat.toLocaleString()}
                           </td>
                           <td className="p-3 text-center font-mono text-[10px] text-emerald-700 font-semibold">
                             {ack}
@@ -535,17 +535,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 <tfoot>
                   <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
                     <td colSpan={4} className="p-3.5 text-right uppercase">
-                      जम्मा कुल (Month To Date Total NPR):
+                      Grand Total (MTD Total NPR):
                     </td>
                     <td className="p-3.5 text-right font-mono font-black text-sm">
-                      रु. {totalGrossRevenue.toLocaleString()}
+                      Rs. {totalGrossRevenue.toLocaleString()}
                     </td>
-                    <td className="p-3.5 text-right font-mono">रु. 0</td>
+                    <td className="p-3.5 text-right font-mono">Rs. 0</td>
                     <td className="p-3.5 text-right font-mono">
-                      रु. {totalTaxableSales.toLocaleString()}
+                      Rs. {totalTaxableSales.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-right font-mono text-indigo-800 font-extrabold text-sm">
-                      रु. {totalVat13.toLocaleString()}
+                      Rs. {totalVat13.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-center text-[10px] text-emerald-800">
                       IRD Annex 13 Verified
@@ -558,19 +558,19 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 2: PURCHASE BOOK (अनुसूची १३: खरिद खाता) */}
+      {/* TAB 2: PURCHASE BOOK (Schedule 13) */}
       {activeTab === 'vat_purchases' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                  <span>अनुसूची - १३ : खरिद खाता (Purchase Book)</span>
-                  <span className="text-xs font-normal text-slate-500">(स्पेयर पार्ट्स तथा लुब्रिकेन्ट्स खरिद दर्ता)</span>
+                  <span>Schedule 13: Purchase Register (Purchase Book)</span>
+                  <span className="text-xs font-normal text-slate-500">(Spare Parts & Lubricants Purchase Register)</span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  कट्टी हुने इनपुट कर (Input Tax Credit): <strong className="font-mono text-emerald-700 font-bold">रु. {totalInputVat.toLocaleString()}</strong> | 
-                  आपूर्तिकर्ता बिल संख्या: <strong className="font-mono text-slate-900">{purchaseOrders.length}</strong>
+                  Input Tax Credit: <strong className="font-mono text-emerald-700 font-bold">Rs. {totalInputVat.toLocaleString()}</strong> | 
+                  Supplier Bills Count: <strong className="font-mono text-slate-900">{purchaseOrders.length}</strong>
                 </p>
               </div>
               <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 flex items-center space-x-1 self-start sm:self-auto">
@@ -606,10 +606,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   onChange={(e) => setFilterMonth(e.target.value)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="All">All Months (सम्पूर्ण अवधि)</option>
-                  <option value="2026-09">Bhadra 2081 (भाद्र)</option>
-                  <option value="2026-10">Ashwin 2081 (असोज)</option>
-                  <option value="2026-08">Shrawan 2081 (श्रावण)</option>
+                  <option value="All">All Months (Full Fiscal Year)</option>
+                  <option value="2026-09">Bhadra 2081 </option>
+                  <option value="2026-10">Ashwin 2081 </option>
+                  <option value="2026-08">Shrawan 2081 </option>
                 </select>
 
                 <button
@@ -626,22 +626,22 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-3">मिति (Date / Miti)</th>
-                    <th className="p-3">आपूर्तिकर्ताको बिजक / PO नं</th>
-                    <th className="p-3">आपूर्तिकर्ताको नाम (Supplier Name)</th>
-                    <th className="p-3 text-center">स्थायी लेखा नं (PAN)</th>
-                    <th className="p-3 text-right">जम्मा खरिद रकम (Total)</th>
-                    <th className="p-3 text-right">कर छुट (Exempt)</th>
-                    <th className="p-3 text-right">करयोग्य खरिद (Taxable)</th>
-                    <th className="p-3 text-right">१३% इनपुट भ्याट (ITC)</th>
-                    <th className="p-3 text-center">स्थिति (Status)</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Supplier Bill / PO #</th>
+                    <th className="p-3">Supplier Name</th>
+                    <th className="p-3 text-center">Buyer PAN / VAT</th>
+                    <th className="p-3 text-right">Total Purchase Amount</th>
+                    <th className="p-3 text-right">Exempt</th>
+                    <th className="p-3 text-right">Taxable Purchase</th>
+                    <th className="p-3 text-right">13% Input VAT (ITC)</th>
+                    <th className="p-3 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredPurchases.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="p-8 text-center text-slate-400">
-                        कुनै खरिद भौचर भेटिएन। (No purchase records match your search.)
+                        No purchase records match your search.
                       </td>
                     </tr>
                   ) : (
@@ -657,12 +657,12 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                           <td className="p-3 font-semibold text-slate-900">{po.supplierName}</td>
                           <td className="p-3 text-center font-mono text-slate-600">{po.supplierPanVat || '—'}</td>
                           <td className="p-3 text-right font-mono font-extrabold text-slate-900">
-                            रु. {grand.toLocaleString()}
+                            Rs. {grand.toLocaleString()}
                           </td>
-                          <td className="p-3 text-right font-mono text-slate-400">रु. 0</td>
-                          <td className="p-3 text-right font-mono">रु. {taxable.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono text-slate-400">Rs. 0</td>
+                          <td className="p-3 text-right font-mono">Rs. {taxable.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono font-bold text-emerald-700">
-                            रु. {vat.toLocaleString()}
+                            Rs. {vat.toLocaleString()}
                           </td>
                           <td className="p-3 text-center">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -679,17 +679,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 <tfoot>
                   <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
                     <td colSpan={4} className="p-3.5 text-right uppercase">
-                      जम्मा कुल खरिद (Total Purchases NPR):
+                      Grand Total Purchases (NPR):
                     </td>
                     <td className="p-3.5 text-right font-mono font-black text-sm">
-                      रु. {totalGrossPurchases.toLocaleString()}
+                      Rs. {totalGrossPurchases.toLocaleString()}
                     </td>
-                    <td className="p-3.5 text-right font-mono">रु. 0</td>
+                    <td className="p-3.5 text-right font-mono">Rs. 0</td>
                     <td className="p-3.5 text-right font-mono">
-                      रु. {totalTaxablePurchases.toLocaleString()}
+                      Rs. {totalTaxablePurchases.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-right font-mono text-emerald-800 font-extrabold text-sm">
-                      रु. {totalInputVat.toLocaleString()}
+                      Rs. {totalInputVat.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-center text-[10px] text-emerald-800">
                       Input Tax Credit
@@ -702,13 +702,13 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 3: MONTHLY VAT RETURN SUMMARY (अनुसूची १०: मासिक भ्याट विवरण) */}
+      {/* TAB 3: MONTHLY VAT RETURN SUMMARY (Schedule 10: Monthly VAT Return) */}
       {activeTab === 'vat_return' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-4xl space-y-6">
           <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                अनुसूची - १० : मासिक मूल्य अभिवृद्धि कर विवरण (Nepal IRD Form VAT-01)
+                Schedule 10: Monthly Value Added Tax Return (Nepal IRD Form VAT-01)
               </h3>
               <p className="text-xs text-slate-500">
                 Inland Revenue Department Tax Assessment & Net Payment Reconciliation
@@ -730,20 +730,20 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             {/* Output Tax (Sales) */}
             <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
               <h4 className="font-bold text-indigo-900 uppercase tracking-wider text-[11px] pb-1 border-b border-slate-200">
-                खण्ड 'क': बिक्री तथा बिक्री कर (Output VAT 13%)
+                Section A: Sales & Output VAT (13%)
               </h4>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-slate-600">कुल करयोग्य बिक्री (Total Taxable Turnover):</span>
-                  <span className="font-mono font-bold">रु. {totalTaxableSales.toLocaleString()}</span>
+                  <span className="text-slate-600">Total Taxable Turnover:</span>
+                  <span className="font-mono font-bold">Rs. {totalTaxableSales.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-600">कर छुट हुने बिक्री (Zero-rated / Exempt):</span>
-                  <span className="font-mono text-slate-400">रु. 0</span>
+                  <span className="text-slate-600">Zero-rated / Exempt Sales:</span>
+                  <span className="font-mono text-slate-400">Rs. 0</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-indigo-900 text-sm">
-                  <span>असुल गरिएको १३% बिक्री कर (Output VAT):</span>
-                  <span className="font-mono">रु. {totalVat13.toLocaleString()}</span>
+                  <span>Output VAT Collected (13%):</span>
+                  <span className="font-mono">Rs. {totalVat13.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -751,20 +751,20 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             {/* Input Tax (Purchases) */}
             <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-slate-50">
               <h4 className="font-bold text-emerald-900 uppercase tracking-wider text-[11px] pb-1 border-b border-slate-200">
-                खण्ड 'ख': खरिद तथा इनपुट कर कट्टी (Input Tax Credit)
+                Section B: Purchases & Input Tax Credit
               </h4>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-slate-600">कुल करयोग्य खरिद (Taxable Parts Purchases):</span>
-                  <span className="font-mono font-bold">रु. {totalTaxablePurchases.toLocaleString()}</span>
+                  <span className="text-slate-600">Taxable Parts Purchases:</span>
+                  <span className="font-mono font-bold">Rs. {totalTaxablePurchases.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-600">कर छुट हुने खरिद (Exempt Spares):</span>
-                  <span className="font-mono text-slate-400">रु. 0</span>
+                  <span className="text-slate-600">Exempt Spares Purchases:</span>
+                  <span className="font-mono text-slate-400">Rs. 0</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-emerald-900 text-sm">
-                  <span>कट्टी दाबी गरिएको १३% खरिद कर (ITC):</span>
-                  <span className="font-mono">रु. {totalInputVat.toLocaleString()}</span>
+                  <span>Input Tax Credit Claimed (13%):</span>
+                  <span className="font-mono">Rs. {totalInputVat.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -774,22 +774,22 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
           <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold">
-                खण्ड 'ग': खुद आन्तरिक राजस्व विभागलाई तिर्नुपर्ने कर (Net VAT Payable to IRD):
+                Section C: Net VAT Payable to IRD:
               </span>
               <span className="text-2xl font-black font-mono text-amber-300">
-                रु. {netVatPayableToIRD.toLocaleString()}
+                Rs. {netVatPayableToIRD.toLocaleString()}
               </span>
             </div>
 
             {carryForwardVatCredit > 0 && (
               <div className="flex items-center justify-between text-xs text-emerald-400 pt-2 border-t border-slate-800">
-                <span>आगामी महिनामा मिलान हुने बढी इनपुट कर (Excess ITC Carry-Forward):</span>
-                <span className="font-mono font-bold text-sm">रु. {carryForwardVatCredit.toLocaleString()}</span>
+                <span>Excess ITC Carry-Forward:</span>
+                <span className="font-mono font-bold text-sm">Rs. {carryForwardVatCredit.toLocaleString()}</span>
               </div>
             )}
 
             <div className="text-[11px] text-slate-300 pt-2 border-t border-slate-800 flex items-center justify-between">
-              <span><strong>कर दाखिला म्याद (Payment Due Date):</strong> प्रत्येक महिना समाप्त भएको २५ दिनभित्र (Due by 25th of next Nepali Month).</span>
+              <span><strong>Payment Due Date:</strong> Due by 25th of subsequent monthly accounting cycle.</span>
               <span className="text-emerald-400 font-semibold flex items-center space-x-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>CBMS Compliant</span>
@@ -799,7 +799,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 4: CHART OF ACCOUNTS (खाता सूची) */}
+      {/* TAB 4: CHART OF ACCOUNTS */}
       {activeTab === 'gl_accounts' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row justify-between gap-3">
@@ -828,12 +828,12 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 onChange={(e) => setFilterCategory(e.target.value)}
                 className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="All">All Categories (सबै खाता)</option>
-                <option value="Asset">Asset (सम्पत्ति)</option>
-                <option value="Liability">Liability (दायित्व)</option>
-                <option value="Equity">Equity (पूँजी)</option>
-                <option value="Revenue">Revenue (आम्दानी)</option>
-                <option value="Expense">Expense (खर्च)</option>
+                <option value="All">All Categories</option>
+                <option value="Asset">Asset</option>
+                <option value="Liability">Liability</option>
+                <option value="Equity">Equity</option>
+                <option value="Revenue">Revenue</option>
+                <option value="Expense">Expense</option>
               </select>
 
               {onAddGLAccount && (
@@ -852,12 +852,12 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3.5">खाता कोड (Account Code)</th>
-                  <th className="p-3.5">खाताको नाम (GL Account Name)</th>
-                  <th className="p-3.5">वर्ग (Category)</th>
-                  <th className="p-3.5">उप-वर्ग (Sub-Category)</th>
-                  <th className="p-3.5 text-right">डेबिट मौज्दात (Debit NPR)</th>
-                  <th className="p-3.5 text-right">क्रेडिट मौज्दात (Credit NPR)</th>
+                  <th className="p-3.5">Account Code</th>
+                  <th className="p-3.5">GL Account Name</th>
+                  <th className="p-3.5">Category</th>
+                  <th className="p-3.5">Sub-Category</th>
+                  <th className="p-3.5 text-right">Debit (NPR)</th>
+                  <th className="p-3.5 text-right">Credit (NPR)</th>
                   <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
@@ -865,7 +865,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 {filteredGlAccounts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-slate-400">
-                      कुनै खाता भेटिएन। (No general ledger accounts match your search.)
+                      No general ledger accounts match your search.
                     </td>
                   </tr>
                 ) : (
@@ -891,10 +891,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                         </td>
                         <td className="p-3.5 text-slate-600">{acc.subCategory}</td>
                         <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                          {debitAmount > 0 ? `रु. ${debitAmount.toLocaleString()}` : '—'}
+                          {debitAmount > 0 ? `Rs. ${debitAmount.toLocaleString()}` : '—'}
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                          {creditAmount > 0 ? `रु. ${creditAmount.toLocaleString()}` : '—'}
+                          {creditAmount > 0 ? `Rs. ${creditAmount.toLocaleString()}` : '—'}
                         </td>
                         <td className="p-3.5 text-center">
                           <button
@@ -904,7 +904,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                             }}
                             className="px-2 py-1 text-[11px] text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg font-semibold transition"
                           >
-                            खाता हेर्ने
+                            View Statement
                           </button>
                         </td>
                       </tr>
@@ -917,7 +917,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 5: GENERAL JOURNAL ENTRIES (जर्नल भौचर) */}
+      {/* TAB 5: GENERAL JOURNAL ENTRIES */}
       {activeTab === 'journal_entries' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row justify-between gap-3">
@@ -946,7 +946,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm flex items-center space-x-1.5 transition"
               >
                 <Plus className="w-4 h-4" />
-                <span>नयाँ जर्नल भौचर (New Voucher)</span>
+                <span>New Voucher</span>
               </button>
             )}
           </div>
@@ -954,7 +954,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
           <div className="space-y-4">
             {filteredJournalEntries.length === 0 ? (
               <div className="bg-white p-8 text-center text-slate-400 rounded-2xl border border-slate-200">
-                कुनै जर्नल भौचर भेटिएन। (No journal vouchers match your search.)
+                No journal vouchers match your search.
               </div>
             ) : (
               filteredJournalEntries.map((entry) => (
@@ -973,26 +973,26 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
 
                     <div className="flex items-center space-x-2">
                       <span className="text-xs font-bold text-slate-800 font-mono">
-                        जम्मा रकम: रु. {entry.totalAmount.toLocaleString()}
+                        Total Amount: Rs. {entry.totalAmount.toLocaleString()}
                       </span>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                        Balanced (सन्तुलित)
+                        Balanced
                       </span>
                     </div>
                   </div>
 
                   {/* Narration */}
                   <div className="px-4 py-2 bg-indigo-50/40 text-[11px] text-slate-700 italic border-b border-slate-100">
-                    कैफियत: {entry.narration}
+                    Narration: {entry.narration}
                   </div>
 
                   {/* Voucher Lines */}
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="text-slate-500 text-[11px] font-semibold border-b border-slate-100">
-                        <th className="p-3">खाता कोड तथा नाम (GL Account)</th>
-                        <th className="p-3 text-right w-36">डेबिट (Debit NPR)</th>
-                        <th className="p-3 text-right w-36">क्रेडिट (Credit NPR)</th>
+                        <th className="p-3">GL Account Code & Name</th>
+                        <th className="p-3 text-right w-36">Debit (NPR)</th>
+                        <th className="p-3 text-right w-36">Credit (NPR)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1003,10 +1003,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                             <span className="font-medium text-slate-800">{line.accountName}</span>
                           </td>
                           <td className="p-3 text-right font-mono font-bold text-slate-900">
-                            {line.debit > 0 ? `रु. ${line.debit.toLocaleString()}` : '—'}
+                            {line.debit > 0 ? `Rs. ${line.debit.toLocaleString()}` : '—'}
                           </td>
                           <td className="p-3 text-right font-mono font-bold text-slate-900">
-                            {line.credit > 0 ? `रु. ${line.credit.toLocaleString()}` : '—'}
+                            {line.credit > 0 ? `Rs. ${line.credit.toLocaleString()}` : '—'}
                           </td>
                         </tr>
                       ))}
@@ -1019,7 +1019,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 6: ACCOUNT LEDGER STATEMENT (खाता पाना) */}
+      {/* TAB 6: ACCOUNT LEDGER STATEMENT */}
       {activeTab === 'account_ledger' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
@@ -1027,7 +1027,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
               <div className="flex items-center space-x-3">
                 <label className="text-xs font-bold text-slate-700 uppercase">
-                  खाता छनोट (Select GL Account):
+                  Select GL Account:
                 </label>
                 <select
                   value={selectedLedgerAccountCode}
@@ -1044,9 +1044,9 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
 
               {selectedAccount && (
                 <div className="flex items-center space-x-2 text-xs">
-                  <span className="text-slate-500">हालको मौज्दात (Current Balance):</span>
+                  <span className="text-slate-500">Current Balance:</span>
                   <span className="font-mono font-black text-sm text-indigo-700">
-                    रु. {selectedAccount.currentBalance.toLocaleString()}
+                    Rs. {selectedAccount.currentBalance.toLocaleString()}
                   </span>
                 </div>
               )}
@@ -1057,19 +1057,19 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-3">मिति (Date)</th>
-                    <th className="p-3">भौचर नं (Voucher #)</th>
-                    <th className="p-3">स्रोत कागजात (Ref)</th>
-                    <th className="p-3">विवरण / कैफियत (Particulars / Narration)</th>
-                    <th className="p-3 text-right">डेबिट (Debit NPR)</th>
-                    <th className="p-3 text-right">क्रेडिट (Credit NPR)</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Voucher #</th>
+                    <th className="p-3">Source Ref</th>
+                    <th className="p-3">Particulars / Narration</th>
+                    <th className="p-3 text-right">Debit (NPR)</th>
+                    <th className="p-3 text-right">Credit (NPR)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {ledgerTransactions.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-slate-400">
-                        यस खातामा कुनै कारोबार फेला परेन। (No journal entries posted for this account yet.)
+                        No journal entries posted for this account yet.
                       </td>
                     </tr>
                   ) : (
@@ -1080,10 +1080,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                         <td className="p-3 font-mono text-slate-500">{tx.sourceDocument}</td>
                         <td className="p-3 text-slate-800 font-medium">{tx.narration}</td>
                         <td className="p-3 text-right font-mono font-bold text-slate-900">
-                          {tx.debit > 0 ? `रु. ${tx.debit.toLocaleString()}` : '—'}
+                          {tx.debit > 0 ? `Rs. ${tx.debit.toLocaleString()}` : '—'}
                         </td>
                         <td className="p-3 text-right font-mono font-bold text-slate-900">
-                          {tx.credit > 0 ? `रु. ${tx.credit.toLocaleString()}` : '—'}
+                          {tx.credit > 0 ? `Rs. ${tx.credit.toLocaleString()}` : '—'}
                         </td>
                       </tr>
                     ))
@@ -1092,13 +1092,13 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 <tfoot>
                   <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
                     <td colSpan={4} className="p-3.5 text-right uppercase">
-                      कुल कारोबार (Account Total):
+                      Account Total:
                     </td>
                     <td className="p-3.5 text-right font-mono font-black text-indigo-900">
-                      रु. {ledgerTransactions.reduce((acc, t) => acc + t.debit, 0).toLocaleString()}
+                      Rs. {ledgerTransactions.reduce((acc, t) => acc + t.debit, 0).toLocaleString()}
                     </td>
                     <td className="p-3.5 text-right font-mono font-black text-indigo-900">
-                      रु. {ledgerTransactions.reduce((acc, t) => acc + t.credit, 0).toLocaleString()}
+                      Rs. {ledgerTransactions.reduce((acc, t) => acc + t.credit, 0).toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>
@@ -1108,13 +1108,13 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
         </div>
       )}
 
-      {/* TAB 7: TRIAL BALANCE (सन्तुलन परीक्षण) */}
+      {/* TAB 7: TRIAL BALANCE */}
       {activeTab === 'trial_balance' && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-4xl space-y-5">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                सन्तुलन परीक्षण (Trial Balance)
+                Trial Balance Statement
               </h3>
               <p className="text-xs text-slate-500">
                 Double-Entry Balance Verification • Fiscal Year {profile.fiscalYear} B.S.
@@ -1127,7 +1127,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                   : 'bg-rose-100 text-rose-800 border-rose-300'
               }`}>
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{trialBalanceData.isBalanced ? 'Books Balanced (सन्तुलित)' : 'Out of Balance'}</span>
+                <span>{trialBalanceData.isBalanced ? 'Books Balanced' : 'Out of Balance'}</span>
               </span>
             </div>
           </div>
@@ -1136,11 +1136,11 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3">कोड (Code)</th>
-                  <th className="p-3">खाताको विवरण (Account Particulars)</th>
-                  <th className="p-3">वर्ग (Category)</th>
-                  <th className="p-3 text-right w-40">डेबिट रकम (Debit NPR)</th>
-                  <th className="p-3 text-right w-40">क्रेडिट रकम (Credit NPR)</th>
+                  <th className="p-3">Code</th>
+                  <th className="p-3">Account Particulars</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3 text-right w-40">Debit (NPR)</th>
+                  <th className="p-3 text-right w-40">Credit (NPR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1154,10 +1154,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                       </span>
                     </td>
                     <td className="p-3 text-right font-mono font-bold text-slate-900">
-                      {row.debit > 0 ? `रु. ${row.debit.toLocaleString()}` : '—'}
+                      {row.debit > 0 ? `Rs. ${row.debit.toLocaleString()}` : '—'}
                     </td>
                     <td className="p-3 text-right font-mono font-bold text-slate-900">
-                      {row.credit > 0 ? `रु. ${row.credit.toLocaleString()}` : '—'}
+                      {row.credit > 0 ? `Rs. ${row.credit.toLocaleString()}` : '—'}
                     </td>
                   </tr>
                 ))}
@@ -1165,13 +1165,13 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <tfoot>
                 <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-800">
                   <td colSpan={3} className="p-3.5 text-right uppercase">
-                    जम्मा कुल (Total NPR):
+                    Grand Total (NPR):
                   </td>
                   <td className="p-3.5 text-right font-mono font-black text-sm text-indigo-900">
-                    रु. {trialBalanceData.totalDebit.toLocaleString()}
+                    Rs. {trialBalanceData.totalDebit.toLocaleString()}
                   </td>
                   <td className="p-3.5 text-right font-mono font-black text-sm text-indigo-900">
-                    रु. {trialBalanceData.totalCredit.toLocaleString()}
+                    Rs. {trialBalanceData.totalCredit.toLocaleString()}
                   </td>
                 </tr>
               </tfoot>
@@ -1196,15 +1196,15 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <div className="space-y-1.5 bg-slate-50 p-3.5 rounded-xl">
                 <div className="flex justify-between">
                   <span className="text-slate-700">Labor & Diagnostic Charges Billed</span>
-                  <span className="font-mono font-semibold">रु. {Math.round(totalTaxableSales * 0.4).toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {Math.round(totalTaxableSales * 0.4).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-700">Spare Parts Revenue (Net of VAT)</span>
-                  <span className="font-mono font-semibold">रु. {Math.round(totalTaxableSales * 0.6).toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {Math.round(totalTaxableSales * 0.6).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-slate-900 text-sm">
                   <span>Total Net Turnover</span>
-                  <span className="font-mono">रु. {totalTaxableSales.toLocaleString()}</span>
+                  <span className="font-mono">Rs. {totalTaxableSales.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -1216,11 +1216,11 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <div className="space-y-1.5 bg-slate-50 p-3.5 rounded-xl">
                 <div className="flex justify-between">
                   <span className="text-slate-700">Cost of Spares & Lubricants Consumed</span>
-                  <span className="font-mono font-semibold">रु. {estimatedCogsSpares.toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {estimatedCogsSpares.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-emerald-800 text-sm">
                   <span>Gross Operating Margin</span>
-                  <span className="font-mono">रु. {grossProfit.toLocaleString()} ({totalTaxableSales > 0 ? Math.round((grossProfit / totalTaxableSales) * 100) : 0}%)</span>
+                  <span className="font-mono">Rs. {grossProfit.toLocaleString()} ({totalTaxableSales > 0 ? Math.round((grossProfit / totalTaxableSales) * 100) : 0}%)</span>
                 </div>
               </div>
             </div>
@@ -1232,30 +1232,30 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <div className="space-y-1.5 bg-slate-50 p-3.5 rounded-xl">
                 <div className="flex justify-between">
                   <span className="text-slate-700">Technicians, Advisors & Helper Payroll</span>
-                  <span className="font-mono font-semibold">रु. {staffPayroll.toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {staffPayroll.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-700">Workshop Lease (Sukedhara Kathmandu)</span>
-                  <span className="font-mono font-semibold">रु. {workshopRentKTM.toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {workshopRentKTM.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-700">NEA Electricity & Industrial Compressor Power</span>
-                  <span className="font-mono font-semibold">रु. {electricityAndCompressor.toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {electricityAndCompressor.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-700">Shop Consumables & Tool Depreciation</span>
-                  <span className="font-mono font-semibold">रु. {shopConsumables.toLocaleString()}</span>
+                  <span className="font-mono font-semibold">Rs. {shopConsumables.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-200 font-bold text-slate-900">
                   <span>Total Workshop Overheads</span>
-                  <span className="font-mono">रु. {totalOpex.toLocaleString()}</span>
+                  <span className="font-mono">Rs. {totalOpex.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex justify-between items-center text-emerald-950 font-black text-base">
               <span>Net Operating Profit Before Taxes</span>
-              <span className="font-mono text-lg text-emerald-700">रु. {netOperatingProfit.toLocaleString()}</span>
+              <span className="font-mono text-lg text-emerald-700">Rs. {netOperatingProfit.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -1272,58 +1272,58 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
             {/* Assets */}
             <div className="space-y-3">
-              <h4 className="font-bold text-slate-900 text-sm border-b pb-1">Assets (सम्पत्ति)</h4>
+              <h4 className="font-bold text-slate-900 text-sm border-b pb-1">Assets</h4>
               <div className="space-y-2 bg-slate-50 p-4 rounded-xl">
                 <div className="flex justify-between font-semibold">
                   <span>Cash & Bank Balances (Nabil Bank / Cashier)</span>
-                  <span className="font-mono">रु. 726,550</span>
+                  <span className="font-mono">Rs. 726,550</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Fonepay / connectIPS Clearing In-Transit</span>
-                  <span className="font-mono">रु. 173,400</span>
+                  <span className="font-mono">Rs. 173,400</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Accounts Receivable (Customer Due)</span>
-                  <span className="font-mono text-rose-600">रु. {totalReceivables.toLocaleString()}</span>
+                  <span className="font-mono text-rose-600">Rs. {totalReceivables.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Spare Parts Stock Valuation (Cost)</span>
-                  <span className="font-mono">रु. {currentInventoryCost.toLocaleString()}</span>
+                  <span className="font-mono">Rs. {currentInventoryCost.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Workshop Lifts, Tools & Aligners</span>
-                  <span className="font-mono">रु. 2,450,000</span>
+                  <span className="font-mono">Rs. 2,450,000</span>
                 </div>
                 <div className="pt-2 border-t font-black text-slate-900 flex justify-between text-sm">
                   <span>Total Assets</span>
-                  <span className="font-mono">रु. {(726550 + 173400 + totalReceivables + currentInventoryCost + 2450000).toLocaleString()}</span>
+                  <span className="font-mono">Rs. {(726550 + 173400 + totalReceivables + currentInventoryCost + 2450000).toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
             {/* Liabilities */}
             <div className="space-y-3">
-              <h4 className="font-bold text-slate-900 text-sm border-b pb-1">Liabilities & Equity (दायित्व)</h4>
+              <h4 className="font-bold text-slate-900 text-sm border-b pb-1">Liabilities & Equity</h4>
               <div className="space-y-2 bg-slate-50 p-4 rounded-xl">
                 <div className="flex justify-between font-semibold">
                   <span>Accounts Payable to Parts Vendors</span>
-                  <span className="font-mono">रु. 258,790</span>
+                  <span className="font-mono">Rs. 258,790</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Inland Revenue Dept. (13% VAT Payable)</span>
-                  <span className="font-mono text-indigo-700">रु. {netVatPayableToIRD.toLocaleString()}</span>
+                  <span className="font-mono text-indigo-700">Rs. {netVatPayableToIRD.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Staff Salary & Incentive Accrual</span>
-                  <span className="font-mono">रु. 78,500</span>
+                  <span className="font-mono">Rs. 78,500</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Owner Capital & Retained Reserves</span>
-                  <span className="font-mono">रु. 3,479,100</span>
+                  <span className="font-mono">Rs. 3,479,100</span>
                 </div>
                 <div className="pt-2 border-t font-black text-slate-900 flex justify-between text-sm">
                   <span>Total Liabilities & Equity</span>
-                  <span className="font-mono">रु. {(258790 + netVatPayableToIRD + 78500 + 3479100).toLocaleString()}</span>
+                  <span className="font-mono">Rs. {(258790 + netVatPayableToIRD + 78500 + 3479100).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -1343,22 +1343,22 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
                 <span className="text-xs font-semibold text-emerald-800">0 - 15 Days Current</span>
-                <div className="text-lg font-black text-emerald-950 font-mono mt-1">रु. {totalReceivables.toLocaleString()}</div>
+                <div className="text-lg font-black text-emerald-950 font-mono mt-1">Rs. {totalReceivables.toLocaleString()}</div>
                 <span className="text-[11px] text-emerald-700">Normal payment terms</span>
               </div>
               <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200">
                 <span className="text-xs font-semibold text-blue-800">16 - 30 Days</span>
-                <div className="text-lg font-black text-blue-950 font-mono mt-1">रु. 0</div>
+                <div className="text-lg font-black text-blue-950 font-mono mt-1">Rs. 0</div>
                 <span className="text-[11px] text-blue-700">Reminder SMS sent</span>
               </div>
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
                 <span className="text-xs font-semibold text-amber-800">31 - 60 Days</span>
-                <div className="text-lg font-black text-amber-950 font-mono mt-1">रु. 0</div>
+                <div className="text-lg font-black text-amber-950 font-mono mt-1">Rs. 0</div>
                 <span className="text-[11px] text-amber-700">Follow-up required</span>
               </div>
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200">
                 <span className="text-xs font-semibold text-rose-800">&gt; 60 Days Overdue</span>
-                <div className="text-lg font-black text-rose-950 font-mono mt-1">रु. 0</div>
+                <div className="text-lg font-black text-rose-950 font-mono mt-1">Rs. 0</div>
                 <span className="text-[11px] text-rose-700">No default accounts</span>
               </div>
             </div>

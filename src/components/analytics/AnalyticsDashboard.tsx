@@ -326,7 +326,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
           <div className="mt-2">
             <div className="text-lg font-black text-slate-900 font-mono">
-              रु. {metrics.totalInvoiced.toLocaleString()}
+              Rs. {metrics.totalInvoiced.toLocaleString()}
             </div>
             <div className="flex items-center space-x-1 text-[11px] text-emerald-600 font-semibold mt-0.5">
               <TrendingUp className="w-3 h-3" />
@@ -348,7 +348,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
           <div className="mt-2">
             <div className="text-lg font-black text-slate-900 font-mono">
-              रु. {metrics.avgOrderValue.toLocaleString()}
+              Rs. {metrics.avgOrderValue.toLocaleString()}
             </div>
             <div className="text-[11px] text-slate-500 font-medium mt-0.5">
               Across {invoices.length || 0} tax invoices
@@ -435,7 +435,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               {metrics.claimSettlementRate}%
             </div>
             <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-              रु. {Math.round(metrics.totalOutstandingClaimAmount / 1000)}k pending
+              Rs. {Math.round(metrics.totalOutstandingClaimAmount / 1000)}k pending
             </div>
           </div>
           <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400">
@@ -520,9 +520,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v) => `रु.${v/1000}k`} />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} tickFormatter={(v) => `Rs.${v/1000}k`} />
                     <Tooltip 
-                      formatter={(val: any) => [`रु. ${Number(val).toLocaleString()}`, '']}
+                      formatter={(val: any) => [`Rs. ${Number(val).toLocaleString()}`, '']}
                       contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Area type="monotone" dataKey="parts" name="Spare Parts" stackId="1" stroke="#4f46e5" fillOpacity={1} fill="url(#colorParts)" />
@@ -641,7 +641,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-extrabold font-mono text-slate-900">
-                        रु. {mode.amount.toLocaleString()}
+                        Rs. {mode.amount.toLocaleString()}
                       </div>
                       <div className="text-[10px] text-slate-400">Reconciled</div>
                     </div>
@@ -660,7 +660,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Taxable Sales (Excl. VAT)</span>
               <div className="text-xl font-black text-slate-900 font-mono mt-1">
-                रु. {metrics.totalTaxable.toLocaleString()}
+                Rs. {metrics.totalTaxable.toLocaleString()}
               </div>
               <p className="text-xs text-slate-500 mt-1">Net workshop revenue eligible for 13% VAT</p>
             </div>
@@ -668,7 +668,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">13% Nepal VAT Collected</span>
               <div className="text-xl font-black text-indigo-700 font-mono mt-1">
-                रु. {metrics.totalVat.toLocaleString()}
+                Rs. {metrics.totalVat.toLocaleString()}
               </div>
               <p className="text-xs text-slate-500 mt-1">Payable to Nepal Inland Revenue Department (IRD)</p>
             </div>
@@ -676,7 +676,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">Outstanding Receivables</span>
               <div className="text-xl font-black text-rose-700 font-mono mt-1">
-                रु. {metrics.totalReceivables.toLocaleString()}
+                Rs. {metrics.totalReceivables.toLocaleString()}
               </div>
               <p className="text-xs text-slate-500 mt-1">Customer credit & pending insurance settlements</p>
             </div>
@@ -692,9 +692,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                 <BarChart data={revenueTrendData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#64748b' }} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => `रु.${v/1000}k`} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(v) => `Rs.${v/1000}k`} />
                   <Tooltip 
-                    formatter={(val: any) => [`रु. ${Number(val).toLocaleString()}`, '']}
+                    formatter={(val: any) => [`Rs. ${Number(val).toLocaleString()}`, '']}
                     contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                   />
                   <Legend />
@@ -811,10 +811,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                         </span>
                       </td>
                       <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                        रु. {(tech.laborRevenue || 0).toLocaleString()}
+                        Rs. {(tech.laborRevenue || 0).toLocaleString()}
                       </td>
                       <td className="p-3.5 text-right font-mono font-extrabold text-emerald-700">
-                        रु. {(tech.commission || 0).toLocaleString()} ({tech.commissionPercentage}%)
+                        Rs. {(tech.commission || 0).toLocaleString()} ({tech.commissionPercentage}%)
                       </td>
                     </tr>
                   ))}
@@ -832,7 +832,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
               <span className="text-xs font-semibold text-slate-500">Stock Cost Value</span>
               <div className="text-lg font-black text-slate-900 font-mono mt-1">
-                रु. {metrics.totalStockCost.toLocaleString()}
+                Rs. {metrics.totalStockCost.toLocaleString()}
               </div>
               <p className="text-[11px] text-slate-400 mt-1">At Moving Avg. Cost</p>
             </div>
@@ -840,7 +840,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
               <span className="text-xs font-semibold text-slate-500">Stock Retail Value</span>
               <div className="text-lg font-black text-indigo-700 font-mono mt-1">
-                रु. {metrics.totalStockSellingValue.toLocaleString()}
+                Rs. {metrics.totalStockSellingValue.toLocaleString()}
               </div>
               <p className="text-[11px] text-slate-400 mt-1">At Counter MRP (Excl. VAT)</p>
             </div>
@@ -891,7 +891,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                     <div className="flex items-center space-x-4">
                       <span className="font-mono font-bold text-rose-600">Stock: {part.currentStock} {part.unit}</span>
                       <span className="font-mono text-slate-500">Min: {part.minReorderLevel}</span>
-                      <span className="font-mono text-slate-700 font-semibold">Cost: रु. {(part.costPrice || 0).toLocaleString()}</span>
+                      <span className="font-mono text-slate-700 font-semibold">Cost: Rs. {(part.costPrice || 0).toLocaleString()}</span>
                     </div>
                   </div>
                 ))}

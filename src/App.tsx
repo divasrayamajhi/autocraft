@@ -150,7 +150,7 @@ export default function App() {
       paymentMethod: 'Fonepay',
       status: 'Unpaid',
       createdAt: new Date().toISOString(),
-      type: jc.isInsuranceClaim ? 'Split Invoice - Customer Share' : 'Tax Invoice (कर बिजक)',
+      type: jc.isInsuranceClaim ? 'Split Invoice - Customer Share' : 'Tax Invoice',
       isLocked: false,
       irdSyncDetails: {
         isSynced: true,
@@ -619,7 +619,7 @@ export default function App() {
       customerPhone: '+977-9800000000',
       vehicleReg: 'OTC-WALKIN',
       vehicleModel: 'Direct Spares Sale',
-      type: 'Tax Invoice (कर बिजक)',
+      type: 'Tax Invoice',
       date: order.date || new Date().toISOString().slice(0, 10),
       isLocked: false,
       items: order.items.map((item, idx) => ({
@@ -1016,12 +1016,16 @@ export default function App() {
               customers={db.customers}
               technicians={db.technicians}
               availableParts={db.parts}
+              servicePrices={db.servicePriceBook || db.servicePriceList || []}
+              bays={db.bays}
               invoices={db.invoices}
               gatePasses={db.gatePasses || []}
               currentUser={currentUser}
               profile={db.profile}
               onCreateJobCard={handleCreateJobCard}
               onUpdateJobCard={handleUpdateJobCard}
+              onUpdatePart={handleUpdatePart}
+              onUpdateBay={(bay) => updateDb({ bays: (db.bays || []).map(b => b.id === bay.id ? bay : b) })}
               onCreateAppointment={handleCreateAppointment}
               onConvertToInvoice={handleConvertJobCardToInvoice}
               onAddCustomer={handleAddCustomer}

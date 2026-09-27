@@ -349,7 +349,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                     <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between text-xs">
                       <span className="text-slate-400">Claim Amount:</span>
                       <span className="font-mono font-bold text-slate-800">
-                        रु. {(cl.totalClaimAmount || 0).toLocaleString()}
+                        Rs. {(cl.totalClaimAmount || 0).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -386,11 +386,11 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">Total Claim Amount</span>
-                    <span className="font-mono font-bold text-slate-800">रु. {(selectedClaim.totalClaimAmount || 0).toLocaleString()}</span>
+                    <span className="font-mono font-bold text-slate-800">Rs. {(selectedClaim.totalClaimAmount || 0).toLocaleString()}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">Approved Cashless</span>
-                    <span className="font-mono font-bold text-emerald-700">रु. {(selectedClaim.approvedAmount || 0).toLocaleString()}</span>
+                    <span className="font-mono font-bold text-emerald-700">Rs. {(selectedClaim.approvedAmount || 0).toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -420,13 +420,13 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   <div>
                     <span className="font-bold text-emerald-950 block">Customer Liability (Depreciation + Excess):</span>
                     <span className="text-emerald-700 font-mono font-black text-sm">
-                      रु. {(selectedClaim.customerLiabilityAmount || 0).toLocaleString()}
+                      Rs. {(selectedClaim.customerLiabilityAmount || 0).toLocaleString()}
                     </span>
                   </div>
                   <div>
                     <span className="font-bold text-emerald-950 block">Insurer Cashless Settlement:</span>
                     <span className="text-emerald-700 font-mono font-black text-sm">
-                      रु. {(selectedClaim.approvedAmount || 0).toLocaleString()}
+                      Rs. {(selectedClaim.approvedAmount || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -477,7 +477,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   onChange={e => setCalcPlasticPartsShare(parseFloat(e.target.value) || 0)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono"
                 />
-                <span className="text-[10px] text-rose-600">50% Depreciation applied = रु. {(plasticDepAmount || 0).toLocaleString()}</span>
+                <span className="text-[10px] text-rose-600">50% Depreciation applied = Rs. {(plasticDepAmount || 0).toLocaleString()}</span>
               </div>
 
               <div>
@@ -488,7 +488,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
                   onChange={e => setCalcMetalPartsShare(parseFloat(e.target.value) || 0)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono"
                 />
-                <span className="text-[10px] text-rose-600">{metalDepPercent}% Depreciation applied = रु. {(metalDepAmount || 0).toLocaleString()}</span>
+                <span className="text-[10px] text-rose-600">{metalDepPercent}% Depreciation applied = Rs. {(metalDepAmount || 0).toLocaleString()}</span>
               </div>
 
               <div>
@@ -540,16 +540,16 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
               <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-2">
                 <span className="text-[11px] font-bold text-emerald-900 uppercase">1. Insurance Company Cashless Share</span>
                 <div className="text-xl font-black font-mono text-emerald-700">
-                  रु. {Math.round(insurerGrandTotal).toLocaleString()}
+                  Rs. {Math.round(insurerGrandTotal).toLocaleString()}
                 </div>
                 <div className="text-[11px] text-emerald-800 space-y-1">
                   <div className="flex justify-between">
                     <span>Taxable Approved Amount:</span>
-                    <span className="font-mono font-semibold">रु. {Math.round(insurerTaxable).toLocaleString()}</span>
+                    <span className="font-mono font-semibold">Rs. {Math.round(insurerTaxable).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Nepal 13% VAT:</span>
-                    <span className="font-mono font-semibold">रु. {Math.round(insurerVat).toLocaleString()}</span>
+                    <span className="font-mono font-semibold">Rs. {Math.round(insurerVat).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -557,16 +557,16 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-2">
                 <span className="text-[11px] font-bold text-amber-900 uppercase">2. Customer Payable Share (Excess & Dep)</span>
                 <div className="text-xl font-black font-mono text-amber-800">
-                  रु. {Math.round(customerGrandTotal).toLocaleString()}
+                  Rs. {Math.round(customerGrandTotal).toLocaleString()}
                 </div>
                 <div className="text-[11px] text-amber-800 space-y-1">
                   <div className="flex justify-between">
                     <span>Depreciation + Excess Taxable:</span>
-                    <span className="font-mono font-semibold">रु. {Math.round(customerPayableBeforeVat).toLocaleString()}</span>
+                    <span className="font-mono font-semibold">Rs. {Math.round(customerPayableBeforeVat).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Nepal 13% VAT:</span>
-                    <span className="font-mono font-semibold">रु. {Math.round(customerVat).toLocaleString()}</span>
+                    <span className="font-mono font-semibold">Rs. {Math.round(customerVat).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -574,7 +574,7 @@ export const InsuranceBilling: React.FC<InsuranceBillingProps> = ({
               <div className="p-3 bg-slate-100 rounded-xl flex justify-between items-center font-bold text-slate-800">
                 <span>Total Repair Job Estimate (incl. 13% VAT):</span>
                 <span className="font-mono font-black text-sm">
-                  रु. {Math.round(totalJobGross).toLocaleString()}
+                  Rs. {Math.round(totalJobGross).toLocaleString()}
                 </span>
               </div>
 

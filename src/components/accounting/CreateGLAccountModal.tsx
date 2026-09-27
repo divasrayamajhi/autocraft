@@ -48,7 +48,7 @@ export const CreateGLAccountModal: React.FC<CreateGLAccountModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-white leading-tight">
-                नयाँ खाता खोल्ने (Add New GL Account)
+                Add New GL Account
               </h3>
               <p className="text-xs text-slate-300">
                 Chart of Accounts Ledger Definition
@@ -68,7 +68,7 @@ export const CreateGLAccountModal: React.FC<CreateGLAccountModalProps> = ({
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs text-slate-900">
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              खाता कोड (Account Code) <span className="text-rose-500">*</span>
+              Account Code <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -82,14 +82,14 @@ export const CreateGLAccountModal: React.FC<CreateGLAccountModalProps> = ({
             />
             {isCodeTaken && (
               <p className="text-[10px] text-rose-600 font-semibold mt-1">
-                यो खाता कोड पहिले नै दर्ता भइसकेको छ। कृपया फरक कोड प्रयोग गर्नुहोस्।
+                This account code is already registered. Please use a unique code.
               </p>
             )}
           </div>
 
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              खाताको नाम (GL Account Name) <span className="text-rose-500">*</span>
+              GL Account Name <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -104,24 +104,24 @@ export const CreateGLAccountModal: React.FC<CreateGLAccountModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                मुख्य वर्ग (Category)
+                Category
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as any)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="Asset">Asset (सम्पत्ति)</option>
-                <option value="Liability">Liability (दायित्व)</option>
-                <option value="Equity">Equity (पूँजी)</option>
-                <option value="Revenue">Revenue (आम्दानी)</option>
-                <option value="Expense">Expense (खर्च)</option>
+                <option value="Asset">Asset</option>
+                <option value="Liability">Liability</option>
+                <option value="Equity">Equity</option>
+                <option value="Revenue">Revenue</option>
+                <option value="Expense">Expense</option>
               </select>
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                उप-वर्ग (Sub-Category)
+                Sub-Category
               </label>
               <input
                 type="text"
@@ -135,7 +135,7 @@ export const CreateGLAccountModal: React.FC<CreateGLAccountModalProps> = ({
 
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              सुरुवाती मौज्दात (Opening Balance NPR)
+              Opening Balance (NPR)
             </label>
             <input
               type="number"
@@ -162,7 +162,7 @@ export const CreateGLAccountModal: React.FC<CreateGLAccountModalProps> = ({
               className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-md transition text-xs flex items-center space-x-1.5"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Account (खाता थप्नुहोस्)</span>
+              <span>Add Account</span>
             </button>
           </div>
         </form>

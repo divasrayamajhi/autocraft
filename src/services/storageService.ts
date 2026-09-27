@@ -71,7 +71,7 @@ const INITIAL_PROFILE: WorkshopProfile = {
   irdCbmsEnabled: true,
   irdApiUrl: 'https://cbms.ird.gov.np/api/v1/realtime-bill',
   irdUsername: 'SAGAR_CBMS_302849182',
-  currencySymbol: 'रु.',
+  currencySymbol: 'Rs.',
   currencyCode: 'NPR',
   defaultVatRate: 13
 };

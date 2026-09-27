@@ -10,7 +10,9 @@ import {
   Invoice,
   GatePass,
   PartsQuotation,
-  WorkshopProfile
+  WorkshopProfile,
+  ServicePriceItem,
+  WorkshopBay
 } from '../../types';
 import { 
   Wrench, 
@@ -36,7 +38,9 @@ import {
   History, 
   RotateCcw, 
   FileSpreadsheet, 
-  Tag 
+  Tag,
+  Package,
+  Search
 } from 'lucide-react';
 import { VehicleServiceHistoryModal } from '../common/VehicleServiceHistoryModal';
 import { AccidentQuotationModal } from './AccidentQuotationModal';
@@ -48,11 +52,15 @@ interface JobCardDetailModalProps {
   technicians: Technician[];
   currentUser: UserAccount;
   profile?: WorkshopProfile;
+  servicePrices?: ServicePriceItem[];
+  bays?: WorkshopBay[];
   allJobCards?: JobCard[];
   invoices?: Invoice[];
   gatePasses?: GatePass[];
   onClose: () => void;
   onUpdateJobCard: (updated: JobCard) => void;
+  onUpdatePart?: (part: SparePart) => void;
+  onUpdateBay?: (bay: WorkshopBay) => void;
   onConvertToInvoice: (jc: JobCard) => void;
   onViewInvoice?: (invoice: Invoice) => void;
   onCreateQuotation?: (quotation: PartsQuotation) => void;
@@ -64,11 +72,15 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   technicians = [],
   currentUser,
   profile,
+  servicePrices = [],
+  bays = [],
   allJobCards = [],
   invoices = [],
   gatePasses = [],
   onClose,
   onUpdateJobCard,
+  onUpdatePart,
+  onUpdateBay,
   onConvertToInvoice,
   onViewInvoice,
   onCreateQuotation
@@ -106,14 +118,17 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   const [editCouponNotes, setEditCouponNotes] = useState(jobCard.couponNotes || '');
   const [editRemarks, setEditRemarks] = useState(jobCard.inspection.generalRemarks || '');
 
-  // New Labor Item form state
+  // Labor Task Code state
+  const [laborTaskCode, setLaborTaskCode] = useState('');
   const [newLaborDesc, setNewLaborDesc] = useState('');
-  const [newLaborHours, setNewLaborHours] = useState(1.5);
-  const [newLaborRate, setNewLaborRate] = useState(1000);
+  const [newLaborHours, setNewLaborHours] = useState(1);
+  const [newLaborRate, setNewLaborRate] = useState(1500);
   const [newLaborTechId, setNewLaborTechId] = useState(technicians[0]?.id || '');
+  const [matchedLaborService, setMatchedLaborService] = useState<ServicePriceItem | null>(null);
 
-  // New Part Requisition state
-  const [selectedPartId, setSelectedPartId] = useState('');
+  // Part SKU / Code Search state
+  const [partSearchQuery, setPartSearchQuery] = useState('');
+  const [matchedPart, setMatchedPart] = useState<SparePart | null>(null);
   const [partQty, setPartQty] = useState(1);
   const [isCoveredByInsurance, setIsCoveredByInsurance] = useState(false);
 
@@ -214,6 +229,27 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     setIsEditingInspection(false);
   };
 
+  const handleTaskCodeChange = (code: string) => {
+    setLaborTaskCode(code);
+    const clean = code.trim().toUpperCase();
+    if (!clean) {
+      setMatchedLaborService(null);
+      return;
+    }
+    const match = (servicePrices || []).find(s => 
+      s.code.toUpperCase() === clean || 
+      s.code.toUpperCase().replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
+      s.name.toLowerCase().includes(clean.toLowerCase())
+    );
+    if (match) {
+      setMatchedLaborService(match);
+      setNewLaborDesc(match.name);
+      setNewLaborRate(match.fixedPrice ?? match.baseLaborRate);
+    } else {
+      setMatchedLaborService(null);
+    }
+  };
+
   const handleAddLabor = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLocked || !newLaborDesc) return;
@@ -221,12 +257,13 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     const tech = technicians.find(t => t.id === newLaborTechId);
     const newItem: JobCardLaborItem = {
       id: `LBR-${Date.now()}`,
+      code: laborTaskCode || matchedLaborService?.code || 'SRV-GEN',
       description: newLaborDesc,
-      hours: newLaborHours,
-      hoursEstimated: newLaborHours,
+      hours: 1,
+      hoursEstimated: 1,
       ratePerHour: newLaborRate,
       vatRate: 13,
-      totalAmount: newLaborHours * newLaborRate,
+      totalAmount: newLaborRate, // Fixed price
       technicianId: newLaborTechId,
       technicianName: tech?.name,
       status: 'In Progress'
@@ -238,7 +275,9 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
+    setLaborTaskCode('');
     setNewLaborDesc('');
+    setMatchedLaborService(null);
   };
 
   const handleRemoveLabor = (id: string) => {
@@ -251,40 +290,104 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     onUpdateJobCard(updated);
   };
 
+  const handlePartSearchChange = (query: string) => {
+    setPartSearchQuery(query);
+    const clean = query.trim().toUpperCase();
+    if (!clean) {
+      setMatchedPart(null);
+      return;
+    }
+    const match = (availableParts || []).find(p => 
+      p.sku.toUpperCase() === clean ||
+      p.partNumber.toUpperCase() === clean ||
+      p.sku.toUpperCase().replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
+      p.partNumber.toUpperCase().replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
+      p.barcode?.toUpperCase() === clean ||
+      p.sku.toUpperCase().includes(clean) ||
+      p.partNumber.toUpperCase().includes(clean)
+    );
+    setMatchedPart(match || null);
+  };
+
   const handleAddPart = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLocked || !selectedPartId) return;
+    if (isLocked || !matchedPart) return;
 
-    const part = availableParts.find(p => p.id === selectedPartId);
-    if (!part) return;
+    // 1. Deduct requested quantity from Spare Parts Master
+    const updatedStock = Math.max(0, matchedPart.currentStock - partQty);
+    if (onUpdatePart) {
+      onUpdatePart({
+        ...matchedPart,
+        currentStock: updatedStock
+      });
+    }
 
+    // 2. Add part to Job Card parts requested
     const newItem: JobCardPartItem = {
       id: `JCP-${Date.now()}`,
-      partId: part.id,
-      partNumber: part.partNumber,
-      name: part.name,
-      partName: part.name,
+      partId: matchedPart.id,
+      partNumber: matchedPart.partNumber,
+      name: matchedPart.name,
+      partName: matchedPart.name,
       quantity: partQty,
-      unitPrice: part.sellingPrice,
-      totalAmount: part.sellingPrice * partQty,
+      unitPrice: matchedPart.sellingPrice,
+      totalAmount: matchedPart.sellingPrice * partQty,
       vatRate: 13,
       discount: 0,
       isCoveredByInsurance,
       requisitionStatus: 'Issued'
     };
 
+    // 3. Automatically advance Bay & Status lifecycle once parts are issued
+    let newStatus = currentJobCard.status;
+    if (
+      currentJobCard.status === 'Appointment / Intake' ||
+      currentJobCard.status === 'Vehicle Check-in' ||
+      currentJobCard.status === 'Awaiting Spares'
+    ) {
+      newStatus = 'Bay Assigned (In Progress)';
+    }
+
+    // 4. Update Bay status to Occupied automatically
+    if (bays && onUpdateBay && currentJobCard.bayNumber) {
+      const targetBay = bays.find(b => b.name === currentJobCard.bayNumber || b.bayNumber === currentJobCard.bayNumber);
+      if (targetBay) {
+        onUpdateBay({
+          ...targetBay,
+          status: 'Occupied',
+          currentJobCardId: currentJobCard.id,
+          currentVehicleReg: currentJobCard.vehicle.registrationNumber
+        });
+      }
+    }
+
     const updated = {
       ...currentJobCard,
+      status: newStatus,
       partsRequested: [...(currentJobCard.partsRequested || []), newItem]
     };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
-    setSelectedPartId('');
+
+    // Reset part search fields
+    setPartSearchQuery('');
+    setMatchedPart(null);
     setPartQty(1);
   };
 
   const handleRemovePart = (id: string) => {
     if (isLocked) return;
+    const removedItem = (currentJobCard.partsRequested || []).find(p => p.id === id);
+    if (removedItem && onUpdatePart) {
+      const partToRestock = availableParts.find(p => p.id === removedItem.partId || p.partNumber === removedItem.partNumber);
+      if (partToRestock) {
+        onUpdatePart({
+          ...partToRestock,
+          currentStock: partToRestock.currentStock + removedItem.quantity
+        });
+      }
+    }
+
     const updated = {
       ...currentJobCard,
       partsRequested: (currentJobCard.partsRequested || []).filter(p => p.id !== id)
@@ -774,59 +877,124 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
           {activeTab === 'labor' && (
             <div className="space-y-4">
               {!isLocked && (
-                <form onSubmit={handleAddLabor} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-4 gap-2">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Labor / Service Description</label>
-                    <input
-                      value={newLaborDesc}
-                      onChange={e => setNewLaborDesc(e.target.value)}
-                      placeholder="e.g. Brake Caliper Overhaul & Fluid Bleed"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none"
-                      required
-                    />
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Labor Task Entry (Enter Code to Pull Fixed Price)</span>
+                    </span>
+                    <span className="text-[10px] text-indigo-700 bg-indigo-50 font-bold px-2 py-0.5 rounded border border-indigo-200">
+                      Fixed Price Book
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Std. Hours</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={newLaborHours}
-                      onChange={e => setNewLaborHours(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="submit"
-                      className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm"
-                    >
-                      + Add Labor Task
-                    </button>
-                  </div>
-                </form>
+
+                  <form onSubmit={handleAddLabor} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* Task Code Input */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Labor Task Code *
+                        </label>
+                        <input
+                          value={laborTaskCode}
+                          onChange={e => handleTaskCodeChange(e.target.value)}
+                          placeholder="e.g. SRV-GEN-01"
+                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 font-mono font-bold uppercase text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                          required
+                        />
+                      </div>
+
+                      {/* Labor Description (Auto-filled by code) */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Task Description *
+                        </label>
+                        <input
+                          value={newLaborDesc}
+                          onChange={e => setNewLaborDesc(e.target.value)}
+                          placeholder="Task name will appear automatically"
+                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
+                          required
+                        />
+                      </div>
+
+                      {/* Fixed Labor Charge */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Fixed Charge (NPR, excl. VAT)
+                        </label>
+                        <div className="flex space-x-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            value={newLaborRate}
+                            onChange={e => setNewLaborRate(parseFloat(e.target.value) || 0)}
+                            className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-2 font-mono font-bold text-xs text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            required
+                          />
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm flex items-center space-x-1 transition"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Matched Service Banner */}
+                    {matchedLaborService && (
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-2 text-emerald-900 font-medium">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>Matched Task: <strong>{matchedLaborService.name}</strong> ({matchedLaborService.category})</span>
+                        </div>
+                        <span className="font-mono font-bold text-emerald-800">
+                          Fixed Charge: Rs. {(matchedLaborService.fixedPrice ?? matchedLaborService.baseLaborRate).toLocaleString()} (+13% VAT)
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Quick Pick Task Code Chips */}
+                    {servicePrices.length > 0 && (
+                      <div className="flex items-center space-x-1.5 overflow-x-auto py-1">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase flex-shrink-0">Quick Code:</span>
+                        {servicePrices.slice(0, 6).map(srv => (
+                          <button
+                            key={srv.id}
+                            type="button"
+                            onClick={() => handleTaskCodeChange(srv.code)}
+                            className="px-2 py-0.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded text-[10px] font-mono font-bold text-slate-700 hover:text-indigo-700 transition flex-shrink-0"
+                          >
+                            {srv.code} (Rs. {(srv.fixedPrice ?? srv.baseLaborRate).toLocaleString()})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </form>
+                </div>
               )}
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 font-bold text-slate-700 border-b border-slate-200">
-                      <th className="p-3">Labor Task</th>
+                      <th className="p-3">Task Code</th>
+                      <th className="p-3">Labor Task Name</th>
                       <th className="p-3">Assigned Tech</th>
-                      <th className="p-3 text-center">Hours</th>
-                      <th className="p-3 text-right">Rate (NPR)</th>
-                      <th className="p-3 text-right">Total (NPR)</th>
+                      <th className="p-3 text-right">Fixed Price (NPR)</th>
                       {!isLocked && <th className="p-3 text-center">Action</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {(currentJobCard.laborItems || []).map(l => (
                       <tr key={l.id}>
+                        <td className="p-3 font-mono font-bold text-indigo-700">{l.code || 'SRV'}</td>
                         <td className="p-3 font-semibold text-slate-900">{l.description}</td>
                         <td className="p-3 text-slate-600">{l.technicianName || 'Workshop Tech'}</td>
-                        <td className="p-3 text-center font-mono">{l.hours} hrs</td>
-                        <td className="p-3 text-right font-mono">रु. {l.ratePerHour.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900">रु. {l.totalAmount.toLocaleString()}</td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-900">Rs. {(l.totalAmount || l.ratePerHour).toLocaleString()}</td>
                         {!isLocked && (
                           <td className="p-3 text-center">
                             <button
@@ -849,43 +1017,115 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
           {activeTab === 'parts' && (
             <div className="space-y-4">
               {!isLocked && (
-                <form onSubmit={handleAddPart} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-4 gap-2">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Select Spare Part</label>
-                    <select
-                      value={selectedPartId}
-                      onChange={e => setSelectedPartId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none font-medium"
-                      required
-                    >
-                      <option value="">-- Choose Stock Part --</option>
-                      {(availableParts || []).map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.sku} - {p.name} (Stock: {p.currentStock}) - रु. {p.sellingPrice}
-                        </option>
-                      ))}
-                    </select>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <Package className="w-3.5 h-3.5 text-teal-600" />
+                      <span>Search & Requisition Part by SKU or Part Number</span>
+                    </span>
+                    <span className="text-[10px] text-teal-800 bg-teal-50 font-bold px-2 py-0.5 rounded border border-teal-200">
+                      Live Stock Sync & Auto-Bay Advance
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Qty</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={partQty}
-                      onChange={e => setPartQty(parseInt(e.target.value) || 1)}
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="submit"
-                      className="w-full py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold shadow-sm"
-                    >
-                      + Requisition Part
-                    </button>
-                  </div>
-                </form>
+
+                  <form onSubmit={handleAddPart} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* SKU / Part Code Search Input */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Enter SKU or Part Number / Code *
+                        </label>
+                        <div className="relative">
+                          <input
+                            value={partSearchQuery}
+                            onChange={e => handlePartSearchChange(e.target.value)}
+                            placeholder="Type SKU or Part # (e.g., HYU-FLT-01, 26300-35505, BRK-01)"
+                            className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-2 font-mono font-bold text-xs uppercase focus:ring-2 focus:ring-teal-500 outline-none"
+                            required
+                          />
+                          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
+                        </div>
+                      </div>
+
+                      {/* Quantity & Submit */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Requisition Qty *
+                        </label>
+                        <div className="flex space-x-1.5">
+                          <input
+                            type="number"
+                            min="1"
+                            max={matchedPart ? matchedPart.currentStock : 999}
+                            value={partQty}
+                            onChange={e => setPartQty(parseInt(e.target.value) || 1)}
+                            className="w-20 bg-white border border-slate-300 rounded-lg px-2.5 py-2 font-mono font-bold text-xs text-center focus:ring-2 focus:ring-teal-500 outline-none"
+                            required
+                          />
+                          <button
+                            type="submit"
+                            disabled={!matchedPart || matchedPart.currentStock < partQty}
+                            className="flex-1 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg font-bold text-xs shadow-sm flex items-center justify-center space-x-1 transition"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Request & Issue</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Matched Part Display Card */}
+                    {matchedPart ? (
+                      <div className="p-3 bg-white border-2 border-teal-500/70 rounded-xl space-y-1.5 shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-100 text-teal-900">
+                              SKU: {matchedPart.sku}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700">
+                              Part #: {matchedPart.partNumber}
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              Rack: {matchedPart.rackLocation}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Unit Selling Price</span>
+                            <span className="font-mono font-black text-sm text-slate-900">
+                              Rs. {matchedPart.sellingPrice.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                          <div>
+                            <span className="font-bold text-slate-900 text-xs">{matchedPart.name}</span>
+                            <span className="text-slate-400 text-[11px] ml-2">({matchedPart.category})</span>
+                          </div>
+                          <div>
+                            {matchedPart.currentStock > 0 ? (
+                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                ✓ Available in Stock: {matchedPart.currentStock} {matchedPart.unit}
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                ⚠ Out of Stock (0 available)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : partSearchQuery.trim() ? (
+                      <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center space-x-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span>No spare part found with SKU or Part Number matching "{partSearchQuery}". Please check code or stock master.</span>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400">
+                        Enter the part SKU code or OEM part number above. Once identified, available inventory and unit price appear for confirmation.
+                      </p>
+                    )}
+                  </form>
+                </div>
               )}
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -906,8 +1146,8 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                         <td className="p-3 font-mono font-bold text-teal-700">{p.partNumber}</td>
                         <td className="p-3 font-semibold text-slate-900">{p.partName}</td>
                         <td className="p-3 text-center font-mono">{p.quantity}</td>
-                        <td className="p-3 text-right font-mono">रु. {p.unitPrice.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900">रु. {p.totalAmount.toLocaleString()}</td>
+                        <td className="p-3 text-right font-mono">Rs. {p.unitPrice.toLocaleString()}</td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-900">Rs. {p.totalAmount.toLocaleString()}</td>
                         {!isLocked && (
                           <td className="p-3 text-center">
                             <button
@@ -971,20 +1211,20 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
           <div className="flex items-center space-x-6">
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Labor Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">रु. {totalLabor.toLocaleString()}</span>
+              <span className="font-mono font-bold text-slate-800">Rs. {totalLabor.toLocaleString()}</span>
             </div>
             <div>
               <span className="text-[10px] text-slate-400 font-bold uppercase block">Spares Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">रु. {totalParts.toLocaleString()}</span>
+              <span className="font-mono font-bold text-slate-800">Rs. {totalParts.toLocaleString()}</span>
             </div>
             <div>
               <span className="text-[10px] text-indigo-500 font-bold uppercase block">Nepal 13% VAT</span>
-              <span className="font-mono font-bold text-indigo-700">रु. {Math.round(estimatedVat).toLocaleString()}</span>
+              <span className="font-mono font-bold text-indigo-700">Rs. {Math.round(estimatedVat).toLocaleString()}</span>
             </div>
             <div className="pl-4 border-l border-slate-300">
               <span className="text-[10px] text-slate-500 font-bold uppercase block">Estimated Gross Bill</span>
               <span className="font-mono font-black text-base text-slate-900">
-                रु. {Math.round(grandTotal).toLocaleString()}
+                Rs. {Math.round(grandTotal).toLocaleString()}
               </span>
             </div>
           </div>

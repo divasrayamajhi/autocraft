@@ -36,7 +36,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
     if (onWhatsAppShare) {
       onWhatsAppShare(invoice);
     } else {
-      const message = `Namaste ${invoice.customerName}! Here is your Tax Invoice ${invoice.invoiceNumber} from ${profile?.name || 'Sagarmatha Auto Workshop'} for vehicle ${invoice.vehicleReg}. Total: NPR रु. ${invoice.grandTotal.toLocaleString()}. Thank you for choosing us!`;
+      const message = `Namaste ${invoice.customerName}! Here is your Tax Invoice ${invoice.invoiceNumber} from ${profile?.name || 'Sagarmatha Auto Workshop'} for vehicle ${invoice.vehicleReg}. Total: NPR Rs. ${invoice.grandTotal.toLocaleString()}. Thank you for choosing us!`;
       const cleanPhone = invoice.customerPhone.replace(/[^0-9]/g, '');
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
@@ -107,7 +107,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               PAN / VAT Registration No.: <span className="text-indigo-800 font-extrabold text-sm">{workshopPan}</span>
             </p>
             <div className="inline-block mt-2 px-4 py-1 border border-slate-800 rounded font-black text-sm uppercase tracking-wider bg-slate-50">
-              TAX INVOICE (कर बिजक)
+              TAX INVOICE 
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
               (Issued in accordance with Section 14 of Value Added Tax Act, 2052 - Nepal IRD)
@@ -157,9 +157,9 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     </td>
                     <td className="p-2 border-r border-slate-200 text-center font-mono text-[10px]">{item.hsnSacCode}</td>
                     <td className="p-2 border-r border-slate-200 text-center font-mono">{item.quantity}</td>
-                    <td className="p-2 border-r border-slate-200 text-right font-mono">रु. {item.unitPrice.toLocaleString()}</td>
-                    <td className="p-2 border-r border-slate-200 text-right font-mono">रु. {item.taxableAmount.toLocaleString()}</td>
-                    <td className="p-2 text-right font-mono font-semibold">रु. {item.totalAmount.toLocaleString()}</td>
+                    <td className="p-2 border-r border-slate-200 text-right font-mono">Rs. {item.unitPrice.toLocaleString()}</td>
+                    <td className="p-2 border-r border-slate-200 text-right font-mono">Rs. {item.taxableAmount.toLocaleString()}</td>
+                    <td className="p-2 text-right font-mono font-semibold">Rs. {item.totalAmount.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -190,31 +190,31 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
             <div className="space-y-1.5 text-xs text-right">
               <div className="flex justify-between py-0.5 border-b border-slate-100">
                 <span className="text-slate-600">Total Gross Amount:</span>
-                <span className="font-mono font-semibold">रु. {invoice.subTotal.toLocaleString()}</span>
+                <span className="font-mono font-semibold">Rs. {invoice.subTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-slate-100">
                 <span className="text-slate-600">Total Discount:</span>
-                <span className="font-mono font-semibold text-rose-600">- रु. {invoice.discountTotal.toLocaleString()}</span>
+                <span className="font-mono font-semibold text-rose-600">- Rs. {invoice.discountTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-slate-100">
-                <span className="text-slate-600">Taxable Amount (करयोग्य रकम):</span>
-                <span className="font-mono font-bold">रु. {invoice.taxableAmount.toLocaleString()}</span>
+                <span className="text-slate-600">Taxable Amount :</span>
+                <span className="font-mono font-bold">Rs. {invoice.taxableAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-0.5 border-b border-slate-100 text-indigo-800 font-bold">
                 <span>Value Added Tax (13% VAT):</span>
-                <span className="font-mono">रु. {invoice.vatAmount.toLocaleString()}</span>
+                <span className="font-mono">Rs. {invoice.vatAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-1.5 border-t-2 border-slate-900 text-sm font-extrabold text-slate-900">
-                <span>Grand Total (कुल रकम):</span>
-                <span className="font-mono text-base">रु. {invoice.grandTotal.toLocaleString()}</span>
+                <span>Grand Total :</span>
+                <span className="font-mono text-base">Rs. {invoice.grandTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-0.5 text-[11px] text-emerald-700 font-semibold">
                 <span>Amount Paid:</span>
-                <span className="font-mono">रु. {invoice.paidAmount.toLocaleString()}</span>
+                <span className="font-mono">Rs. {invoice.paidAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-0.5 text-[11px] font-bold text-slate-800">
                 <span>Balance Due:</span>
-                <span className="font-mono text-rose-700">रु. {invoice.balanceDue.toLocaleString()}</span>
+                <span className="font-mono text-rose-700">Rs. {invoice.balanceDue.toLocaleString()}</span>
               </div>
             </div>
           </div>

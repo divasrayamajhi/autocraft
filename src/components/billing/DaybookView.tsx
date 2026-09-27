@@ -334,7 +334,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
               <CalendarDays className="w-5 h-5" />
             </span>
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Workshop Financial Daybook (दैनिक खाता)
+              Workshop Financial Daybook 
             </span>
           </div>
           <h3 className="text-xl font-black text-slate-900 mt-1">
@@ -390,7 +390,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            Today (आज)
+            Today 
           </button>
 
           {/* Export & Print */}
@@ -454,10 +454,10 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             <Receipt className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="text-2xl font-black text-slate-900 font-mono mt-1">
-            रु. {daySummary.totalGrossBilled.toLocaleString()}
+            Rs. {daySummary.totalGrossBilled.toLocaleString()}
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
-            <span>Taxable: रु. {daySummary.totalTaxable.toLocaleString()}</span>
+            <span>Taxable: Rs. {daySummary.totalTaxable.toLocaleString()}</span>
             <span className="font-bold text-indigo-600">{daySummary.transactionCount} Bills</span>
           </div>
         </div>
@@ -469,11 +469,11 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             <TrendingUp className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-black text-emerald-600 font-mono mt-1">
-            रु. {daySummary.totalCollected.toLocaleString()}
+            Rs. {daySummary.totalCollected.toLocaleString()}
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
-            <span>Cash: रु. {daySummary.cashCollected.toLocaleString()}</span>
-            <span className="text-blue-600 font-semibold">Digital: रु. {daySummary.digitalCollected.toLocaleString()}</span>
+            <span>Cash: Rs. {daySummary.cashCollected.toLocaleString()}</span>
+            <span className="text-blue-600 font-semibold">Digital: Rs. {daySummary.digitalCollected.toLocaleString()}</span>
           </div>
         </div>
 
@@ -484,7 +484,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             <ShieldCheck className="w-4 h-4 text-purple-500" />
           </div>
           <div className="text-2xl font-black text-purple-700 font-mono mt-1">
-            रु. {daySummary.totalVat.toLocaleString()}
+            Rs. {daySummary.totalVat.toLocaleString()}
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
             <span className="text-purple-600">IRD CBMS Realtime</span>
@@ -499,7 +499,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             <AlertCircle className="w-4 h-4 text-rose-500" />
           </div>
           <div className="text-2xl font-black text-rose-600 font-mono mt-1">
-            रु. {daySummary.totalDue.toLocaleString()}
+            Rs. {daySummary.totalDue.toLocaleString()}
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
             <span className="text-rose-600">Pending recovery</span>
@@ -518,7 +518,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
               <span>Collections by Payment Mode for {selectedDate}</span>
             </div>
             <span className="text-[11px] text-slate-400 font-mono">
-              Total Inflow: रु. {daySummary.totalCollected.toLocaleString()}
+              Total Inflow: Rs. {daySummary.totalCollected.toLocaleString()}
             </span>
           </div>
 
@@ -547,7 +547,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                     </span>
                   </div>
                   <div className="font-mono font-black text-slate-900 text-sm">
-                    रु. {info.amount.toLocaleString()}
+                    Rs. {info.amount.toLocaleString()}
                   </div>
                 </div>
               );
@@ -576,16 +576,16 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             <div className="mt-3 space-y-2 text-xs">
               <div className="flex items-center justify-between text-slate-300">
                 <span>Opening Cash Drawer:</span>
-                <span className="font-mono font-bold text-white">रु. {cashOpeningFloat.toLocaleString()}</span>
+                <span className="font-mono font-bold text-white">Rs. {cashOpeningFloat.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between text-slate-300">
                 <span>Cash Inflow Today:</span>
-                <span className="font-mono font-bold text-emerald-400">+ रु. {daySummary.cashCollected.toLocaleString()}</span>
+                <span className="font-mono font-bold text-emerald-400">+ Rs. {daySummary.cashCollected.toLocaleString()}</span>
               </div>
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between font-bold">
                 <span className="text-white">Expected Physical Cash:</span>
                 <span className="font-mono text-base text-amber-400">
-                  रु. {(cashOpeningFloat + daySummary.cashCollected).toLocaleString()}
+                  Rs. {(cashOpeningFloat + daySummary.cashCollected).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -722,22 +722,22 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                     </td>
 
                     <td className="p-3.5 text-right font-mono text-slate-700">
-                      रु. {t.taxableAmount.toLocaleString()}
+                      Rs. {t.taxableAmount.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-right font-mono font-bold text-purple-700">
-                      रु. {t.vatAmount.toLocaleString()}
+                      Rs. {t.vatAmount.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-right font-mono font-extrabold text-slate-900">
-                      रु. {t.grossTotal.toLocaleString()}
+                      Rs. {t.grossTotal.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-right font-mono font-bold text-emerald-600">
-                      रु. {t.amountReceived.toLocaleString()}
+                      Rs. {t.amountReceived.toLocaleString()}
                       {t.balanceDue > 0 && (
                         <div className="text-[10px] text-rose-500 font-semibold">
-                          Due: रु. {t.balanceDue.toLocaleString()}
+                          Due: Rs. {t.balanceDue.toLocaleString()}
                         </div>
                       )}
                     </td>
@@ -773,16 +773,16 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                       Daybook Total ({selectedDate}):
                     </td>
                     <td className="p-3.5 text-right font-mono">
-                      रु. {daySummary.totalTaxable.toLocaleString()}
+                      Rs. {daySummary.totalTaxable.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-right font-mono text-purple-700">
-                      रु. {daySummary.totalVat.toLocaleString()}
+                      Rs. {daySummary.totalVat.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-right font-mono font-black text-slate-900">
-                      रु. {daySummary.totalGrossBilled.toLocaleString()}
+                      Rs. {daySummary.totalGrossBilled.toLocaleString()}
                     </td>
                     <td className="p-3.5 text-right font-mono text-emerald-600">
-                      रु. {daySummary.totalCollected.toLocaleString()}
+                      Rs. {daySummary.totalCollected.toLocaleString()}
                     </td>
                     <td colSpan={2}></td>
                   </tr>
@@ -842,19 +842,19 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                     </td>
 
                     <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                      रु. {dayRow.billed.toLocaleString()}
+                      Rs. {dayRow.billed.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-right font-mono text-purple-700 font-bold">
-                      रु. {dayRow.vat.toLocaleString()}
+                      Rs. {dayRow.vat.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-right font-mono text-emerald-600 font-bold">
-                      रु. {dayRow.collected.toLocaleString()}
+                      Rs. {dayRow.collected.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-right font-mono text-rose-600">
-                      रु. {dayRow.due.toLocaleString()}
+                      Rs. {dayRow.due.toLocaleString()}
                     </td>
 
                     <td className="p-3.5 text-center">
@@ -918,7 +918,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                 </div>
                 <div className="pt-2">
                   <span className="px-3 py-1 bg-slate-100 rounded text-xs font-black uppercase tracking-wider border">
-                    DAILY CASHIER CLOSING & TRANSACTION REGISTER (दैनिक खाता)
+                    DAILY CASHIER CLOSING & TRANSACTION REGISTER 
                   </span>
                 </div>
               </div>
@@ -941,19 +941,19 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
               <div className="grid grid-cols-4 gap-2 text-center text-xs">
                 <div className="p-2 border rounded">
                   <div className="text-[10px] text-slate-500 uppercase">Gross Billed</div>
-                  <div className="font-mono font-bold text-sm">रु. {daySummary.totalGrossBilled.toLocaleString()}</div>
+                  <div className="font-mono font-bold text-sm">Rs. {daySummary.totalGrossBilled.toLocaleString()}</div>
                 </div>
                 <div className="p-2 border rounded">
                   <div className="text-[10px] text-slate-500 uppercase">13% VAT Output</div>
-                  <div className="font-mono font-bold text-sm">रु. {daySummary.totalVat.toLocaleString()}</div>
+                  <div className="font-mono font-bold text-sm">Rs. {daySummary.totalVat.toLocaleString()}</div>
                 </div>
                 <div className="p-2 border rounded">
                   <div className="text-[10px] text-slate-500 uppercase">Total Collected</div>
-                  <div className="font-mono font-bold text-sm text-emerald-700">रु. {daySummary.totalCollected.toLocaleString()}</div>
+                  <div className="font-mono font-bold text-sm text-emerald-700">Rs. {daySummary.totalCollected.toLocaleString()}</div>
                 </div>
                 <div className="p-2 border rounded">
                   <div className="text-[10px] text-slate-500 uppercase">Cash In Drawer</div>
-                  <div className="font-mono font-bold text-sm text-blue-700">रु. {(cashOpeningFloat + daySummary.cashCollected).toLocaleString()}</div>
+                  <div className="font-mono font-bold text-sm text-blue-700">Rs. {(cashOpeningFloat + daySummary.cashCollected).toLocaleString()}</div>
                 </div>
               </div>
 
@@ -978,10 +978,10 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                       <td className="p-2 font-mono font-bold">{t.referenceNumber}</td>
                       <td className="p-2">{t.customerName} ({t.vehicleReg})</td>
                       <td className="p-2">{t.paymentMode}</td>
-                      <td className="p-2 text-right font-mono">रु. {t.taxableAmount.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono">रु. {t.vatAmount.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono font-bold">रु. {t.grossTotal.toLocaleString()}</td>
-                      <td className="p-2 text-right font-mono">रु. {t.amountReceived.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono">Rs. {t.taxableAmount.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono">Rs. {t.vatAmount.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono font-bold">Rs. {t.grossTotal.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono">Rs. {t.amountReceived.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

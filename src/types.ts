@@ -109,7 +109,7 @@ export interface WorkshopProfile {
   irdCbmsEnabled: boolean;
   irdApiUrl: string;
   irdUsername: string;
-  currencySymbol: string; // 'रु.'
+  currencySymbol: string; // 'Rs.'
   currencyCode: string; // 'NPR'
   defaultVatRate: number; // 13%
 }
@@ -129,8 +129,9 @@ export interface ServicePriceItem {
   code: string; // e.g., "SRV-GEN-01"
   name: string;
   category: 'General Service' | 'Brake & Suspension' | 'Engine & Transmission' | 'Electrical & AC' | 'Dent & Paint' | 'Detailing';
-  standardHours: number;
-  baseLaborRate: number; // In NPR
+  standardHours?: number;
+  fixedPrice?: number; // Fixed price in NPR
+  baseLaborRate: number; // Fixed labor price / base rate in NPR
   vatRate: number; // 13%
   isTaxable: boolean;
   description: string;
@@ -734,7 +735,7 @@ export interface GatePass {
   paymentStatus?: string;
 }
 
-// Daybook Register Types (दैनिक खाता)
+// Daybook Register Types (Daily Financial Register)
 export interface DaybookTransaction {
   id: string;
   time: string;
