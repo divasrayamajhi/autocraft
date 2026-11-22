@@ -1,7 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { Invoice, PurchaseOrder, WorkshopProfile } from '../../types';
-import { Printer, X, Download, FileSpreadsheet, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Printer, X } from 'lucide-react';
 import { printElement } from '../../utils/printDocument';
+import {
+  formatAccountingNPR,
+  isCreditNoteInvoice,
+  isPurchaseOrderItcEligible,
+  round2,
+} from '../../utils/accountingEngine';
 
 interface PrintIrdVatRegisterModalProps {
   type: 'sales' | 'purchase' | 'vat_return';
@@ -18,31 +24,42 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
   purchaseOrders,
   profile,
   filterMonth = 'All',
-  onClose
+  onClose,
 }) => {
   const [activeView, setActiveView] = useState<'sales' | 'purchase' | 'vat_return'>(type);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  const workshopName = profile?.name || 'Continental Auto Kraft Pvt. Ltd.';
+  const workshopName = profile?.name || 'Auto Workshop Pvt. Ltd.';
   const legalName = profile?.legalEntityName || workshopName;
-  const pan = profile?.panVatNumber || '609812453';
+  const pan = profile?.panVatNumber || '302849182';
   const fiscalYear = profile?.fiscalYear || '2081/82';
-  const address = profile?.address ? `${profile.address}, ${profile.city || 'Kathmandu'}, Nepal` : 'Sukedhara-04, Ring Road, Kathmandu, Nepal';
-  const phone = profile?.contactNumber || '+977-1-4378920';
 
-  // Sales totals
-  const totalTaxableSales = invoices.reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
-  const totalVatSales = invoices.reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0);
-  const totalGrossSales = invoices.reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0);
+  // Sales totals (Net of Credit Notes)
+  const totalTaxableSales = round2(
+    invoices.reduce((acc, inv) => acc + Number(inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0)
+  );
+  const totalVatSales = round2(
+    invoices.reduce((acc, inv) => acc + Number(inv.vatAmount ?? inv.totalVatAmount ?? 0), 0)
+  );
+  const totalGrossSales = round2(
+    invoices.reduce((acc, inv) => acc + Number(inv.grandTotal ?? 0), 0)
+  );
 
-  // Purchase totals
-  const totalTaxablePurchases = purchaseOrders.reduce((acc, po) => acc + (po.taxableAmount ?? po.subtotal ?? 0), 0);
-  const totalVatPurchases = purchaseOrders.reduce((acc, po) => acc + (po.vatTotal ?? 0), 0);
-  const totalGrossPurchases = purchaseOrders.reduce((acc, po) => acc + (po.totalAmount ?? 0), 0);
+  // Purchase totals: ONLY ITC-Eligible (Received / Billed) Supplier Bills per Nepal VAT Act 2052 Sec 17
+  const eligiblePurchases = purchaseOrders.filter(isPurchaseOrderItcEligible);
+  const totalTaxablePurchases = round2(
+    eligiblePurchases.reduce((acc, po) => acc + Number(po.taxableAmount ?? po.subtotal ?? 0), 0)
+  );
+  const totalVatPurchases = round2(
+    eligiblePurchases.reduce((acc, po) => acc + Number(po.vatTotal ?? 0), 0)
+  );
+  const totalGrossPurchases = round2(
+    eligiblePurchases.reduce((acc, po) => acc + Number(po.totalAmount ?? 0), 0)
+  );
 
   // VAT Return
-  const netPayable = Math.max(0, totalVatSales - totalVatPurchases);
-  const carryForwardCredit = Math.max(0, totalVatPurchases - totalVatSales);
+  const netPayable = round2(Math.max(0, totalVatSales - totalVatPurchases));
+  const carryForwardCredit = round2(Math.max(0, totalVatPurchases - totalVatSales));
 
   const handlePrint = () => {
     printElement(printAreaRef.current, `IRD-VAT-${activeView}-${fiscalYear}`);
@@ -51,7 +68,7 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
   return (
     <div className="print-modal-root fixed inset-0 z-50 overflow-y-auto bg-[#0F172A]/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6">
       <div className="bg-[#FFFFFF] w-full max-w-5xl rounded-xl shadow-2xl border border-[#E2E8F0] overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Modal Toolbar (hidden on print) */}
+        {/* Modal Toolbar */}
         <div className="bg-[#0F3D5E] text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 print:hidden">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-[#0EA5E9] flex items-center justify-center text-white">
@@ -59,10 +76,10 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
             </div>
             <div>
               <h3 className="text-sm font-bold text-white leading-tight">
-                Nepal IRD Standard VAT Register (Schedule 13)
+                Nepal IRD Statutory VAT Register (Schedule 13 / Form VAT-01)
               </h3>
               <p className="text-[11px] text-sky-200">
-                Official A4 Statutory Tax Register
+                Period: {filterMonth === 'All' ? `FY ${fiscalYear} B.S.` : filterMonth}
               </p>
             </div>
           </div>
@@ -91,7 +108,7 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
                   activeView === 'vat_return' ? 'bg-[#0EA5E9] text-white font-semibold' : 'text-sky-100 hover:text-white'
                 }`}
               >
-                Monthly VAT Return
+                VAT Return
               </button>
             </div>
 
@@ -112,271 +129,250 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
           </div>
         </div>
 
-        {/* Document Body (Printable A4) */}
+        {/* Document Body */}
         <div className="overflow-y-auto flex-1 bg-[#F1F5F9] p-4 sm:p-6">
-          <div ref={printAreaRef} className="a4-sheet p-6 sm:p-8 print:p-0 text-[#0F172A] bg-[#FFFFFF] border border-[#E2E8F0] print:border-0 font-sans text-xs">
-          {/* Header Section */}
-          <div className="text-center border-b-2 border-slate-900 pb-4 mb-5">
-            <p className="text-[11px] font-semibold text-slate-600">Government of Nepal | Ministry of Finance | Inland Revenue Department</p>
-            <p className="text-xs font-bold text-slate-800">
-              Value Added Tax Rules 2052, Rule 23(1) Statutory Tax Register
-            </p>
-            <h1 className="text-lg font-black text-slate-900 mt-1 uppercase tracking-tight">
-              {activeView === 'sales' && 'Schedule 13: Sales Register (Sales Book)'}
-              {activeView === 'purchase' && 'Schedule 13: Purchase Register (Purchase Book)'}
-              {activeView === 'vat_return' && 'Schedule 10: Monthly Value Added Tax Return (VAT-01)'}
-            </h1>
+          <div
+            ref={printAreaRef}
+            className="a4-sheet p-6 sm:p-8 print:p-0 text-[#0F172A] bg-[#FFFFFF] border border-[#E2E8F0] print:border-0 font-sans text-xs"
+          >
+            {/* Header Section */}
+            <div className="text-center border-b-2 border-[#0F3D5E] pb-4 mb-5">
+              <p className="text-[11px] font-semibold text-[#64748B]">
+                Government of Nepal | Ministry of Finance | Inland Revenue Department
+              </p>
+              <p className="text-xs font-bold text-[#0F172A]">
+                Value Added Tax Rules 2052, Rule 23(1) Statutory Tax Register
+              </p>
+              <h1 className="text-lg font-bold text-[#0F3D5E] mt-1 uppercase tracking-tight">
+                {activeView === 'sales' && 'Schedule 13: Sales Register (Sales Book)'}
+                {activeView === 'purchase' && 'Schedule 13: Purchase Register (Purchase Book)'}
+                {activeView === 'vat_return' && 'Schedule 10: Monthly Value Added Tax Return (VAT-01)'}
+              </h1>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-left pt-3 border-t border-slate-200 text-xs">
-              <div>
-                <span className="text-slate-500 block text-[10px]">Legal Entity Name:</span>
-                <strong className="text-slate-900">{legalName}</strong>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px]">Trading Name:</span>
-                <strong className="text-slate-900">{workshopName}</strong>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px]">PAN / VAT Registration No:</span>
-                <strong className="font-mono text-slate-900 text-sm tracking-wider">{pan}</strong>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px]">Fiscal Year:</span>
-                <strong className="font-mono text-slate-900">{fiscalYear} B.S.</strong>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-left pt-3 border-t border-[#E2E8F0] text-xs">
+                <div>
+                  <span className="text-[#64748B] block text-[10px]">Legal Entity Name:</span>
+                  <strong className="text-[#0F172A]">{legalName}</strong>
+                </div>
+                <div>
+                  <span className="text-[#64748B] block text-[10px]">Trading Name:</span>
+                  <strong className="text-[#0F172A]">{workshopName}</strong>
+                </div>
+                <div>
+                  <span className="text-[#64748B] block text-[10px]">PAN / VAT Registration No:</span>
+                  <strong className="font-mono text-[#0F172A] text-sm tracking-wider">{pan}</strong>
+                </div>
+                <div>
+                  <span className="text-[#64748B] block text-[10px]">Fiscal Year / Period:</span>
+                  <strong className="font-mono text-[#0F172A]">
+                    {fiscalYear} B.S. ({filterMonth})
+                  </strong>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* VIEW 1: SALES BOOK */}
-          {activeView === 'sales' && (
-            <div className="space-y-4">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-slate-300 text-[11px]">
+            {/* VIEW 1: SALES BOOK */}
+            {activeView === 'sales' && (
+              <table className="w-full border-collapse border border-[#CBD5E1] text-[11px]">
+                <thead>
+                  <tr className="bg-[#F1F5F9] text-[#0F172A] font-bold">
+                    <th className="border border-[#CBD5E1] p-2 text-center">S.N.</th>
+                    <th className="border border-[#CBD5E1] p-2">Date</th>
+                    <th className="border border-[#CBD5E1] p-2">Document #</th>
+                    <th className="border border-[#CBD5E1] p-2">Buyer Name</th>
+                    <th className="border border-[#CBD5E1] p-2 text-center">Buyer PAN</th>
+                    <th className="border border-[#CBD5E1] p-2 text-right">Total Sales</th>
+                    <th className="border border-[#CBD5E1] p-2 text-right">Exempt</th>
+                    <th className="border border-[#CBD5E1] p-2 text-right">Taxable Sales</th>
+                    <th className="border border-[#CBD5E1] p-2 text-right">Output VAT (13%)</th>
+                    <th className="border border-[#CBD5E1] p-2 text-center">CBMS Ack</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((inv, idx) => {
+                    const isCN = isCreditNoteInvoice(inv);
+                    const taxable = Number(inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0);
+                    const vat = Number(inv.vatAmount ?? inv.totalVatAmount ?? 0);
+                    const grand = Number(inv.grandTotal ?? round2(taxable + vat));
+                    const dateStr = (inv.date || inv.createdAt || '').slice(0, 10);
+                    const ack = inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'CBMS-SYNCED';
+
+                    return (
+                      <tr key={inv.id} className={isCN ? 'text-[#DC2626]' : ''}>
+                        <td className="border border-[#CBD5E1] p-2 text-center font-mono">{idx + 1}</td>
+                        <td className="border border-[#CBD5E1] p-2 font-mono whitespace-nowrap">{dateStr}</td>
+                        <td className="border border-[#CBD5E1] p-2 font-mono font-bold">{inv.invoiceNumber}</td>
+                        <td className="border border-[#CBD5E1] p-2">{inv.customerName}</td>
+                        <td className="border border-[#CBD5E1] p-2 text-center font-mono">{inv.customerPan || 'Consumer'}</td>
+                        <td className="border border-[#CBD5E1] p-2 text-right font-mono font-bold">{formatAccountingNPR(grand)}</td>
+                        <td className="border border-[#CBD5E1] p-2 text-right font-mono">Rs. 0</td>
+                        <td className="border border-[#CBD5E1] p-2 text-right font-mono">{formatAccountingNPR(taxable)}</td>
+                        <td className="border border-[#CBD5E1] p-2 text-right font-mono font-bold">{formatAccountingNPR(vat)}</td>
+                        <td className="border border-[#CBD5E1] p-2 text-center font-mono text-[9px]">{ack}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-[#F1F5F9] font-bold text-[#0F172A] border-t-2 border-[#0F3D5E]">
+                    <td colSpan={5} className="border border-[#CBD5E1] p-2.5 text-right uppercase">
+                      Net Sales Total (NPR):
+                    </td>
+                    <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">{formatAccountingNPR(totalGrossSales)}</td>
+                    <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">Rs. 0</td>
+                    <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">{formatAccountingNPR(totalTaxableSales)}</td>
+                    <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">{formatAccountingNPR(totalVatSales)}</td>
+                    <td className="border border-[#CBD5E1] p-2.5 text-center text-[10px]">IRD Annex 13</td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+
+            {/* VIEW 2: PURCHASE BOOK (ONLY ITC-ELIGIBLE RECEIVED BILLS SUMMED) */}
+            {activeView === 'purchase' && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-[#64748B]">
+                  Note: Per Nepal VAT Act 2052 Section 17, only Received / Billed supplier tax invoices are included in claimable Input Tax Credit totals.
+                </p>
+                <table className="w-full border-collapse border border-[#CBD5E1] text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
-                      <th className="border border-slate-300 p-2 text-center">S.N.</th>
-                      <th className="border border-slate-300 p-2">Date</th>
-                      <th className="border border-slate-300 p-2">Invoice #</th>
-                      <th className="border border-slate-300 p-2">Buyer Name</th>
-                      <th className="border border-slate-300 p-2 text-center">PAN / VAT No</th>
-                      <th className="border border-slate-300 p-2 text-right">Total Sales (NPR)</th>
-                      <th className="border border-slate-300 p-2 text-right">Exempt Sales</th>
-                      <th className="border border-slate-300 p-2 text-right">Taxable Sales</th>
-                      <th className="border border-slate-300 p-2 text-right">Output VAT (13%)</th>
-                      <th className="border border-slate-300 p-2 text-center">CBMS Ack Code</th>
+                    <tr className="bg-[#F1F5F9] text-[#0F172A] font-bold">
+                      <th className="border border-[#CBD5E1] p-2 text-center">S.N.</th>
+                      <th className="border border-[#CBD5E1] p-2">Date</th>
+                      <th className="border border-[#CBD5E1] p-2">Supplier Bill / PO #</th>
+                      <th className="border border-[#CBD5E1] p-2">Supplier Name</th>
+                      <th className="border border-[#CBD5E1] p-2 text-center">Supplier PAN</th>
+                      <th className="border border-[#CBD5E1] p-2 text-right">Total Purchase</th>
+                      <th className="border border-[#CBD5E1] p-2 text-right">Taxable Purchase</th>
+                      <th className="border border-[#CBD5E1] p-2 text-right">Input VAT (13%)</th>
+                      <th className="border border-[#CBD5E1] p-2 text-center">ITC Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {invoices.map((inv, idx) => {
-                      const taxable = inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0;
-                      const vat = inv.vatAmount ?? inv.totalVatAmount ?? 0;
-                      const grand = inv.grandTotal ?? (taxable + vat);
-                      const dateStr = (inv.createdAt || inv.date || '').slice(0, 10);
-                      const ack = inv.irdSyncDetails?.cbmsAckNumber || inv.irdCompliance?.irdAcknowledgementCode || 'ACK-2081-NPL-01';
+                    {eligiblePurchases.map((po, idx) => {
+                      const taxable = Number(po.taxableAmount ?? po.subtotal ?? 0);
+                      const vat = Number(po.vatTotal ?? 0);
+                      const grand = Number(po.totalAmount ?? round2(taxable + vat));
 
                       return (
-                        <tr key={inv.id} className="hover:bg-slate-50">
-                          <td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td>
-                          <td className="border border-slate-300 p-2 font-mono whitespace-nowrap">{dateStr}</td>
-                          <td className="border border-slate-300 p-2 font-mono font-bold">{inv.invoiceNumber}</td>
-                          <td className="border border-slate-300 p-2 font-medium">{inv.customerName}</td>
-                          <td className="border border-slate-300 p-2 text-center font-mono">{inv.customerPan || 'Walk-in Consumer'}</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono font-bold">Rs. {grand.toLocaleString()}</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono text-slate-400">Rs. 0</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono">Rs. {taxable.toLocaleString()}</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono font-bold text-slate-900">Rs. {vat.toLocaleString()}</td>
-                          <td className="border border-slate-300 p-2 text-center font-mono text-[9px] text-slate-600">{ack}</td>
+                        <tr key={po.id}>
+                          <td className="border border-[#CBD5E1] p-2 text-center font-mono">{idx + 1}</td>
+                          <td className="border border-[#CBD5E1] p-2 font-mono whitespace-nowrap">{po.date}</td>
+                          <td className="border border-[#CBD5E1] p-2 font-mono font-bold">{po.poNumber}</td>
+                          <td className="border border-[#CBD5E1] p-2">{po.supplierName}</td>
+                          <td className="border border-[#CBD5E1] p-2 text-center font-mono">{po.supplierPanVat || '—'}</td>
+                          <td className="border border-[#CBD5E1] p-2 text-right font-mono font-bold">{formatAccountingNPR(grand)}</td>
+                          <td className="border border-[#CBD5E1] p-2 text-right font-mono">{formatAccountingNPR(taxable)}</td>
+                          <td className="border border-[#CBD5E1] p-2 text-right font-mono font-bold">{formatAccountingNPR(vat)}</td>
+                          <td className="border border-[#CBD5E1] p-2 text-center text-[#16A34A] font-bold">Claimable</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-800">
-                      <td colSpan={5} className="border border-slate-300 p-2.5 text-right uppercase">
-                        Grand Total (NPR):
+                    <tr className="bg-[#F1F5F9] font-bold text-[#0F172A] border-t-2 border-[#0F3D5E]">
+                      <td colSpan={5} className="border border-[#CBD5E1] p-2.5 text-right uppercase">
+                        Claimable Purchases Total (NPR):
                       </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono font-black text-xs">
-                        Rs. {totalGrossSales.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono">
-                        Rs. 0
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono">
-                        Rs. {totalTaxableSales.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono font-black text-xs">
-                        Rs. {totalVatSales.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-center text-[10px]">
-                        IRD CBMS Verified
-                      </td>
+                      <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">{formatAccountingNPR(totalGrossPurchases)}</td>
+                      <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">{formatAccountingNPR(totalTaxablePurchases)}</td>
+                      <td className="border border-[#CBD5E1] p-2.5 text-right font-mono">{formatAccountingNPR(totalVatPurchases)}</td>
+                      <td className="border border-[#CBD5E1] p-2.5 text-center text-[10px]">Sec. 17 ITC</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* VIEW 2: PURCHASE BOOK */}
-          {activeView === 'purchase' && (
-            <div className="space-y-4">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-slate-300 text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
-                      <th className="border border-slate-300 p-2 text-center">S.N.</th>
-                      <th className="border border-slate-300 p-2">Date</th>
-                      <th className="border border-slate-300 p-2">Supplier Bill / PO #</th>
-                      <th className="border border-slate-300 p-2">Supplier Name</th>
-                      <th className="border border-slate-300 p-2 text-center">Supplier PAN</th>
-                      <th className="border border-slate-300 p-2 text-right">Total Purchase (NPR)</th>
-                      <th className="border border-slate-300 p-2 text-right">Exempt Purchase</th>
-                      <th className="border border-slate-300 p-2 text-right">Taxable Purchase</th>
-                      <th className="border border-slate-300 p-2 text-right">Input VAT (13%)</th>
-                      <th className="border border-slate-300 p-2 text-center">ITC Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchaseOrders.map((po, idx) => {
-                      const taxable = po.taxableAmount ?? po.subtotal ?? 0;
-                      const vat = po.vatTotal ?? 0;
-                      const grand = po.totalAmount ?? (taxable + vat);
-
-                      return (
-                        <tr key={po.id} className="hover:bg-slate-50">
-                          <td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td>
-                          <td className="border border-slate-300 p-2 font-mono whitespace-nowrap">{po.date}</td>
-                          <td className="border border-slate-300 p-2 font-mono font-bold">{po.poNumber}</td>
-                          <td className="border border-slate-300 p-2 font-medium">{po.supplierName}</td>
-                          <td className="border border-slate-300 p-2 text-center font-mono">{po.supplierPanVat || '—'}</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono font-bold">Rs. {grand.toLocaleString()}</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono text-slate-400">Rs. 0</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono">Rs. {taxable.toLocaleString()}</td>
-                          <td className="border border-slate-300 p-2 text-right font-mono font-bold text-slate-900">Rs. {vat.toLocaleString()}</td>
-                          <td className="border border-slate-300 p-2 text-center font-mono text-[10px] text-emerald-700 font-bold">
-                            Claimable
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-800">
-                      <td colSpan={5} className="border border-slate-300 p-2.5 text-right uppercase">
-                        Grand Total (NPR):
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono font-black text-xs">
-                        Rs. {totalGrossPurchases.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono">
-                        Rs. 0
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono">
-                        Rs. {totalTaxablePurchases.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-right font-mono font-black text-xs">
-                        Rs. {totalVatPurchases.toLocaleString()}
-                      </td>
-                      <td className="border border-slate-300 p-2.5 text-center text-[10px] text-emerald-700 font-bold">
-                        Input Tax Credit
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 3: MONTHLY VAT RETURN SUMMARY */}
-          {activeView === 'vat_return' && (
-            <div className="space-y-6 max-w-3xl mx-auto">
-              <div className="border border-slate-300 rounded-xl overflow-hidden">
-                <div className="bg-slate-100 px-4 py-2.5 font-bold text-slate-800 border-b border-slate-300">
-                  Section A: Sales & Output VAT (13%)
-                </div>
-                <div className="p-4 space-y-2 text-xs">
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span>1. Total Gross Turnover:</span>
-                    <span className="font-mono font-bold">Rs. {totalGrossSales.toLocaleString()}</span>
+            {/* VIEW 3: MONTHLY VAT RETURN */}
+            {activeView === 'vat_return' && (
+              <div className="space-y-5 max-w-3xl mx-auto">
+                <div className="border border-[#CBD5E1] rounded-lg overflow-hidden">
+                  <div className="bg-[#F1F5F9] px-4 py-2 font-bold text-[#0F3D5E] border-b border-[#CBD5E1]">
+                    Section A: Sales &amp; Output VAT (13%)
                   </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span>2. Exempt / Zero-rated Sales:</span>
-                    <span className="font-mono text-slate-500">Rs. 0</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span>3. Total Taxable Sales Turnover:</span>
-                    <span className="font-mono font-bold text-slate-900">Rs. {totalTaxableSales.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 font-bold text-indigo-900 bg-indigo-50 px-2 rounded">
-                    <span>4. 13% Output VAT Collected:</span>
-                    <span className="font-mono text-sm">Rs. {totalVatSales.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border border-slate-300 rounded-xl overflow-hidden">
-                <div className="bg-slate-100 px-4 py-2.5 font-bold text-slate-800 border-b border-slate-300">
-                  Section B: Purchases & Input VAT Credit (13%)
-                </div>
-                <div className="p-4 space-y-2 text-xs">
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span>5. Total Purchase Amount:</span>
-                    <span className="font-mono font-bold">Rs. {totalGrossPurchases.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span>6. Taxable Spares & Consumables Purchases:</span>
-                    <span className="font-mono font-bold text-slate-900">Rs. {totalTaxablePurchases.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 font-bold text-emerald-900 bg-emerald-50 px-2 rounded">
-                    <span>7. 13% Input Tax Credit Claimable:</span>
-                    <span className="font-mono text-sm">Rs. {totalVatPurchases.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-2 border-slate-800 rounded-xl overflow-hidden bg-slate-50">
-                <div className="bg-slate-900 text-white px-4 py-3 font-bold text-sm flex justify-between items-center">
-                  <span>Section C: Net Tax Calculation</span>
-                  <span className="text-xs text-amber-300 font-mono">IRD Form VAT-01</span>
-                </div>
-                <div className="p-4 space-y-3 text-xs">
-                  <div className="flex justify-between items-center text-sm font-bold">
-                    <span>8. Net VAT Payable to IRD:</span>
-                    <span className="font-mono text-base font-black text-rose-700">Rs. {netPayable.toLocaleString()}</span>
-                  </div>
-                  {carryForwardCredit > 0 && (
-                    <div className="flex justify-between items-center text-sm font-bold text-emerald-700">
-                      <span>9. Excess Input VAT Carry-Forward:</span>
-                      <span className="font-mono text-base font-black">Rs. {carryForwardCredit.toLocaleString()}</span>
+                  <div className="p-4 space-y-2 text-xs">
+                    <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
+                      <span>1. Net Gross Turnover (Incl. VAT):</span>
+                      <span className="font-mono font-bold">{formatAccountingNPR(totalGrossSales)}</span>
                     </div>
-                  )}
-                  <p className="text-[11px] text-slate-600 pt-2 border-t border-slate-300">
-                    <strong>Payment Due Date:</strong> Due on or before 25th of upcoming accounting cycle. 
-                    Must be submitted through Inland Revenue Department (IRD) or designated revenue portal.
-                  </p>
+                    <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
+                      <span>2. Exempt / Zero-rated Sales:</span>
+                      <span className="font-mono text-[#64748B]">Rs. 0</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
+                      <span>3. Net Taxable Sales Turnover:</span>
+                      <span className="font-mono font-bold">{formatAccountingNPR(totalTaxableSales)}</span>
+                    </div>
+                    <div className="flex justify-between py-1.5 font-bold text-[#0F3D5E] bg-sky-50 px-2 rounded">
+                      <span>4. Net 13% Output VAT Collected:</span>
+                      <span className="font-mono text-sm">{formatAccountingNPR(totalVatSales)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-[#CBD5E1] rounded-lg overflow-hidden">
+                  <div className="bg-[#F1F5F9] px-4 py-2 font-bold text-[#16A34A] border-b border-[#CBD5E1]">
+                    Section B: Purchases &amp; Claimable Input Tax Credit (13%)
+                  </div>
+                  <div className="p-4 space-y-2 text-xs">
+                    <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
+                      <span>5. Eligible Received Purchase Amount:</span>
+                      <span className="font-mono font-bold">{formatAccountingNPR(totalGrossPurchases)}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-[#F1F5F9]">
+                      <span>6. Taxable Spares &amp; Lubricants Purchases:</span>
+                      <span className="font-mono font-bold">{formatAccountingNPR(totalTaxablePurchases)}</span>
+                    </div>
+                    <div className="flex justify-between py-1.5 font-bold text-[#16A34A] bg-emerald-50 px-2 rounded">
+                      <span>7. Claimable 13% Input Tax Credit (ITC):</span>
+                      <span className="font-mono text-sm">{formatAccountingNPR(totalVatPurchases)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-2 border-[#0F3D5E] rounded-lg overflow-hidden">
+                  <div className="bg-[#0F3D5E] text-white px-4 py-2.5 font-bold text-sm flex justify-between">
+                    <span>Section C: Net VAT Tax Position</span>
+                    <span className="font-mono text-xs text-sky-200">IRD Form VAT-01</span>
+                  </div>
+                  <div className="p-4 space-y-2.5 text-xs">
+                    <div className="flex justify-between items-center text-sm font-bold">
+                      <span>8. Net VAT Payable to Inland Revenue Department:</span>
+                      <span className="font-mono text-base text-[#DC2626]">{formatAccountingNPR(netPayable)}</span>
+                    </div>
+                    {carryForwardCredit > 0 && (
+                      <div className="flex justify-between items-center text-sm font-bold text-[#16A34A]">
+                        <span>9. Excess Input Tax Credit Carry-Forward:</span>
+                        <span className="font-mono text-base">{formatAccountingNPR(carryForwardCredit)}</span>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-[#64748B] pt-2 border-t border-[#E2E8F0]">
+                      <strong>Statutory Due Date:</strong> Payable on or before the 25th of the subsequent Bikram Sambat month via Nepal IRD portal / revenue bank deposit.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Legal Signatures Section */}
-          <div className="grid grid-cols-3 gap-8 mt-12 pt-6 border-t border-slate-300 text-center text-xs">
-            <div>
-              <div className="h-14 border-b border-dashed border-slate-400 mb-2"></div>
-              <p className="font-bold text-slate-900">Prepared By</p>
-              <p className="text-[10px] text-slate-500">Chief Accountant / Cashier</p>
+            {/* Statutory Signatures */}
+            <div className="grid grid-cols-3 gap-8 mt-12 pt-6 border-t border-[#CBD5E1] text-center text-xs">
+              <div>
+                <div className="h-12 border-b border-dashed border-[#94A3B8] mb-2" />
+                <p className="font-bold text-[#0F172A]">Prepared By</p>
+                <p className="text-[10px] text-[#64748B]">Accountant / Cashier</p>
+              </div>
+              <div>
+                <div className="h-12 border-b border-dashed border-[#94A3B8] mb-2" />
+                <p className="font-bold text-[#0F172A]">Audited &amp; Verified By</p>
+                <p className="text-[10px] text-[#64748B]">Chartered Accountant / Finance Manager</p>
+              </div>
+              <div>
+                <div className="h-12 border-b border-dashed border-[#94A3B8] mb-2" />
+                <p className="font-bold text-[#0F172A]">Authorized Signatory</p>
+                <p className="text-[10px] text-[#64748B]">Managing Director &amp; Company Stamp</p>
+              </div>
             </div>
-            <div>
-              <div className="h-14 border-b border-dashed border-slate-400 mb-2"></div>
-              <p className="font-bold text-slate-900">Audited & Verified By</p>
-              <p className="text-[10px] text-slate-500">Finance Manager / Internal Auditor</p>
-            </div>
-            <div>
-              <div className="h-14 border-b border-dashed border-slate-400 mb-2"></div>
-              <p className="font-bold text-slate-900">Authorized Signatory & Stamp</p>
-              <p className="text-[10px] text-slate-500">Managing Director / Tax Agent</p>
-            </div>
-          </div>
           </div>
         </div>
       </div>

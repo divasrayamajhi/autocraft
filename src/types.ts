@@ -676,18 +676,20 @@ export interface GLAccount {
   currentBalance: number;
 }
 
+export interface GLJournalLine {
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+}
+
 export interface GLJournalEntry {
   id: string;
   entryNumber: string;
   date: string;
   sourceDocument: string; // e.g. Invoice #, Payment #, Purchase Order #
   narration: string;
-  lines: {
-    accountCode: string;
-    accountName: string;
-    debit: number;
-    credit: number;
-  }[];
+  lines: GLJournalLine[];
   totalAmount: number;
 }
 

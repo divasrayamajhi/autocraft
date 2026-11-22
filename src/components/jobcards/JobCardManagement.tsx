@@ -127,22 +127,22 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [filterServiceType, setFilterServiceType] = useState<'all' | string>('all');
   const [aptFilterDate, setAptFilterDate] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
 
-  // New Job Card Intake Modal State
+  // New Job Card Intake Modal State (kept blank by default so unmatched searches never display stale/fake data)
   const [isIntakeModalOpen, setIsIntakeModalOpen] = useState(false);
   const [intakeReg, setIntakeReg] = useState('');
-  const [intakeBrand, setIntakeBrand] = useState('Hyundai');
-  const [intakeModel, setIntakeModel] = useState('Creta SX');
+  const [intakeBrand, setIntakeBrand] = useState('');
+  const [intakeModel, setIntakeModel] = useState('');
   const [intakeCustName, setIntakeCustName] = useState('');
-  const [intakeCustPhone, setIntakeCustPhone] = useState('+977-98');
+  const [intakeCustPhone, setIntakeCustPhone] = useState('');
   const [intakeServiceType, setIntakeServiceType] = useState<JobCard['serviceType']>('Periodic Maintenance Service');
-  const [intakeOdo, setIntakeOdo] = useState<number>(38000);
-  const [intakeFuel, setIntakeFuel] = useState<number>(60);
-  const [intakeComplaints, setIntakeComplaints] = useState('Periodic 40,000 km general service, brake inspection, engine oil replacement.');
+  const [intakeOdo, setIntakeOdo] = useState<number>(0);
+  const [intakeFuel, setIntakeFuel] = useState<number>(50);
+  const [intakeComplaints, setIntakeComplaints] = useState('');
   const [intakeBay, setIntakeBay] = useState('Bay 1 (Mechanical Lift)');
   const [intakeTechId, setIntakeTechId] = useState(safeTechnicians[0]?.id || '');
   const [intakeCouponNumber, setIntakeCouponNumber] = useState('');
 
-  // Mandatory check-in tracking fields requested by user
+  // Mandatory check-in tracking fields
   const [intakeArrivalDate, setIntakeArrivalDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [intakeEntryTime, setIntakeEntryTime] = useState<string>(() => {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -150,98 +150,106 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [intakeVin, setIntakeVin] = useState('');
   const [intakeEngineNo, setIntakeEngineNo] = useState('');
 
-  // Auto-Detect & Match Existing Service History by Vehicle Registration or Chassis/VIN (especially)
+  const normalizeRegNumber = (val?: string) =>
+    (val || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // Strict exact-match lookup ONLY across Customer Garage vehicles and Job Card history
   const matchedServiceHistory = useMemo(() => {
-    const cleanReg = intakeReg.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const cleanVin = intakeVin.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if ((!cleanReg || cleanReg.length < 3) && (!cleanVin || cleanVin.length < 4)) return null;
+    const cleanReg = normalizeRegNumber(intakeReg);
+    if (!cleanReg) return null;
 
-    // Search historical job cards for this vehicle by registration OR chassis / VIN
-    const matchingCards = safeJobCards.filter(jc => {
-      const jcReg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const jcVin = (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      
-      const regMatch = cleanReg && cleanReg.length >= 3 && (jcReg === cleanReg || (jcReg.length >= 4 && (jcReg.includes(cleanReg) || cleanReg.includes(jcReg))));
-      const vinMatch = cleanVin && cleanVin.length >= 4 && (jcVin === cleanVin || (jcVin.length >= 5 && (jcVin.includes(cleanVin) || cleanVin.includes(jcVin))));
-      return regMatch || vinMatch;
-    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // 1. Exact match in Job Card history (sorted latest first)
+    const matchingCards = safeJobCards
+      .filter((jc) => normalizeRegNumber(jc.vehicle?.registrationNumber) === cleanReg)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    if (matchingCards.length > 0) {
-      const latest = matchingCards[0];
-      const previousKm = latest.vehicle?.odometerReading || 0;
-      const nextDueKm = previousKm + 5000;
-      const latestDate = new Date(latest.createdAt);
-      const nextDueDate = new Date(latestDate.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-      const isVinMatch = cleanVin && (latest.vehicle?.vinNumber || latest.vehicle?.chassisNumber || '').toUpperCase().includes(cleanVin);
-
-      return {
-        source: 'Job Cards Archive',
-        matchReason: isVinMatch ? 'Chassis/VIN Match' : 'Registration Match',
-        customerName: latest.customerName,
-        customerPhone: latest.customerPhone,
-        brand: latest.vehicle?.brand || latest.vehicle?.make || 'Hyundai',
-        model: latest.vehicle?.model || 'Car',
-        vinNumber: latest.vehicle?.vinNumber || latest.vehicle?.chassisNumber || '',
-        engineNumber: latest.vehicle?.engineNumber || '',
-        couponNumber: latest.couponNumber || '',
-        lastOdometer: previousKm,
-        lastServiceDate: latest.createdAt.slice(0, 10),
-        lastServiceType: latest.serviceType,
-        lastComplaints: latest.inspection?.generalRemarks || (latest.inspection?.customerVoiceComplaints || []).join(', ') || 'Regular maintenance service',
-        visitCount: matchingCards.length,
-        nextServiceDueKm: nextDueKm,
-        nextServiceDueDate: nextDueDate
-      };
-    }
-
-    // Secondary check against registered customers in customer directory
+    // 2. Exact match in Customer Garage vehicles
+    let matchedCustomer: Customer | undefined;
     let matchedCustomerVeh: any = null;
-    const matchedCustomer = safeCustomers.find(c => {
-      const matchingVeh = (c.vehicles || []).find((v: any) => {
+    for (const c of safeCustomers) {
+      const foundVeh = (c.vehicles || []).find((v: any) => {
         const regStr = typeof v === 'string' ? v : v?.registrationNumber || '';
-        const vinStr = typeof v !== 'string' ? (v?.vinNumber || v?.chassisNumber || '') : '';
-        const rMatch = cleanReg && cleanReg.length >= 3 && regStr.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanReg);
-        const vMatch = cleanVin && cleanVin.length >= 4 && vinStr.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(cleanVin);
-        return rMatch || vMatch;
+        return normalizeRegNumber(regStr) === cleanReg;
       });
-      if (matchingVeh) {
-        matchedCustomerVeh = matchingVeh;
-        return true;
+      if (foundVeh) {
+        matchedCustomer = c;
+        matchedCustomerVeh = foundVeh;
+        break;
       }
-      const notesMatch = cleanVin && cleanVin.length >= 4 && (c.notes || '').toUpperCase().includes(cleanVin);
-      return notesMatch;
-    });
-
-    if (matchedCustomer) {
-      const vehObj = typeof matchedCustomerVeh === 'object' && matchedCustomerVeh !== null ? matchedCustomerVeh : null;
-      return {
-        source: 'Customer Master Directory',
-        matchReason: 'Customer Directory Match',
-        customerName: matchedCustomer.name,
-        customerPhone: matchedCustomer.phone,
-        brand: vehObj?.brand || vehObj?.make || 'Toyota',
-        model: vehObj?.model || 'RAV4',
-        vinNumber: cleanVin || vehObj?.vinNumber || vehObj?.chassisNumber || `MAL${cleanReg || '7781'}`,
-        engineNumber: vehObj?.engineNumber || `ENG${cleanReg || '02'}`,
-        couponNumber: '',
-        lastOdometer: vehObj?.odometerReading || 28000,
-        lastServiceDate: vehObj?.lastServiceDate || '2025-10-10',
-        lastServiceType: vehObj?.lastServiceType || 'Major 30K Service',
-        lastComplaints: 'Fluids flush and brake pad check',
-        visitCount: vehObj?.totalServiceCount || 1,
-        nextServiceDueKm: (vehObj?.odometerReading ? vehObj.odometerReading + 5000 : 33000),
-        nextServiceDueDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      };
     }
 
-    return null;
-  }, [intakeReg, intakeVin, safeJobCards, safeCustomers]);
+    if (matchingCards.length === 0 && !matchedCustomer) {
+      return null;
+    }
+
+    const latestCard = matchingCards[0];
+    const vehObj =
+      typeof matchedCustomerVeh === 'object' && matchedCustomerVeh !== null
+        ? matchedCustomerVeh
+        : null;
+
+    const previousKm =
+      Math.max(
+        latestCard?.vehicle?.odometerReading || 0,
+        vehObj?.odometerReading || 0
+      );
+    const lastServiceDate =
+      latestCard?.createdAt?.slice(0, 10) || vehObj?.lastServiceDate || '';
+    const lastDateObj = lastServiceDate ? new Date(lastServiceDate) : new Date();
+    const nextDueDate = new Date(lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+
+    const sources: string[] = [];
+    if (matchedCustomer) sources.push('Customer Garage');
+    if (matchingCards.length > 0) sources.push('Job Card History');
+
+    return {
+      source: sources.join(' & '),
+      matchReason: 'Exact Registration Match',
+      registrationNumber:
+        (typeof matchedCustomerVeh === 'string'
+          ? matchedCustomerVeh
+          : vehObj?.registrationNumber) ||
+        latestCard?.vehicle?.registrationNumber ||
+        intakeReg.trim().toUpperCase(),
+      customerName: matchedCustomer?.name || latestCard?.customerName || '',
+      customerPhone: matchedCustomer?.phone || latestCard?.customerPhone || '',
+      brand:
+        vehObj?.brand ||
+        vehObj?.make ||
+        latestCard?.vehicle?.brand ||
+        latestCard?.vehicle?.make ||
+        '',
+      model: vehObj?.model || latestCard?.vehicle?.model || '',
+      vinNumber:
+        latestCard?.vehicle?.vinNumber ||
+        latestCard?.vehicle?.chassisNumber ||
+        vehObj?.vinNumber ||
+        vehObj?.chassisNumber ||
+        '',
+      engineNumber:
+        latestCard?.vehicle?.engineNumber || vehObj?.engineNumber || '',
+      couponNumber: latestCard?.couponNumber || '',
+      lastOdometer: previousKm,
+      lastServiceDate,
+      lastServiceType:
+        latestCard?.serviceType || vehObj?.lastServiceType || 'Periodic Maintenance Service',
+      lastComplaints:
+        latestCard?.inspection?.generalRemarks ||
+        (latestCard?.inspection?.customerVoiceComplaints || []).join(', ') ||
+        '',
+      visitCount: Math.max(matchingCards.length, vehObj?.totalServiceCount || 0, 1),
+      nextServiceDueKm: previousKm > 0 ? previousKm + 5000 : 5000,
+      nextServiceDueDate: nextDueDate,
+    };
+  }, [intakeReg, safeJobCards, safeCustomers]);
 
   // Dedicated vehicle registration search state
   const [regSearchResult, setRegSearchResult] = useState<{
     searched: boolean;
     found: boolean;
+    source?: string;
     customerName?: string;
     customerPhone?: string;
     brand?: string;
@@ -252,75 +260,115 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     lastServiceDate?: string;
     visitCount?: number;
     query?: string;
+    errorMsg?: string;
   } | null>(null);
 
-  // Search entire customer directory and vehicle records on demand
+  // Strictly search ONLY Customer Garage vehicles and Job Card history for an EXACT registration match
   const handleSearchRegistration = (targetReg?: string) => {
     const rawQuery = (targetReg !== undefined ? targetReg : intakeReg).trim().toUpperCase();
-    const cleanReg = rawQuery.replace(/[^A-Z0-9]/g, '');
-    if (!cleanReg || cleanReg.length < 2) {
-      alert('Please enter at least 2 characters of vehicle registration to search.');
+    const cleanReg = normalizeRegNumber(rawQuery);
+    if (!cleanReg) {
+      setRegSearchResult({
+        searched: true,
+        found: false,
+        query: rawQuery,
+        errorMsg: 'Please enter a full Vehicle Registration Number before searching.'
+      });
       return;
     }
 
-    // 1. Search in Customer Directory
+    // 1. Search ONLY Customer Garage vehicles for EXACT normalized registration match
     let matchedCustomer: Customer | undefined;
     let matchedCustomerVeh: any = null;
-
     for (const c of safeCustomers) {
-      const match = (c.vehicles || []).find((v: any) => {
-        const regStr = (typeof v === 'string' ? v : v?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        return regStr === cleanReg || (cleanReg.length >= 4 && (regStr.includes(cleanReg) || cleanReg.includes(regStr)));
+      const exactVeh = (c.vehicles || []).find((v: any) => {
+        const regStr = typeof v === 'string' ? v : v?.registrationNumber || '';
+        return normalizeRegNumber(regStr) === cleanReg;
       });
-      if (match) {
+      if (exactVeh) {
         matchedCustomer = c;
-        matchedCustomerVeh = match;
+        matchedCustomerVeh = exactVeh;
         break;
       }
     }
 
-    // 2. Search in past Job Cards if not found in customer directory
-    let pastJobCardMatch: JobCard | undefined;
-    if (!matchedCustomer) {
-      pastJobCardMatch = safeJobCards.find(jc => {
-        const reg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        return reg === cleanReg || (cleanReg.length >= 4 && (reg.includes(cleanReg) || cleanReg.includes(reg)));
-      });
-    }
+    // 2. Search ONLY Job Card history for EXACT normalized registration match (sorted latest first)
+    const matchingJobCards = safeJobCards
+      .filter((jc) => normalizeRegNumber(jc.vehicle?.registrationNumber) === cleanReg)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const latestJobCard = matchingJobCards[0];
 
-    // 3. Search in Invoices
-    let invoiceMatch: Invoice | undefined;
-    if (!matchedCustomer && !pastJobCardMatch) {
-      invoiceMatch = (invoices || []).find(inv => {
-        const reg = (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        return reg === cleanReg || (cleanReg.length >= 4 && (reg.includes(cleanReg) || cleanReg.includes(reg)));
-      });
-    }
+    // If matched in Customer Garage and/or Job Card History -> autofill ALL sections
+    if (matchedCustomer || latestJobCard) {
+      const vehObj =
+        typeof matchedCustomerVeh === 'object' && matchedCustomerVeh !== null
+          ? matchedCustomerVeh
+          : null;
 
-    if (matchedCustomer) {
-      const vehObj = typeof matchedCustomerVeh === 'object' && matchedCustomerVeh !== null ? matchedCustomerVeh : null;
-      const cName = matchedCustomer.name;
-      const cPhone = matchedCustomer.phone;
-      const cBrand = vehObj?.brand || vehObj?.make || 'Vehicle';
-      const cModel = vehObj?.model || 'Model';
-      const cVin = vehObj?.vinNumber || vehObj?.chassisNumber || '';
-      const cEngine = vehObj?.engineNumber || '';
-      const cOdo = vehObj?.odometerReading || 0;
-      const cLastDate = vehObj?.lastServiceDate || '';
-      const cCount = (vehObj?.totalServiceCount || 1);
+      const canonicalReg =
+        (typeof matchedCustomerVeh === 'string'
+          ? matchedCustomerVeh
+          : vehObj?.registrationNumber) ||
+        latestJobCard?.vehicle?.registrationNumber ||
+        rawQuery;
 
-      // Autofill ONLY when matched
+      const cName = matchedCustomer?.name || latestJobCard?.customerName || '';
+      const cPhone = matchedCustomer?.phone || latestJobCard?.customerPhone || '';
+      const cBrand =
+        vehObj?.brand ||
+        vehObj?.make ||
+        latestJobCard?.vehicle?.brand ||
+        latestJobCard?.vehicle?.make ||
+        '';
+      const cModel = vehObj?.model || latestJobCard?.vehicle?.model || '';
+      const cVin =
+        latestJobCard?.vehicle?.vinNumber ||
+        latestJobCard?.vehicle?.chassisNumber ||
+        vehObj?.vinNumber ||
+        vehObj?.chassisNumber ||
+        '';
+      const cEngine =
+        latestJobCard?.vehicle?.engineNumber || vehObj?.engineNumber || '';
+      const cOdo = Math.max(
+        latestJobCard?.vehicle?.odometerReading || 0,
+        vehObj?.odometerReading || 0
+      );
+      const cLastDate =
+        latestJobCard?.createdAt?.slice(0, 10) || vehObj?.lastServiceDate || '';
+      const cVisitCount = Math.max(
+        matchingJobCards.length,
+        vehObj?.totalServiceCount || 0,
+        1
+      );
+      const cServiceType =
+        latestJobCard?.serviceType || 'Periodic Maintenance Service';
+      const cComplaints =
+        latestJobCard?.inspection?.generalRemarks ||
+        (latestJobCard?.inspection?.customerVoiceComplaints || []).join(', ') ||
+        '';
+      const cCoupon = latestJobCard?.couponNumber || '';
+
+      const sources: string[] = [];
+      if (matchedCustomer) sources.push('Customer Garage');
+      if (latestJobCard) sources.push('Job Card History');
+
+      // Autofill all sections ONLY because exact registration number matched
+      setIntakeReg(canonicalReg);
       setIntakeCustName(cName);
       setIntakeCustPhone(cPhone);
       if (cBrand && cBrand !== 'Generic' && cBrand !== 'Vehicle') setIntakeBrand(cBrand);
       if (cModel && cModel !== 'Model') setIntakeModel(cModel);
       if (cVin) setIntakeVin(cVin);
       if (cEngine) setIntakeEngineNo(cEngine);
-      if (cOdo > 0) setIntakeOdo(cOdo + 2000);
+      if (cOdo > 0) setIntakeOdo(cOdo);
+      if (cServiceType) setIntakeServiceType(cServiceType as JobCard['serviceType']);
+      if (cComplaints) setIntakeComplaints(cComplaints);
+      if (cCoupon) setIntakeCouponNumber(cCoupon);
 
       setRegSearchResult({
         searched: true,
         found: true,
+        source: sources.join(' + '),
         customerName: cName,
         customerPhone: cPhone,
         brand: cBrand,
@@ -329,64 +377,11 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
         engineNumber: cEngine,
         lastOdometer: cOdo,
         lastServiceDate: cLastDate,
-        visitCount: cCount,
-        query: rawQuery
-      });
-    } else if (pastJobCardMatch) {
-      const cName = pastJobCardMatch.customerName;
-      const cPhone = pastJobCardMatch.customerPhone;
-      const cBrand = pastJobCardMatch.vehicle?.brand || pastJobCardMatch.vehicle?.make || 'Vehicle';
-      const cModel = pastJobCardMatch.vehicle?.model || 'Model';
-      const cVin = pastJobCardMatch.vehicle?.vinNumber || pastJobCardMatch.vehicle?.chassisNumber || '';
-      const cEngine = pastJobCardMatch.vehicle?.engineNumber || '';
-      const cOdo = pastJobCardMatch.vehicle?.odometerReading || 0;
-      const cLastDate = pastJobCardMatch.createdAt.slice(0, 10);
-
-      setIntakeCustName(cName);
-      setIntakeCustPhone(cPhone);
-      if (cBrand && cBrand !== 'Generic' && cBrand !== 'Vehicle') setIntakeBrand(cBrand);
-      if (cModel && cModel !== 'Model') setIntakeModel(cModel);
-      if (cVin) setIntakeVin(cVin);
-      if (cEngine) setIntakeEngineNo(cEngine);
-      if (cOdo > 0) setIntakeOdo(cOdo + 2500);
-
-      setRegSearchResult({
-        searched: true,
-        found: true,
-        customerName: cName,
-        customerPhone: cPhone,
-        brand: cBrand,
-        model: cModel,
-        vinNumber: cVin,
-        engineNumber: cEngine,
-        lastOdometer: cOdo,
-        lastServiceDate: cLastDate,
-        visitCount: 1,
-        query: rawQuery
-      });
-    } else if (invoiceMatch) {
-      const cName = invoiceMatch.customerName;
-      const cPhone = invoiceMatch.customerPhone;
-      const cBrand = invoiceMatch.vehicleBrand || 'Vehicle';
-      const cModel = invoiceMatch.vehicleModel || 'Model';
-
-      setIntakeCustName(cName);
-      setIntakeCustPhone(cPhone);
-      if (cBrand && cBrand !== 'Vehicle') setIntakeBrand(cBrand);
-      if (cModel && cModel !== 'Model') setIntakeModel(cModel);
-
-      setRegSearchResult({
-        searched: true,
-        found: true,
-        customerName: cName,
-        customerPhone: cPhone,
-        brand: cBrand,
-        model: cModel,
-        visitCount: 1,
-        query: rawQuery
+        visitCount: cVisitCount,
+        query: canonicalReg
       });
     } else {
-      // NOT MATCHED: do NOT autofill! Let user create new customer.
+      // STRICT RULE: NOT MATCHED -> do NOT autofill or modify any other form fields
       setRegSearchResult({
         searched: true,
         found: false,
@@ -842,14 +837,33 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     setIntakeCouponNumber('');
   };
 
+  const resetIntakeForm = () => {
+    setIntakeReg('');
+    setIntakeBrand('');
+    setIntakeModel('');
+    setIntakeCustName('');
+    setIntakeCustPhone('');
+    setIntakeVin('');
+    setIntakeEngineNo('');
+    setIntakeOdo(0);
+    setIntakeFuel(50);
+    setIntakeServiceType('Periodic Maintenance Service');
+    setIntakeComplaints('');
+    setIntakeCouponNumber('');
+    setIntakeArrivalDate(new Date().toISOString().slice(0, 10));
+    setIntakeEntryTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
+    setRegSearchResult(null);
+  };
+
   // Convert Appointment to Job Card
   const handleConvertAppointment = (apt: Appointment) => {
+    resetIntakeForm();
     setIntakeReg(apt.vehicleReg);
-    setIntakeBrand(apt.brand || apt.make || 'Hyundai');
-    setIntakeModel(apt.model);
-    setIntakeCustName(apt.customerName);
-    setIntakeCustPhone(apt.customerPhone);
-    setIntakeComplaints(apt.complaintsSummary);
+    setIntakeBrand(apt.brand || apt.make || '');
+    setIntakeModel(apt.model || '');
+    setIntakeCustName(apt.customerName || '');
+    setIntakeCustPhone(apt.customerPhone || '');
+    setIntakeComplaints(apt.complaintsSummary || '');
     setIsIntakeModalOpen(true);
   };
 
@@ -979,7 +993,10 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             </button>
           ) : (
             <button
-              onClick={() => setIsIntakeModalOpen(true)}
+              onClick={() => {
+                resetIntakeForm();
+                setIsIntakeModalOpen(true);
+              }}
               className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
             >
               <Plus className="w-4 h-4" />
@@ -1632,41 +1649,52 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSearchRegistration()}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition whitespace-nowrap"
+                    className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white font-semibold rounded-lg text-xs flex items-center space-x-1.5 transition whitespace-nowrap"
                   >
                     <Search className="w-3.5 h-3.5" />
-                    <span>Search Directory</span>
+                    <span>Search Vehicle</span>
                   </button>
                 </div>
 
                 {/* Search Match Result Display */}
                 {regSearchResult && regSearchResult.found && (
-                  <div className="mt-2 p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs space-y-1">
-                    <div className="flex items-center space-x-1.5 text-emerald-950 font-bold">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Exact Match Found: {regSearchResult.customerName} ({regSearchResult.customerPhone})</span>
+                  <div className="mt-2 p-3 bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-1.5 text-[#14532D] font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-[#16A34A] flex-shrink-0" />
+                        <span>Exact Match Found: {regSearchResult.customerName} ({regSearchResult.customerPhone})</span>
+                      </div>
+                      {regSearchResult.source && (
+                        <span className="text-[10px] font-semibold text-[#16A34A] bg-white px-2 py-0.5 rounded border border-[#BBF7D0] whitespace-nowrap">
+                          {regSearchResult.source}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-[11px] text-emerald-800">
+                    <p className="text-[11px] text-[#166534]">
                       Vehicle: <strong>{regSearchResult.brand} {regSearchResult.model}</strong>
                       {regSearchResult.lastOdometer ? ` • Last Odometer: ${regSearchResult.lastOdometer.toLocaleString()} km` : ''}
                       {regSearchResult.lastServiceDate ? ` • Last Service: ${regSearchResult.lastServiceDate}` : ''}
                       {regSearchResult.visitCount ? ` • Visits: ${regSearchResult.visitCount}` : ''}
                     </p>
-                    <span className="inline-block text-[10px] font-semibold text-emerald-700 bg-white/90 px-2 py-0.5 rounded border border-emerald-200">
-                      ✓ Customer and vehicle details auto-filled into form
+                    <span className="inline-block text-[10px] font-semibold text-[#16A34A] bg-white px-2 py-0.5 rounded border border-[#BBF7D0]">
+                      All matching customer &amp; vehicle sections auto-filled
                     </span>
                   </div>
                 )}
 
                 {regSearchResult && !regSearchResult.found && (
-                  <div className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-1">
-                    <div className="flex items-center space-x-1.5 text-amber-950 font-bold">
-                      <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                      <span>No Match Found for "{regSearchResult.query}"</span>
+                  <div className="mt-2 p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-lg text-xs space-y-1">
+                    <div className="flex items-center space-x-1.5 text-[#92400E] font-bold">
+                      <AlertCircle className="w-4 h-4 text-[#F59E0B] flex-shrink-0" />
+                      <span>
+                        {regSearchResult.errorMsg || `No Exact Match Found for "${regSearchResult.query}"`}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-amber-800">
-                      This vehicle registration was not found in Customer Directory. Please enter the customer and vehicle information below — a new customer and vehicle record will be registered automatically upon creating this Job Card.
-                    </p>
+                    {!regSearchResult.errorMsg && (
+                      <p className="text-[11px] text-[#B45309]">
+                        Not found in Customer Garage or Job Card History. No fields were auto-filled — enter the details below to register a new customer and vehicle.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

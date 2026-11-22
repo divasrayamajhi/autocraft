@@ -45,6 +45,16 @@ import {
   GLAccount,
   GLJournalEntry
 } from './types';
+import {
+  applyJournalEntryToAccounts,
+  buildCreditNoteJournalEntry,
+  buildInvoiceJournalEntry,
+  buildPaymentJournalEntry,
+  buildPurchaseReceiptJournalEntry,
+  isCreditNoteInvoice,
+  round2,
+  toNepalBsDate,
+} from './utils/accountingEngine';
 
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
@@ -276,11 +286,18 @@ export default function App() {
       };
     });
 
+    // Post balanced Double-Entry GL Journal Entry for this IRD Tax Invoice
+    const invJv = buildInvoiceJournalEntry(newInvoice, (db.journalEntries || []).length);
+    const updatedJournalEntries = invJv ? [invJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = invJv ? applyJournalEntryToAccounts(db.glAccounts || [], invJv) : (db.glAccounts || []);
+
     updateDb({ 
       jobCards: updatedCards, 
       invoices: updatedInvoices, 
       gatePasses: updatedGatePasses,
-      customers: updatedCustomers
+      customers: updatedCustomers,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
     });
     setActiveTab('billing');
     setPrintInvoice(newInvoice);
@@ -385,7 +402,21 @@ export default function App() {
       };
     });
 
-    updateDb({ invoices: updated, gatePasses: updatedGatePasses, jobCards: updatedCards, customers: updatedCustomers });
+    // Post balanced Double-Entry GL Journal Entry
+    const invJv = isCreditNoteInvoice(newInv)
+      ? buildCreditNoteJournalEntry(newInv, (newInv.paidAmount ?? 0) !== 0, (db.journalEntries || []).length)
+      : buildInvoiceJournalEntry(newInv, (db.journalEntries || []).length);
+    const updatedJournalEntries = invJv ? [invJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = invJv ? applyJournalEntryToAccounts(db.glAccounts || [], invJv) : (db.glAccounts || []);
+
+    updateDb({
+      invoices: updated,
+      gatePasses: updatedGatePasses,
+      jobCards: updatedCards,
+      customers: updatedCustomers,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
+    });
   };
 
   const handleUpdateInvoice = (updatedInv: Invoice) => {
@@ -396,39 +427,197 @@ export default function App() {
   const handleRecordPayment = (invoiceId: string, amount: number, method: NepalPaymentMethod, ref: string) => {
     const inv = db.invoices.find(i => i.id === invoiceId);
     if (!inv) return;
+    if (isCreditNoteInvoice(inv)) return;
 
-    const newPaid = inv.paidAmount + amount;
-    const newBalance = Math.max(0, inv.grandTotal - newPaid);
-    const newStatus = newBalance === 0 ? 'Paid' : 'Partially Paid';
+    const currentPaid = round2(inv.paidAmount ?? inv.amountPaid ?? 0);
+    const currentDue = round2(inv.balanceDue ?? Math.max(0, (inv.grandTotal || 0) - currentPaid));
+    const appliedAmount = round2(Math.min(Math.max(0, Number(amount) || 0), currentDue));
+    if (appliedAmount <= 0) return;
+
+    const newPaid = round2(currentPaid + appliedAmount);
+    const newBalance = round2(Math.max(0, (inv.grandTotal || 0) - newPaid));
+    const newStatus: Invoice['status'] = newBalance <= 0.01 ? 'Paid' : 'Partially Paid';
+    const nowIso = new Date().toISOString();
+
+    const newPaymentRecord = {
+      id: `PAY-${Date.now().toString().slice(-6)}`,
+      method: method as any,
+      amount: appliedAmount,
+      referenceNumber: ref || `RCPT-${Date.now().toString().slice(-5)}`,
+      date: nowIso
+    };
 
     const updatedInv: Invoice = {
       ...inv,
       paidAmount: newPaid,
-      balanceDue: newBalance,
+      amountPaid: newPaid,
+      balanceDue: newBalance <= 0.01 ? 0 : newBalance,
       status: newStatus,
+      paymentStatus: newStatus,
       paymentMethod: method,
-      paymentReference: ref
+      paymentReference: ref || newPaymentRecord.referenceNumber,
+      payments: [...(inv.payments || []), newPaymentRecord]
     };
 
-    // Update customer spend
-    const updatedCustomers = db.customers.map(c => {
-      if (c.name === inv.customerName) {
+    const updatedInvoices = db.invoices.map(i => i.id === updatedInv.id ? updatedInv : i);
+
+    // Sync corresponding Gate Pass payment status
+    const updatedGatePasses = (db.gatePasses || []).map(gp =>
+      gp.invoiceId === updatedInv.id || gp.invoiceNumber === updatedInv.invoiceNumber
+        ? { ...gp, paymentStatus: newStatus }
+        : gp
+    );
+
+    // Post balanced Double-Entry Receipt Voucher (Dr Cash/Bank/Gateway, Cr Accounts Receivable 1100)
+    const payJv = buildPaymentJournalEntry(
+      updatedInv,
+      appliedAmount,
+      method,
+      newPaymentRecord.referenceNumber,
+      nowIso.slice(0, 10),
+      (db.journalEntries || []).length
+    );
+    const updatedJournalEntries = payJv ? [payJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = payJv ? applyJournalEntryToAccounts(db.glAccounts || [], payJv) : (db.glAccounts || []);
+
+    // Update customer lastVisit only (totalSpent was already aggregated on invoice generation — prevents double counting!)
+    const updatedCustomers = (db.customers || []).map(c => {
+      if (c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase()) {
         return {
           ...c,
-          totalSpent: c.totalSpent + amount,
-          lastVisit: new Date().toISOString().slice(0, 10)
+          lastVisit: nowIso.slice(0, 10)
         };
       }
       return c;
     });
 
-    handleUpdateInvoice(updatedInv);
-    updateDb({ customers: updatedCustomers });
+    updateDb({
+      invoices: updatedInvoices,
+      gatePasses: updatedGatePasses,
+      customers: updatedCustomers,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
+    });
+  };
+
+  // Issue an IRD-compliant Credit Note (VAT Rule 20 Sales Adjustment / Return)
+  const handleCreateCreditNote = (
+    originalInv: Invoice,
+    refundTaxable: number,
+    reason: string,
+    refundMethod: NepalPaymentMethod
+  ) => {
+    const cleanTaxable = round2(Math.max(0, refundTaxable));
+    if (cleanTaxable <= 0) return;
+
+    const vatAmount = round2(cleanTaxable * 0.13);
+    const grandTotal = round2(cleanTaxable + vatAmount);
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const cnNumber = `CN-81/82-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // If original invoice had paid amount, treat refund as settled via selected payment mode; otherwise adjust AR
+    const refundViaCash = (originalInv.paidAmount ?? 0) > 0;
+
+    const creditNote: Invoice = {
+      id: `CN-${Date.now().toString().slice(-6)}`,
+      invoiceNumber: cnNumber,
+      fiscalYear: db.profile.fiscalYear || '2081/82',
+      jobCardId: originalInv.jobCardId || 'JC-CN',
+      jobCardNumber: originalInv.jobCardNumber || 'TAX-ADJ',
+      customerId: originalInv.customerId,
+      customerName: originalInv.customerName,
+      customerPhone: originalInv.customerPhone,
+      customerPan: originalInv.customerPan,
+      vehicleReg: originalInv.vehicleReg,
+      vehicleBrand: originalInv.vehicleBrand,
+      vehicleModel: `Credit Note vs ${originalInv.invoiceNumber}`,
+      type: 'Credit Note',
+      date: todayStr,
+      bsDate: toNepalBsDate(todayStr),
+      createdAt: now.toISOString(),
+      subTotal: -cleanTaxable,
+      taxableAmount: -cleanTaxable,
+      totalTaxableAmount: -cleanTaxable,
+      vatRate: 13,
+      vatAmount: -vatAmount,
+      totalVatAmount: -vatAmount,
+      grandTotal: -grandTotal,
+      paidAmount: refundViaCash ? -grandTotal : 0,
+      amountPaid: refundViaCash ? -grandTotal : 0,
+      balanceDue: 0,
+      status: 'Paid',
+      paymentStatus: 'Paid',
+      paymentMethod: refundMethod,
+      paymentReference: `CN-REF-${originalInv.invoiceNumber}`,
+      isLocked: true,
+      irdSyncDetails: {
+        isSynced: true,
+        syncedAt: now.toISOString(),
+        cbmsAckNumber: `CBMS-CN-${Date.now().toString().slice(-6)}`,
+        fiscalYear: db.profile.fiscalYear || '2081/82'
+      },
+      items: [
+        {
+          id: `CN-ITEM-${Date.now()}`,
+          itemType: 'Part',
+          description: `Credit Note Adjustment (${originalInv.invoiceNumber}): ${reason}`,
+          hsnSacCode: '998714',
+          quantity: 1,
+          unitPrice: -cleanTaxable,
+          taxableAmount: -cleanTaxable,
+          vatRate: 13,
+          vatAmount: -vatAmount,
+          totalAmount: -grandTotal
+        }
+      ],
+      payments: refundViaCash
+        ? [
+            {
+              id: `PAY-CN-${Date.now().toString().slice(-5)}`,
+              method: refundMethod as any,
+              amount: -grandTotal,
+              referenceNumber: cnNumber,
+              date: now.toISOString()
+            }
+          ]
+        : []
+    };
+
+    const cnJv = buildCreditNoteJournalEntry(creditNote, refundViaCash, (db.journalEntries || []).length);
+    const updatedJournalEntries = cnJv ? [cnJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = cnJv ? applyJournalEntryToAccounts(db.glAccounts || [], cnJv) : (db.glAccounts || []);
+
+    const updatedCustomers = (db.customers || []).map(c => {
+      if (c.id === originalInv.customerId || c.name.trim().toLowerCase() === originalInv.customerName.trim().toLowerCase()) {
+        return {
+          ...c,
+          totalSpent: Math.max(0, round2((c.totalSpent || 0) - grandTotal))
+        };
+      }
+      return c;
+    });
+
+    updateDb({
+      invoices: [creditNote, ...(db.invoices || [])],
+      customers: updatedCustomers,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
+    });
   };
 
   const handleCreateSplitInvoices = (customerInv: Invoice, insurerInv: Invoice) => {
     const updated = [customerInv, insurerInv, ...(db.invoices || [])];
-    updateDb({ invoices: updated });
+    let entries = [...(db.journalEntries || [])];
+    let accounts = [...(db.glAccounts || [])];
+    [customerInv, insurerInv].forEach((inv) => {
+      const jv = buildInvoiceJournalEntry(inv, entries.length);
+      if (jv) {
+        entries = [jv, ...entries];
+        accounts = applyJournalEntryToAccounts(accounts, jv);
+      }
+    });
+    updateDb({ invoices: updated, journalEntries: entries, glAccounts: accounts });
     setActiveTab('billing');
   };
 
@@ -574,7 +763,22 @@ export default function App() {
       }
     });
 
-    updateDb({ purchaseOrders: updatedPOs, parts: updatedParts });
+    // Post balanced GRN Purchase Voucher (Dr Inventory 1200 + Dr Input VAT 1250 / Cr Accounts Payable 2010)
+    const alreadyReceived = (db.purchaseOrders || []).some(
+      po => po.id === updatedPO.id && po.status === 'Received'
+    );
+    const poJv = !alreadyReceived
+      ? buildPurchaseReceiptJournalEntry(updatedPO, (db.journalEntries || []).length)
+      : null;
+    const updatedJournalEntries = poJv ? [poJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = poJv ? applyJournalEntryToAccounts(db.glAccounts || [], poJv) : (db.glAccounts || []);
+
+    updateDb({
+      purchaseOrders: updatedPOs,
+      parts: updatedParts,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
+    });
   };
 
   const handleCreateQuotation = (quotation: PartsQuotation) => {
@@ -673,12 +877,18 @@ export default function App() {
       paymentStatus: otcInvoice.status
     };
 
+    const otcJv = buildInvoiceJournalEntry(otcInvoice, (db.journalEntries || []).length);
+    const updatedJournalEntries = otcJv ? [otcJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = otcJv ? applyJournalEntryToAccounts(db.glAccounts || [], otcJv) : (db.glAccounts || []);
+
     updateDb({
       partsSalesOrders: updatedOrders,
       parts: updatedParts,
       partsQuotations: updatedQuotations,
       invoices: [otcInvoice, ...(db.invoices || [])],
-      gatePasses: [otcGatePass, ...(db.gatePasses || [])]
+      gatePasses: [otcGatePass, ...(db.gatePasses || [])],
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
     });
   };
 
@@ -833,12 +1043,18 @@ export default function App() {
       }
     };
 
+    const cnJv = buildCreditNoteJournalEntry(creditNoteInvoice, true, (db.journalEntries || []).length);
+    const updatedJournalEntries = cnJv ? [cnJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = cnJv ? applyJournalEntryToAccounts(db.glAccounts || [], cnJv) : (db.glAccounts || []);
+
     updateDb({
       partsSalesReturns: updatedReturns,
       parts: updatedParts,
       customers: updatedCustomers,
       partsSalesOrders: updatedSalesOrders,
-      invoices: [creditNoteInvoice, ...(db.invoices || [])]
+      invoices: [creditNoteInvoice, ...(db.invoices || [])],
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
     });
   };
 
@@ -1048,9 +1264,11 @@ export default function App() {
               userRole={currentUser.role}
               gatePasses={db.gatePasses || []}
               profile={db.profile}
+              currentUserName={currentUser.name}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onRecordPayment={handleRecordPayment}
+              onCreateCreditNote={handleCreateCreditNote}
               onViewGatePass={(gp) => setPrintGatePass(gp)}
             />
           )}

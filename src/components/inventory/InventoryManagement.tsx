@@ -221,10 +221,10 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <button
             onClick={() => setIsNewOrderModal(true)}
-            className="px-3.5 py-2 bg-[#FFFFFF] hover:bg-[#F1F5F9] text-[#0F172A] rounded-lg text-xs font-semibold border border-[#E2E8F0] transition"
+            className="flex-1 sm:flex-none px-3.5 py-2 bg-[#FFFFFF] hover:bg-[#F1F5F9] text-[#0F172A] rounded-lg text-xs font-semibold border border-[#E2E8F0] transition text-center"
           >
             New Spares Order
           </button>
@@ -233,7 +233,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
               setEditingPart(null);
               setIsAddPartModalOpen(true);
             }}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition"
           >
             <Plus className="w-4 h-4" />
             <span>Add Master SKU</span>
@@ -242,41 +242,59 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
       </div>
 
       {notification && (
-        <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-xs flex items-center space-x-2 animate-fade-in shadow-sm">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+        <div className="bg-emerald-50 border border-emerald-200 text-[#16A34A] px-4 py-3 rounded-xl text-xs flex items-center space-x-2">
+          <CheckCircle2 className="w-4 h-4 text-[#16A34A] flex-shrink-0" />
           <span className="font-semibold">{notification}</span>
         </div>
       )}
 
       {/* KPI Stats Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total SKUs in Master</span>
-          <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{parts.length} Items</div>
-          <span className="text-[11px] text-teal-600 font-semibold">Active Catalog</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-[#FFFFFF] p-3.5 sm:p-4 rounded-xl border border-[#E2E8F0] min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block truncate">
+            Total SKUs in Master
+          </span>
+          <div className="text-base sm:text-xl font-bold text-[#0F172A] font-mono tabular-nums mt-0.5 truncate">
+            {parts.length} Items
+          </div>
+          <span className="text-[11px] text-[#0284C7] font-medium block truncate">Active Catalog</span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Stock Valuation (Cost)</span>
-          <div className="text-xl font-black text-slate-900 font-mono mt-0.5">Rs. {totalValuationCost.toLocaleString()}</div>
-          <span className="text-[11px] text-slate-500">Retail: Rs. {totalValuationSelling.toLocaleString()}</span>
+        <div className="bg-[#FFFFFF] p-3.5 sm:p-4 rounded-xl border border-[#E2E8F0] min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block truncate">
+            Stock Valuation (Cost)
+          </span>
+          <div className="text-base sm:text-xl font-bold text-[#0F172A] font-mono tabular-nums mt-0.5 truncate">
+            Rs. {totalValuationCost.toLocaleString()}
+          </div>
+          <span className="text-[11px] text-[#64748B] block truncate">
+            Retail: Rs. {totalValuationSelling.toLocaleString()}
+          </span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Reorder Alerts</span>
-          <div className="text-xl font-black text-amber-600 font-mono mt-0.5">{lowStockParts.length} SKUs</div>
-          <span className="text-[11px] text-amber-700 font-medium">At or below reorder level</span>
+        <div className="bg-[#FFFFFF] p-3.5 sm:p-4 rounded-xl border border-[#E2E8F0] min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block truncate">
+            Reorder Alerts
+          </span>
+          <div className="text-base sm:text-xl font-bold text-[#F59E0B] font-mono tabular-nums mt-0.5 truncate">
+            {lowStockParts.length} SKUs
+          </div>
+          <span className="text-[11px] text-[#64748B] block truncate">At or below min level</span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nepal 13% VAT Standard</span>
-          <div className="text-xl font-black text-indigo-700 font-mono mt-0.5">13% Output VAT</div>
-          <span className="text-[11px] text-slate-500">Auto-calculated on bill</span>
+        <div className="bg-[#FFFFFF] p-3.5 sm:p-4 rounded-xl border border-[#E2E8F0] min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block truncate">
+            Nepal IRD VAT Rate
+          </span>
+          <div className="text-base sm:text-xl font-bold text-[#0284C7] font-mono tabular-nums mt-0.5 truncate">
+            13% Standard
+          </div>
+          <span className="text-[11px] text-[#64748B] block truncate">Auto-applied on billing</span>
         </div>
       </div>
 
       {/* Sub-Navigation Tabs with Draggable & Click Scrolling */}
-      <DraggableTabBar className="mb-4">
+      <DraggableTabBar className="mb-2">
         {[
           { id: 'master', label: 'Parts Master & Barcodes', icon: Package },
           { id: 'purchase_orders', label: 'Purchase Orders (PO)', icon: ShoppingBag, badge: pendingPOsCount },
@@ -292,16 +310,18 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveSubTab(tab.id as InventorySubTab)}
-              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex-shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap flex-shrink-0 border ${
                 isActive
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  ? 'bg-[#0EA5E9] text-white border-[#0EA5E9]'
+                  : 'bg-[#FFFFFF] text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border-[#E2E8F0]'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
               <span>{tab.label}</span>
               {typeof tab.badge === 'number' && tab.badge > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  isActive ? 'bg-[#0284C7] text-white' : 'bg-[#F59E0B] text-white'
+                }`}>
                   {tab.badge}
                 </span>
               )}
@@ -313,32 +333,41 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
       {/* SUBTAB 1: PARTS MASTER & BARCODE TRACKING */}
       {activeSubTab === 'master' && (
         <div className="space-y-4">
-          {/* Search & Filter Strip */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="relative flex-1 min-w-[240px]">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          {/* Search & Filter Strip (Stacks cleanly on mobile without overflow) */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-[#FFFFFF] p-3.5 rounded-xl border border-[#E2E8F0]">
+            <div className="relative w-full lg:flex-1">
+              <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search by SKU, OEM Number, Description, Model..."
+                placeholder="Search SKU, OEM #, Part Name, or Vehicle Model..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-teal-500 outline-none"
+                className="w-full pl-9 pr-8 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg text-xs text-[#0F172A] placeholder:text-[#64748B] focus:bg-[#FFFFFF] focus:ring-2 focus:ring-[#0EA5E9] outline-none"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:flex items-center gap-2 w-full lg:w-auto">
               <select
                 aria-label="Filter Parts by Category"
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 outline-none font-semibold"
+                className="w-full lg:w-auto bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-xs text-[#0F172A] outline-none font-medium"
               >
                 <option value="All">All Categories</option>
-                <option value="Filters & Fluids">Filters & Fluids</option>
+                <option value="Filters & Fluids">Filters &amp; Fluids</option>
                 <option value="Brakes">Brakes</option>
                 <option value="Transmission">Transmission</option>
                 <option value="Engine">Engine</option>
-                <option value="Suspension & Steering">Suspension & Steering</option>
+                <option value="Suspension & Steering">Suspension &amp; Steering</option>
                 <option value="Electrical">Electrical</option>
               </select>
 
@@ -346,7 +375,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 aria-label="Filter Parts by FMS Class"
                 value={fmsFilter}
                 onChange={(e) => setFmsFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 outline-none font-semibold"
+                className="w-full lg:w-auto bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-xs text-[#0F172A] outline-none font-medium"
               >
                 <option value="All">All FMS</option>
                 <option value="Fast">Fast Moving</option>
@@ -358,7 +387,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 aria-label="Filter Parts by ABC Class"
                 value={abcFilter}
                 onChange={(e) => setAbcFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 outline-none font-semibold"
+                className="w-full lg:w-auto bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-xs text-[#0F172A] outline-none font-medium"
               >
                 <option value="All">All ABC</option>
                 <option value="A">Class A (High Value)</option>
@@ -368,114 +397,263 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
             </div>
           </div>
 
-          {/* Parts Master Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3.5">SKU & Barcode</th>
-                  <th className="p-3.5">Description & OEM #</th>
-                  <th className="p-3.5">Bin Location</th>
-                  <th className="p-3.5">Compatible Models</th>
-                  <th className="p-3.5 text-center">FMS / ABC</th>
-                  <th className="p-3.5 text-center">Stock</th>
-                  <th className="p-3.5 text-right">Cost (NPR)</th>
-                  <th className="p-3.5 text-right">Selling (NPR)</th>
-                  <th className="p-3.5 text-center">Barcode</th>
-                  <th className="p-3.5 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredParts.map((part) => {
-                  const isLow = part.currentStock <= part.minReorderLevel;
-                  return (
-                    <tr key={part.id} className="hover:bg-slate-50/80 transition">
-                      <td className="p-3.5">
-                        <div className="font-mono font-bold text-teal-700">{part.sku}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">{part.partNumber}</div>
-                      </td>
+          {/* Mobile & Tablet Card View (< lg) — zero clipping, clear Barcode & Edit actions */}
+          <div className="block lg:hidden space-y-3">
+            {filteredParts.length === 0 ? (
+              <div className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] p-8 text-center text-xs text-[#64748B]">
+                No spare parts match your current search or filter criteria.
+              </div>
+            ) : (
+              filteredParts.map((part) => {
+                const isLow = part.currentStock <= part.minReorderLevel;
+                return (
+                  <div
+                    key={part.id}
+                    className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] p-4 space-y-3"
+                  >
+                    {/* Card Header: Part Name, SKU & Stock Badge */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-sm text-[#0F172A] leading-snug break-words">
+                          {part.name}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] font-mono">
+                          <span className="font-bold text-[#0284C7]">{part.sku}</span>
+                          <span className="text-[#CBD5E1]">•</span>
+                          <span className="text-[#64748B]">{part.partNumber}</span>
+                        </div>
+                      </div>
+                      <span
+                        className={`flex-shrink-0 px-2.5 py-1 rounded-lg font-mono font-bold text-xs border ${
+                          isLow
+                            ? 'bg-red-50 text-[#DC2626] border-red-200'
+                            : 'bg-emerald-50 text-[#16A34A] border-emerald-200'
+                        }`}
+                      >
+                        {part.currentStock} {part.unit}
+                      </span>
+                    </div>
 
-                      <td className="p-3.5">
-                        <div className="font-bold text-slate-900">{part.name}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">OEM: {part.oemNumber}</div>
-                      </td>
-
-                      <td className="p-3.5">
-                        <span className="px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-slate-100 text-slate-800">
+                    {/* Metadata Grid: OEM, Bin, FMS/ABC, Category */}
+                    <div className="grid grid-cols-2 gap-2 bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8F0] text-[11px]">
+                      <div className="min-w-0">
+                        <span className="text-[#64748B] block text-[10px]">OEM Number</span>
+                        <span className="font-mono font-semibold text-[#0F172A] block truncate">
+                          {part.oemNumber || '—'}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[#64748B] block text-[10px]">Bin / Rack Location</span>
+                        <span className="font-mono font-semibold text-[#0F3D5E] block truncate">
                           {part.rackLocation}
                         </span>
-                      </td>
-
-                      <td className="p-3.5 max-w-[200px]">
-                        <div className="flex flex-wrap gap-1">
-                          {(part.compatibleModels || []).map((m, idx) => (
-                            <span key={idx} className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-700 font-medium">
-                              {m}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-
-                      <td className="p-3.5 text-center">
-                        <div className="flex items-center justify-center space-x-1">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
-                            part.fmsClass === 'Fast' ? 'bg-emerald-100 text-emerald-800' :
-                            part.fmsClass === 'Medium' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'
-                          }`}>
-                            {part.fmsClass}
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
-                            part.abcClass === 'A' ? 'bg-purple-100 text-purple-800' :
-                            part.abcClass === 'B' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {part.abcClass}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="p-3.5 text-center">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-bold text-xs ${
-                          isLow ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-800'
-                        }`}>
-                          {part.currentStock} {part.unit}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[#64748B] block text-[10px]">Barcode / EAN</span>
+                        <span className="font-mono text-[#0F172A] block truncate">
+                          {part.barcode || '—'}
                         </span>
-                      </td>
+                      </div>
+                      <div className="flex items-end space-x-1.5">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            part.fmsClass === 'Fast'
+                              ? 'bg-emerald-100 text-[#16A34A]'
+                              : part.fmsClass === 'Medium'
+                              ? 'bg-sky-100 text-[#0284C7]'
+                              : 'bg-[#E2E8F0] text-[#64748B]'
+                          }`}
+                        >
+                          FMS: {part.fmsClass}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F1F5F9] text-[#0F3D5E] border border-[#E2E8F0]">
+                          ABC: {part.abcClass}
+                        </span>
+                      </div>
+                    </div>
 
-                      <td className="p-3.5 text-right font-mono text-slate-600">
-                        Rs. {part.costPrice.toLocaleString()}
-                      </td>
+                    {/* Compatible Models */}
+                    {(part.compatibleModels || []).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-[10px] font-semibold text-[#64748B] mr-1">Fits:</span>
+                        {(part.compatibleModels || []).map((m, idx) => (
+                          <span
+                            key={idx}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] font-medium"
+                          >
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                      <td className="p-3.5 text-right font-mono font-bold text-slate-900">
-                        Rs. {part.sellingPrice.toLocaleString()}
-                      </td>
+                    {/* Pricing & Actions Footer */}
+                    <div className="pt-2.5 border-t border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center space-x-4 text-xs">
+                        <div>
+                          <span className="text-[10px] text-[#64748B] block">Cost (NPR)</span>
+                          <span className="font-mono tabular-nums font-semibold text-[#64748B]">
+                            Rs. {part.costPrice.toLocaleString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#64748B] block">Selling (NPR)</span>
+                          <span className="font-mono tabular-nums font-bold text-[#0F172A]">
+                            Rs. {part.sellingPrice.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
 
-                      <td className="p-3.5 text-center">
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                         <button
                           onClick={() => setBarcodeModalPart(part)}
-                          className="p-1.5 text-slate-400 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition"
-                          title="Print / Scan Barcode"
+                          className="px-3 py-2 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition"
                         >
-                          <Barcode className="w-4 h-4" />
+                          <Barcode className="w-3.5 h-3.5" />
+                          <span>Barcode</span>
                         </button>
-                      </td>
-
-                      <td className="p-3.5 text-center">
                         <button
                           onClick={() => {
                             setEditingPart(part);
                             setIsAddPartModalOpen(true);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                          title="Edit Part Master"
+                          className="px-3 py-2 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#0F172A] border border-[#E2E8F0] rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit SKU</span>
                         </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop Parts Master Table (>= lg) */}
+          <div className="hidden lg:block bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[#F8FAFC] text-[#64748B] uppercase text-[11px] font-semibold tracking-wider border-b border-[#E2E8F0]">
+                    <th className="p-3.5">SKU &amp; Part #</th>
+                    <th className="p-3.5">Description &amp; OEM #</th>
+                    <th className="p-3.5">Bin Location</th>
+                    <th className="p-3.5">Compatible Models</th>
+                    <th className="p-3.5 text-center">FMS / ABC</th>
+                    <th className="p-3.5 text-center">Stock</th>
+                    <th className="p-3.5 text-right">Cost (NPR)</th>
+                    <th className="p-3.5 text-right">Selling (NPR)</th>
+                    <th className="p-3.5 text-center">Barcode</th>
+                    <th className="p-3.5 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0]">
+                  {filteredParts.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="p-8 text-center text-[#64748B]">
+                        No spare parts match your current search or filter criteria.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredParts.map((part) => {
+                      const isLow = part.currentStock <= part.minReorderLevel;
+                      return (
+                        <tr key={part.id} className="hover:bg-[#F8FAFC] transition">
+                          <td className="p-3.5 whitespace-nowrap">
+                            <div className="font-mono font-bold text-[#0284C7]">{part.sku}</div>
+                            <div className="text-[10px] text-[#64748B] font-mono">{part.partNumber}</div>
+                          </td>
+
+                          <td className="p-3.5">
+                            <div className="font-semibold text-[#0F172A]">{part.name}</div>
+                            <div className="text-[10px] text-[#64748B] font-mono">OEM: {part.oemNumber}</div>
+                          </td>
+
+                          <td className="p-3.5 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-[#F1F5F9] text-[#0F3D5E] border border-[#E2E8F0]">
+                              {part.rackLocation}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 max-w-[200px]">
+                            <div className="flex flex-wrap gap-1">
+                              {(part.compatibleModels || []).map((m, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 rounded text-[10px] bg-[#F1F5F9] text-[#0F172A] font-medium">
+                                  {m}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center space-x-1">
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  part.fmsClass === 'Fast'
+                                    ? 'bg-emerald-100 text-[#16A34A]'
+                                    : part.fmsClass === 'Medium'
+                                    ? 'bg-sky-100 text-[#0284C7]'
+                                    : 'bg-[#E2E8F0] text-[#64748B]'
+                                }`}
+                              >
+                                {part.fmsClass}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#F1F5F9] text-[#0F3D5E] border border-[#E2E8F0]">
+                                {part.abcClass}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-lg font-mono font-bold text-xs border ${
+                                isLow
+                                  ? 'bg-red-50 text-[#DC2626] border-red-200'
+                                  : 'bg-emerald-50 text-[#16A34A] border-emerald-200'
+                              }`}
+                            >
+                              {part.currentStock} {part.unit}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 text-right font-mono tabular-nums text-[#64748B] whitespace-nowrap">
+                            Rs. {part.costPrice.toLocaleString()}
+                          </td>
+
+                          <td className="p-3.5 text-right font-mono tabular-nums font-bold text-[#0F172A] whitespace-nowrap">
+                            Rs. {part.sellingPrice.toLocaleString()}
+                          </td>
+
+                          <td className="p-3.5 text-center">
+                            <button
+                              onClick={() => setBarcodeModalPart(part)}
+                              className="p-1.5 text-[#0F3D5E] hover:bg-[#F1F5F9] rounded-lg border border-transparent hover:border-[#E2E8F0] transition"
+                              title="Print / Scan Barcode"
+                            >
+                              <Barcode className="w-4 h-4" />
+                            </button>
+                          </td>
+
+                          <td className="p-3.5 text-center">
+                            <button
+                              onClick={() => {
+                                setEditingPart(part);
+                                setIsAddPartModalOpen(true);
+                              }}
+                              className="p-1.5 text-[#0284C7] hover:bg-sky-50 rounded-lg transition"
+                              title="Edit Part Master"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -1481,22 +1659,22 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 <input name="models" defaultValue={editingPart?.compatibleModels.join(', ') || 'Creta, Seltos, Venue'} className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Bin / Rack Location</label>
-                  <input name="rack" defaultValue={editingPart?.rackLocation || 'Bin-A1-01'} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Bin / Rack Location</label>
+                  <input name="rack" defaultValue={editingPart?.rackLocation || 'Bin-A1-01'} className="w-full font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">FMS Class</label>
-                  <select name="fms" defaultValue={editingPart?.fmsClass || 'Fast'} className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-bold">
+                  <label className="block font-semibold text-[#0F172A] mb-1">FMS Class</label>
+                  <select name="fms" defaultValue={editingPart?.fmsClass || 'Fast'} className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-semibold">
                     <option value="Fast">Fast Moving</option>
                     <option value="Medium">Medium Moving</option>
                     <option value="Slow">Slow Moving</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">ABC Class</label>
-                  <select name="abc" defaultValue={editingPart?.abcClass || 'B'} className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-bold">
+                  <label className="block font-semibold text-[#0F172A] mb-1">ABC Class</label>
+                  <select name="abc" defaultValue={editingPart?.abcClass || 'B'} className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-semibold">
                     <option value="A">Class A</option>
                     <option value="B">Class B</option>
                     <option value="C">Class C</option>
@@ -1504,33 +1682,33 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Purchase Cost (NPR, excl. VAT)</label>
-                  <input name="cost" type="number" defaultValue={editingPart?.costPrice || 1000} className="w-full font-mono font-bold border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Purchase Cost (NPR, excl. VAT)</label>
+                  <input name="cost" type="number" defaultValue={editingPart?.costPrice || 1000} className="w-full font-mono font-bold border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Selling Price (NPR, excl. VAT)</label>
-                  <input name="selling" type="number" defaultValue={editingPart?.sellingPrice || 1500} className="w-full font-mono font-bold border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Selling Price (NPR, excl. VAT)</label>
+                  <input name="selling" type="number" defaultValue={editingPart?.sellingPrice || 1500} className="w-full font-mono font-bold border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Initial Stock</label>
-                  <input name="stock" type="number" defaultValue={editingPart?.currentStock || 10} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Initial Stock</label>
+                  <input name="stock" type="number" defaultValue={editingPart?.currentStock || 10} className="w-full font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Min Reorder</label>
-                  <input name="minLevel" type="number" defaultValue={editingPart?.minReorderLevel || 5} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Min Reorder</label>
+                  <input name="minLevel" type="number" defaultValue={editingPart?.minReorderLevel || 5} className="w-full font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Max Level</label>
-                  <input name="maxLevel" type="number" defaultValue={editingPart?.maxStockLevel || 50} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Max Level</label>
+                  <input name="maxLevel" type="number" defaultValue={editingPart?.maxStockLevel || 50} className="w-full font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Unit</label>
-                  <select name="unit" defaultValue={editingPart?.unit || 'pcs'} className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white">
+                  <label className="block font-semibold text-[#0F172A] mb-1">Unit</label>
+                  <select name="unit" defaultValue={editingPart?.unit || 'pcs'} className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF]">
                     <option value="pcs">pcs</option>
                     <option value="sets">sets</option>
                     <option value="liters">liters</option>
@@ -1539,24 +1717,24 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Nepal HSN / HS Code</label>
-                  <input name="hsn" defaultValue={editingPart?.hsnSacCode || '87083000'} className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Nepal HSN / HS Code</label>
+                  <input name="hsn" defaultValue={editingPart?.hsnSacCode || '87083000'} className="w-full font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Barcode / EAN</label>
-                  <input name="barcode" defaultValue={editingPart?.barcode || ''} placeholder="890..." className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none" />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Barcode / EAN</label>
+                  <input name="barcode" defaultValue={editingPart?.barcode || ''} placeholder="890..." className="w-full font-mono border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Preferred Distributor</label>
-                  <input name="vendor" defaultValue={editingPart?.preferredVendor || 'Authorized Importers Nepal'} className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none" required />
+                  <label className="block font-semibold text-[#0F172A] mb-1">Preferred Distributor</label>
+                  <input name="vendor" defaultValue={editingPart?.preferredVendor || 'Authorized Importers Nepal'} className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none" required />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button type="button" onClick={() => setIsAddPartModalOpen(false)} className="px-4 py-2 border border-slate-300 rounded-xl font-semibold">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold">Save Master SKU</button>
+              <div className="pt-3 border-t border-[#E2E8F0] flex justify-end space-x-2">
+                <button type="button" onClick={() => setIsAddPartModalOpen(false)} className="px-4 py-2 border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] hover:bg-[#F1F5F9]">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-semibold">Save Master SKU</button>
               </div>
             </form>
           </div>

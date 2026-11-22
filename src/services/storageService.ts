@@ -23,6 +23,10 @@ import {
   PurchaseOrder,
   GatePass
 } from '../types';
+import {
+  recomputeGlBalancesFromJournal,
+  STANDARD_GL_ACCOUNT_TEMPLATES,
+} from '../utils/accountingEngine';
 
 const STORAGE_KEY = 'NEPAL_WORKSHOP_ERP_V2';
 const ACTIVE_USER_KEY = 'NEPAL_WORKSHOP_CURRENT_USER';
@@ -924,23 +928,10 @@ const INITIAL_WARRANTY_CLAIMS: WarrantyClaim[] = [
   }
 ];
 
-const INITIAL_GL_ACCOUNTS: GLAccount[] = [
-  { accountCode: '1010', accountName: 'Cash in Hand (Cashier Drawer)', category: 'Asset', subCategory: 'Current Assets', currentBalance: 42350 },
-  { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', category: 'Asset', subCategory: 'Bank Accounts', currentBalance: 684200 },
-  { accountCode: '1030', accountName: 'Fonepay Settlement Clearing Account', category: 'Asset', subCategory: 'Payment Gateway Clearing', currentBalance: 124500 },
-  { accountCode: '1040', accountName: 'NCHL NepalPay / connectIPS Clearing', category: 'Asset', subCategory: 'Payment Gateway Clearing', currentBalance: 48900 },
-  { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', category: 'Asset', subCategory: 'Inventory', currentBalance: 425000 },
-  { accountCode: '1250', accountName: 'Nepal IRD VAT Input Tax Credit (13%)', category: 'Asset', subCategory: 'Duties & Taxes', currentBalance: 10790 },
-  { accountCode: '1500', accountName: 'Workshop Equipment (Lifts, Paint Booth)', category: 'Asset', subCategory: 'Fixed Assets', currentBalance: 2450000 },
-  { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', category: 'Liability', subCategory: 'Current Liabilities', currentBalance: 258790 },
-  { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', category: 'Liability', subCategory: 'Duties & Taxes', currentBalance: 50705 },
-  { accountCode: '3010', accountName: "Owner's Capital & Retained Reserves", category: 'Equity', subCategory: 'Equity', currentBalance: 3479100 },
-  { accountCode: '4010', accountName: 'Service Labor Revenue', category: 'Revenue', subCategory: 'Operating Revenue', currentBalance: 390500 },
-  { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', category: 'Revenue', subCategory: 'Operating Revenue', currentBalance: 500000 },
-  { accountCode: '5010', accountName: 'Cost of Spare Parts Sold (COGS)', category: 'Expense', subCategory: 'Direct Cost', currentBalance: 298000 },
-  { accountCode: '5020', accountName: 'Direct Technician Labor Commission', category: 'Expense', subCategory: 'Payroll', currentBalance: 78500 },
-  { accountCode: '6010', accountName: 'Workshop Electricity & Rent', category: 'Expense', subCategory: 'Overheads', currentBalance: 107000 }
-];
+const INITIAL_GL_ACCOUNTS_BASE: GLAccount[] = STANDARD_GL_ACCOUNT_TEMPLATES.map((tpl) => ({
+  ...tpl,
+  currentBalance: 0,
+}));
 
 const INITIAL_PURCHASE_ORDERS: PurchaseOrder[] = [
   {
@@ -1055,7 +1046,7 @@ const INITIAL_JOURNAL_ENTRIES: GLJournalEntry[] = [
     narration: 'Opening balances posted for Fiscal Year 2081/2082 as per audited financial statements',
     totalAmount: 3693050,
     lines: [
-      { accountCode: '1010', accountName: 'Cash in Hand (Cashier Drawer)', debit: 42350, credit: 0 },
+      { accountCode: '1010', accountName: 'Cash in Hand (Cashier Drawer)', debit: 43450, credit: 0 },
       { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', debit: 684200, credit: 0 },
       { accountCode: '1030', accountName: 'Fonepay Settlement Clearing Account', debit: 124500, credit: 0 },
       { accountCode: '1040', accountName: 'NCHL NepalPay / connectIPS Clearing', debit: 48900, credit: 0 },
@@ -1071,7 +1062,7 @@ const INITIAL_JOURNAL_ENTRIES: GLJournalEntry[] = [
     entryNumber: 'JV-2081-002',
     date: '2026-09-08',
     sourceDocument: 'PO-2081-001',
-    narration: 'Procurement of OEM brake pad sets and filters from Continental Spares Trading',
+    narration: 'Goods Received (GRN) for OEM brake pad sets and filters from Continental Spares Trading (PAN: 301298451)',
     totalAmount: 54240,
     lines: [
       { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', debit: 48000, credit: 0 },
@@ -1083,14 +1074,15 @@ const INITIAL_JOURNAL_ENTRIES: GLJournalEntry[] = [
     id: 'JV-81-003',
     entryNumber: 'JV-2081-003',
     date: '2026-09-10',
-    sourceDocument: 'INV-2081-0019',
-    narration: 'Service Job Card billing for vehicle BA-2-KHA-9082 (Labor + Spares + 13% VAT)',
-    totalAmount: 15255,
+    sourceDocument: 'INV-81/82-0194',
+    narration: 'IRD Tax Invoice INV-81/82-0194 — Sunita Pradhan (BA 18 CHA 1029) settled via Fonepay Dynamic QR',
+    totalAmount: 4385,
     lines: [
-      { accountCode: '1010', accountName: 'Cash in Hand (Cashier Drawer)', debit: 15255, credit: 0 },
-      { accountCode: '4010', accountName: 'Service Labor Revenue', debit: 0, credit: 8500 },
-      { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', debit: 0, credit: 5000 },
-      { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', debit: 0, credit: 1755 }
+      { accountCode: '1030', accountName: 'Fonepay Settlement Clearing Account', debit: 4385, credit: 0 },
+      { accountCode: '4010', accountName: 'Service Labor Revenue', debit: 0, credit: 3200 },
+      { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', debit: 0, credit: 680 },
+      { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', debit: 0, credit: 504.4 },
+      { accountCode: '6090', accountName: 'Invoice Rounding Adjustment', debit: 0, credit: 0.6 }
     ]
   },
   {
@@ -1098,7 +1090,7 @@ const INITIAL_JOURNAL_ENTRIES: GLJournalEntry[] = [
     entryNumber: 'JV-2081-004',
     date: '2026-09-12',
     sourceDocument: 'PO-2081-002',
-    narration: 'Procurement of Mobil 1 & Castrol bulk workshop oil drums from Pioneer Motocorp',
+    narration: 'Goods Received (GRN) for Mobil 1 & Castrol bulk oil drums from Pioneer Motocorp (PAN: 602384912)',
     totalAmount: 39550,
     lines: [
       { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', debit: 35000, credit: 0 },
@@ -1129,8 +1121,25 @@ const INITIAL_JOURNAL_ENTRIES: GLJournalEntry[] = [
       { accountCode: '6010', accountName: 'Workshop Electricity & Rent', debit: 22000, credit: 0 },
       { accountCode: '1020', accountName: 'Nabil Bank Ltd. - Current Account', debit: 0, credit: 22000 }
     ]
+  },
+  {
+    id: 'JV-81-007',
+    entryNumber: 'JV-2081-007',
+    date: '2026-09-10',
+    sourceDocument: 'COGS-0194',
+    narration: 'Cost of spare parts consumed on Job Card JC-81-0020 (INV-81/82-0194)',
+    totalAmount: 420,
+    lines: [
+      { accountCode: '5010', accountName: 'Cost of Spare Parts Sold (COGS)', debit: 420, credit: 0 },
+      { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', debit: 0, credit: 420 }
+    ]
   }
 ];
+
+const INITIAL_GL_ACCOUNTS: GLAccount[] = recomputeGlBalancesFromJournal(
+  INITIAL_GL_ACCOUNTS_BASE,
+  INITIAL_JOURNAL_ENTRIES
+);
 
 const INITIAL_PARTS_QUOTATIONS: PartsQuotation[] = [
   {
@@ -1461,6 +1470,44 @@ export class StorageService {
       substitutePartIds: Array.isArray(p.substitutePartIds) ? p.substitutePartIds : []
     }));
 
+    // Ensure GL accounts and journal entries are balanced and contain standard control accounts (e.g. 1100 AR)
+    const rawJournalEntries: GLJournalEntry[] =
+      Array.isArray(parsed.journalEntries) && parsed.journalEntries.length > 0
+        ? parsed.journalEntries
+        : INITIAL_JOURNAL_ENTRIES;
+
+    // Auto-migrate legacy unbalanced opening JV-81-001 (where 1010 was 42350 instead of 43450)
+    const normalizedJournalEntries = rawJournalEntries.map((entry: GLJournalEntry) => {
+      if (entry.id === 'JV-81-001') {
+        const dr = (entry.lines || []).reduce((s, l) => s + (Number(l.debit) || 0), 0);
+        const cr = (entry.lines || []).reduce((s, l) => s + (Number(l.credit) || 0), 0);
+        if (Math.abs(dr - cr) > 0.01) {
+          return INITIAL_JOURNAL_ENTRIES[0];
+        }
+      }
+      return entry;
+    });
+
+    const rawGlAccounts: GLAccount[] =
+      Array.isArray(parsed.glAccounts) && parsed.glAccounts.length > 0
+        ? parsed.glAccounts
+        : fallback.glAccounts;
+
+    // Check if GL accounts are missing standard control account 1100 or out of trial balance
+    const hasArAccount = rawGlAccounts.some((a) => a.accountCode === '1100');
+    const tbDr = rawGlAccounts.reduce((s, a) => {
+      const isDrNature = a.category === 'Asset' || a.category === 'Expense';
+      return s + (isDrNature ? (a.currentBalance >= 0 ? a.currentBalance : 0) : (a.currentBalance < 0 ? Math.abs(a.currentBalance) : 0));
+    }, 0);
+    const tbCr = rawGlAccounts.reduce((s, a) => {
+      const isDrNature = a.category === 'Asset' || a.category === 'Expense';
+      return s + (!isDrNature ? (a.currentBalance >= 0 ? a.currentBalance : 0) : (a.currentBalance < 0 ? Math.abs(a.currentBalance) : 0));
+    }, 0);
+    const needsGlRecompute = !hasArAccount || Math.abs(tbDr - tbCr) > 1;
+    const normalizedGlAccounts = needsGlRecompute
+      ? recomputeGlBalancesFromJournal(rawGlAccounts, normalizedJournalEntries)
+      : rawGlAccounts;
+
     return {
       profile: parsed.profile || fallback.profile,
       users,
@@ -1480,8 +1527,8 @@ export class StorageService {
       gatePasses: Array.isArray(parsed.gatePasses) && parsed.gatePasses.length > 0 ? parsed.gatePasses : (fallback.gatePasses || INITIAL_GATE_PASSES),
       warrantyRecords: Array.isArray(parsed.warrantyRecords) && parsed.warrantyRecords.length > 0 ? parsed.warrantyRecords : fallback.warrantyRecords,
       warrantyClaims: Array.isArray(parsed.warrantyClaims) && parsed.warrantyClaims.length > 0 ? parsed.warrantyClaims : fallback.warrantyClaims,
-      glAccounts: Array.isArray(parsed.glAccounts) && parsed.glAccounts.length > 0 ? parsed.glAccounts : fallback.glAccounts,
-      journalEntries: Array.isArray(parsed.journalEntries) && parsed.journalEntries.length > 0 ? parsed.journalEntries : INITIAL_JOURNAL_ENTRIES,
+      glAccounts: normalizedGlAccounts,
+      journalEntries: normalizedJournalEntries,
       vatLedger: Array.isArray(parsed.vatLedger) ? parsed.vatLedger : [],
       insuranceClaims: Array.isArray(parsed.insuranceClaims) && parsed.insuranceClaims.length > 0 ? parsed.insuranceClaims : fallback.insuranceClaims,
       purchaseOrders: Array.isArray(parsed.purchaseOrders) && parsed.purchaseOrders.length > 0 ? parsed.purchaseOrders : INITIAL_PURCHASE_ORDERS,
