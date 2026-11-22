@@ -921,7 +921,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 font-sans">
+    <div className="min-h-screen bg-[#F1F5F9] text-[#0F172A] font-sans">
       {/* Fixed Responsive Left Sidebar (Ungrouped Independent Buttons) */}
       <Navigation
         activeTab={activeTab}
@@ -947,7 +947,7 @@ export default function App() {
       />
 
       {/* Main Content Area (Offset on desktop screens by fixed left sidebar) */}
-      <div className="lg:pl-64 xl:pl-72 flex flex-col min-h-screen transition-[padding] duration-200">
+      <div id="app-main-shell" className="lg:pl-64 xl:pl-72 flex flex-col min-h-screen transition-[padding] duration-200">
         {/* Top Universal Navbar */}
         <Navbar
           profile={db.profile}
@@ -965,7 +965,7 @@ export default function App() {
         />
 
         {/* View Routing */}
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 pb-24 md:pb-12">
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-5 pb-20 md:pb-12">
           {/* TAB 1: Workshop Dashboard */}
           {activeTab === 'dashboard' && (
             <WorkshopOverview
@@ -1170,6 +1170,9 @@ export default function App() {
       {printInvoice && (
         <PrintInvoiceModal
           invoice={printInvoice}
+          jobCard={(db.jobCards || []).find(
+            jc => jc.id === printInvoice.jobCardId || jc.jobCardNumber === printInvoice.jobCardNumber
+          )}
           profile={db.profile}
           onClose={() => setPrintInvoice(null)}
           onOpenGatePass={(inv) => {

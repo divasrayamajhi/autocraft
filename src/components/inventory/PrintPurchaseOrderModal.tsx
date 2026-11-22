@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { PurchaseOrder, WorkshopProfile } from '../../types';
 import { Printer, X } from 'lucide-react';
+import { printElement } from '../../utils/printDocument';
 
 interface PrintPurchaseOrderModalProps {
   isOpen: boolean;
@@ -15,38 +16,39 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
   purchaseOrder,
   profile
 }) => {
+  const printAreaRef = useRef<HTMLDivElement>(null);
   if (!isOpen || !purchaseOrder) return null;
 
-  const tradingWorkshopName = profile?.name || 'SAGARMATHA MULTI-CARE AUTO WORKSHOP';
+  const tradingWorkshopName = profile?.name || 'CONTINENTAL AUTO KRAFT';
   const legalEntity = profile?.legalEntityName || tradingWorkshopName;
   const workshopAddress = profile?.address 
     ? `${profile.address}, ${profile.city || 'Kathmandu'}, Nepal`
     : 'Sukedhara-04, Ring Road, Kathmandu, Nepal';
   const workshopPhone = profile?.contactNumber || '+977-1-4378920, 9851099882';
-  const workshopPan = profile?.panVatNumber || '302849182';
+  const workshopPan = profile?.panVatNumber || '609812453';
 
   const handlePrint = () => {
-    window.print();
+    printElement(printAreaRef.current, `Purchase-Order-${purchaseOrder.poNumber}`);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-[#E2E8F0]">
         {/* Modal Toolbar (hidden in print) */}
-        <div className="print:hidden flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center space-x-3">
-            <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-blue-100 text-blue-800 uppercase tracking-wide">
-              Official Purchase Order
+        <div className="print:hidden flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b border-[#E2E8F0] bg-[#FFFFFF]">
+          <div className="flex items-center space-x-2.5">
+            <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-sky-50 text-[#0F3D5E] border border-sky-200 uppercase tracking-wide">
+              Purchase Order
             </span>
-            <h2 className="text-base font-bold text-slate-800">
-              PO #{purchaseOrder.poNumber}
+            <h2 className="text-sm font-bold text-[#0F172A] font-mono">
+              #{purchaseOrder.poNumber}
             </h2>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+            <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
               purchaseOrder.status === 'Received' || purchaseOrder.status === 'Fully Received'
-                ? 'bg-emerald-100 text-emerald-800'
+                ? 'bg-green-50 text-[#16A34A]'
                 : purchaseOrder.status === 'Ordered'
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-amber-100 text-amber-800'
+                  ? 'bg-sky-50 text-[#0284C7]'
+                  : 'bg-amber-50 text-[#B45309]'
             }`}>
               {purchaseOrder.status}
             </span>
@@ -55,14 +57,14 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
           <div className="flex items-center space-x-2">
             <button
               onClick={handlePrint}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white text-xs font-semibold rounded-lg transition"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print A4 / Save PDF</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition"
+              className="p-1.5 text-[#64748B] hover:text-[#0F172A] rounded-lg hover:bg-[#F1F5F9] transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -70,7 +72,8 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
         </div>
 
         {/* Printable Standard A4 Area */}
-        <div className="p-8 overflow-y-auto print:p-0 text-slate-800 text-xs bg-white print:text-black">
+        <div className="overflow-y-auto flex-1 bg-[#F1F5F9] p-4 sm:p-6">
+          <div ref={printAreaRef} className="a4-sheet p-6 sm:p-8 print:p-0 text-[#0F172A] text-xs bg-[#FFFFFF] border border-[#E2E8F0] print:border-0">
           {/* Centralized Workshop Header */}
           <div className="text-center pb-4 border-b-2 border-slate-900">
             <h1 className="text-xl font-black text-slate-900 tracking-wide uppercase">
@@ -204,6 +207,7 @@ export const PrintPurchaseOrderModal: React.FC<PrintPurchaseOrderModalProps> = (
                 Authorized Workshop Stamp
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

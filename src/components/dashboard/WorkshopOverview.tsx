@@ -89,28 +89,24 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Welcome & IRD Status Hero */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-lg border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Clean Minimal Workshop Header */}
+      <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#E2E8F0] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-              ● Nepal IRD CBMS Connected
-            </span>
-            <span className="text-xs text-slate-400">Fiscal Year {profile.fiscalYear} B.S.</span>
-            <span className="text-xs text-indigo-400 font-bold">PAN: {profile.panVatNumber}</span>
-          </div>
-          <h2 className="text-2xl font-black mt-1 tracking-tight">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#0284C7]">
+            FY {profile.fiscalYear} B.S. · PAN {profile.panVatNumber} · Nepal IRD 13% VAT
+          </p>
+          <h2 className="text-xl font-bold text-[#0F172A] mt-0.5 tracking-tight">
             {profile.name}
           </h2>
-          <p className="text-xs text-slate-300 max-w-xl mt-1">
-            Autonomous Single Workshop DMS • 13% Nepal VAT Billing, Fonepay & NepalPay Dynamic QR, Warranty OEM Workflows, and Immutable Audit Trails.
+          <p className="text-xs text-[#64748B] max-w-xl mt-1">
+            Real-time workshop operations, bay utilization, spares stock health, and IRD-compliant billing overview.
           </p>
         </div>
 
         <div className="flex items-center space-x-2">
           <button
             onClick={onNewIntake}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-950 transition flex items-center space-x-1.5"
+            className="px-4 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>New Vehicle Intake</span>

@@ -583,6 +583,9 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
       {selectedInvoiceForPrint && (
         <PrintInvoiceModal
           invoice={selectedInvoiceForPrint}
+          jobCard={(jobCards || []).find(
+            jc => jc.id === selectedInvoiceForPrint.jobCardId || jc.jobCardNumber === selectedInvoiceForPrint.jobCardNumber
+          )}
           profile={profile}
           onClose={() => setSelectedInvoiceForPrint(null)}
           onWhatsAppShare={handleSendWhatsApp}

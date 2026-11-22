@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { printElement } from '../../utils/printDocument';
 import { 
   Invoice, 
   WorkshopProfile, 
@@ -102,6 +103,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
   const [modeFilter, setModeFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const printDaybookRef = useRef<HTMLDivElement>(null);
   const [cashOpeningFloat, setCashOpeningFloat] = useState<number>(10000); // 10k NPR cash drawer float
   const [isDayClosed, setIsDayClosed] = useState<boolean>(false);
 
@@ -879,24 +881,24 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
 
       {/* PRINTABLE DAYBOOK MODAL (A4 CASHIER DAY CLOSING REPORT) */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-8 border border-slate-200 space-y-6 max-h-[90vh] overflow-y-auto">
+        <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-4xl w-full p-6 sm:p-8 border border-[#E2E8F0] space-y-6 max-h-[92vh] overflow-y-auto">
             {/* Modal Actions Bar (hidden when printing) */}
-            <div className="flex items-center justify-between border-b pb-4 print:hidden">
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4 print:hidden">
               <div className="flex items-center space-x-2">
-                <Printer className="w-5 h-5 text-indigo-600" />
-                <h4 className="font-bold text-base text-slate-900">Print Official Daily Daybook</h4>
+                <Printer className="w-5 h-5 text-[#0EA5E9]" />
+                <h4 className="font-bold text-base text-[#0F172A]">Print Official Daily Daybook</h4>
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow transition"
+                  onClick={() => printElement(printDaybookRef.current, `Daybook-${selectedDate}`)}
+                  className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition"
                 >
-                  Print to A4
+                  Print A4 / Save PDF
                 </button>
                 <button
                   onClick={() => setIsPrintModalOpen(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg"
+                  className="p-2 text-[#64748B] hover:text-[#0F172A] rounded-lg hover:bg-[#F1F5F9]"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -904,7 +906,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             </div>
 
             {/* Printable Document Body */}
-            <div className="space-y-6 text-slate-900 font-sans">
+            <div ref={printDaybookRef} className="a4-sheet space-y-6 text-[#0F172A] font-sans bg-[#FFFFFF]">
               {/* Header */}
               <div className="text-center border-b pb-4 space-y-1">
                 <h2 className="text-xl font-black uppercase tracking-tight">

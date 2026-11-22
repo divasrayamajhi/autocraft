@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { GatePass, WorkshopProfile } from '../../types';
 import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Car, Clock, Calendar, User, Phone } from 'lucide-react';
+import { printElement } from '../../utils/printDocument';
 
 interface PrintGatePassModalProps {
   gatePass: GatePass;
@@ -15,8 +16,10 @@ export const PrintGatePassModal: React.FC<PrintGatePassModalProps> = ({
   onClose,
   onMarkExited
 }) => {
+  const printAreaRef = useRef<HTMLDivElement>(null);
+
   const handlePrint = () => {
-    window.print();
+    printElement(printAreaRef.current, `Gate-Pass-${gatePass.passNumber}`);
   };
 
   const handleWhatsAppShare = () => {
@@ -27,46 +30,46 @@ export const PrintGatePassModal: React.FC<PrintGatePassModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-[#E2E8F0]">
         {/* Modal Toolbar (hidden in print) */}
-        <div className="print:hidden flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center space-x-3">
-            <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-100 text-emerald-800 uppercase tracking-wide flex items-center space-x-1">
-              <Shield className="w-3.5 h-3.5" />
-              <span>Vehicle Security Gate Pass</span>
+        <div className="print:hidden flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b border-[#E2E8F0] bg-[#FFFFFF]">
+          <div className="flex items-center space-x-2.5">
+            <span className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-sky-50 text-[#0F3D5E] border border-sky-200 uppercase tracking-wide flex items-center space-x-1">
+              <Shield className="w-3.5 h-3.5 text-[#0EA5E9]" />
+              <span>Vehicle Gate Pass</span>
             </span>
-            <h2 className="text-base font-bold text-slate-800">
-              Pass #{gatePass.passNumber}
+            <h2 className="text-sm font-bold text-[#0F172A] font-mono">
+              #{gatePass.passNumber}
             </h2>
           </div>
           <div className="flex items-center space-x-2">
             {gatePass.status === 'Cleared for Exit' && onMarkExited && (
               <button
                 onClick={() => onMarkExited(gatePass.id)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#0F3D5E] hover:bg-[#0B2F49] text-white text-xs font-semibold rounded-lg transition"
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Mark as Exited</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                <span>Mark Exited</span>
               </button>
             )}
             <button
               onClick={handleWhatsAppShare}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span>WhatsApp</span>
             </button>
             <button
               onClick={handlePrint}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white text-xs font-semibold rounded-lg transition"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print / PDF</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition"
+              className="p-1.5 text-[#64748B] hover:text-[#0F172A] rounded-lg hover:bg-[#F1F5F9] transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -74,7 +77,8 @@ export const PrintGatePassModal: React.FC<PrintGatePassModalProps> = ({
         </div>
 
         {/* Printable Pass Area */}
-        <div className="p-8 overflow-y-auto print:p-0 text-slate-800 text-xs bg-white">
+        <div className="overflow-y-auto flex-1 bg-[#F1F5F9] p-4 sm:p-6">
+          <div ref={printAreaRef} className="a4-sheet p-6 sm:p-8 print:p-0 text-[#0F172A] text-xs bg-[#FFFFFF] border border-[#E2E8F0] print:border-0">
           {/* Workshop Header from Settings Profile */}
           <div className="text-center pb-4 border-b-2 border-slate-900">
             <h1 className="text-lg font-black text-slate-900 tracking-wide uppercase">
@@ -262,6 +266,7 @@ export const PrintGatePassModal: React.FC<PrintGatePassModalProps> = ({
                 <p className="text-slate-400">{gatePass.securityOfficerName || 'Main Gate Staff'}</p>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

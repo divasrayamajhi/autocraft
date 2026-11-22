@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { printElement } from '../../utils/printDocument';
 import { 
   Package, 
   Plus, 
@@ -108,6 +109,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
   // Barcode / QR inspection modal
   const [barcodeModalPart, setBarcodeModalPart] = useState<SparePart | null>(null);
+  const barcodePrintRef = useRef<HTMLDivElement>(null);
 
   // Edit / Add part modal
   const [isAddPartModalOpen, setIsAddPartModalOpen] = useState(false);
@@ -205,27 +207,24 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Clean Minimal Header */}
+      <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#E2E8F0] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/20 text-teal-300 border border-teal-400/30">
-              End-to-End Spares Lifecycle
-            </span>
-            <span className="text-xs text-slate-400">Master Data • FMS & ABC • OTC Sales • Returns</span>
-          </div>
-          <h2 className="text-2xl font-black mt-1 tracking-tight">
-            Spare Parts Master & Warehouse Logistics
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#0284C7]">
+            Spares Master · FMS &amp; ABC · OTC Sales
+          </p>
+          <h2 className="text-xl font-bold text-[#0F172A] mt-0.5 tracking-tight">
+            Spare Parts Master &amp; Warehouse Logistics
           </h2>
-          <p className="text-xs text-slate-300 max-w-2xl mt-1">
-            SKU-level barcode tracking, dynamic replenishment triggers, FMS (Fast/Medium/Slow) and ABC valuation, interchangeable substitutes, and complete Quotation → Order → Dispatch → Return pipeline.
+          <p className="text-xs text-[#64748B] max-w-2xl mt-1">
+            SKU-level barcode tracking, dynamic reorder triggers, FMS/ABC classification, and complete quotation, order, dispatch, and return workflows.
           </p>
         </div>
 
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setIsNewOrderModal(true)}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700 shadow-sm"
+            className="px-3.5 py-2 bg-[#FFFFFF] hover:bg-[#F1F5F9] text-[#0F172A] rounded-lg text-xs font-semibold border border-[#E2E8F0] transition"
           >
             New Spares Order
           </button>
@@ -234,7 +233,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
               setEditingPart(null);
               setIsAddPartModalOpen(true);
             }}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-md shadow-teal-950"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition"
           >
             <Plus className="w-4 h-4" />
             <span>Add Master SKU</span>
@@ -1317,56 +1316,54 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
 
       {/* MODAL: BARCODE / QR CODE LABEL */}
       {barcodeModalPart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 border border-slate-200 text-center">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h4 className="text-sm font-bold text-slate-900">Bin Barcode Label</h4>
-              <button onClick={() => setBarcodeModalPart(null)} className="text-slate-400 hover:text-slate-600">
+        <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4">
+          <div className="bg-[#FFFFFF] rounded-xl shadow-xl max-w-sm w-full p-5 border border-[#E2E8F0] text-center">
+            <div className="print:hidden flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <h4 className="text-sm font-bold text-[#0F172A]">Bin Barcode Label</h4>
+              <button onClick={() => setBarcodeModalPart(null)} className="text-[#64748B] hover:text-[#0F172A]">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="mt-4 p-4 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 space-y-3">
-              <div className="text-xs font-bold text-slate-800 tracking-tight">
-                SAGARMATHA AUTO WORKSHOP
+            <div ref={barcodePrintRef} className="mt-4 p-4 border-2 border-dashed border-[#CBD5E1] rounded-lg bg-[#FFFFFF] space-y-3">
+              <div className="text-xs font-bold text-[#0F3D5E] tracking-tight uppercase">
+                {profile?.name || 'CONTINENTAL AUTO KRAFT'}
               </div>
-              <div className="text-xs font-bold text-slate-900">{barcodeModalPart.name}</div>
-              <div className="text-xs font-mono text-teal-700 font-bold">{barcodeModalPart.sku}</div>
+              <div className="text-xs font-bold text-[#0F172A]">{barcodeModalPart.name}</div>
+              <div className="text-xs font-mono text-[#0284C7] font-bold">{barcodeModalPart.sku}</div>
 
               {/* Barcode graphic visualization */}
-              <div className="bg-white p-3 rounded border border-slate-200 inline-block mx-auto">
+              <div className="bg-[#FFFFFF] p-3 rounded border border-[#E2E8F0] inline-block mx-auto">
                 <div className="flex items-center justify-center space-x-0.5 h-10">
                   {[3,1,2,4,1,3,2,1,4,2,3,1,2,3,1,4,2,1,3,2,4,1].map((w, i) => (
                     <div
                       key={i}
-                      className="bg-slate-900 h-full"
+                      className="bg-[#0F172A] h-full"
                       style={{ width: `${w * 1.5}px` }}
                     />
                   ))}
                 </div>
-                <div className="font-mono text-[10px] text-slate-600 mt-1 tracking-widest">
+                <div className="font-mono text-[10px] text-[#64748B] mt-1 tracking-widest">
                   {barcodeModalPart.barcode}
                 </div>
               </div>
 
-              <div className="flex justify-between text-[11px] font-mono font-bold text-slate-700 pt-2 border-t border-slate-200">
+              <div className="flex justify-between text-[11px] font-mono font-bold text-[#0F172A] pt-2 border-t border-[#E2E8F0]">
                 <span>Rack: {barcodeModalPart.rackLocation}</span>
                 <span>Rs. {barcodeModalPart.sellingPrice} + 13% VAT</span>
               </div>
             </div>
 
-            <div className="mt-4 flex justify-end space-x-2 text-xs">
+            <div className="print:hidden mt-4 flex justify-end space-x-2 text-xs">
               <button
                 onClick={() => setBarcodeModalPart(null)}
-                className="px-4 py-2 border border-slate-300 rounded-xl font-semibold"
+                className="px-4 py-2 border border-[#E2E8F0] text-[#0F172A] hover:bg-[#F1F5F9] rounded-lg font-semibold transition"
               >
                 Close
               </button>
               <button
-                onClick={() => {
-                  window.print();
-                }}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold flex items-center space-x-1"
+                onClick={() => printElement(barcodePrintRef.current, `Barcode-${barcodeModalPart.sku}`)}
+                className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-semibold flex items-center space-x-1 transition"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Print Label Tag</span>

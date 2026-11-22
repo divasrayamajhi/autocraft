@@ -1,15 +1,8 @@
 import React from 'react';
-import { 
-  Shield, 
-  Wrench, 
-  Building2, 
-  Cloud, 
-  CheckCircle2, 
-  User, 
-  ChevronDown, 
-  FileText, 
-  AlertCircle, 
-  LogOut, 
+import {
+  Cloud,
+  ChevronDown,
+  LogOut,
   UserPlus,
   Menu,
   X
@@ -32,6 +25,20 @@ interface NavbarProps {
   activeTab?: string;
 }
 
+const TAB_TITLES: Record<string, string> = {
+  dashboard: 'Workshop Pulse',
+  jobcards: 'Job Cards & Bays',
+  customers: 'Customer Garages',
+  inventory: 'Spare Parts Master',
+  warranty: 'Warranty & Claims',
+  insurance: 'Cashless Insurance',
+  billing: 'Invoicing & IRD Tax',
+  accounting: 'GL & VAT Ledger',
+  analytics: 'BI & Performance',
+  admin_settings: 'Master Settings',
+  admin: 'Master Settings'
+};
+
 export const Navbar: React.FC<NavbarProps> = ({
   profile,
   currentUser,
@@ -40,107 +47,63 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onOpenNewAccountModal,
   isCloudSynced,
-  lastSyncTime,
   onOpenCloudModal,
-  onOpenProfileModal,
   onToggleMobileMenu,
   isMobileMenuOpen = false,
-  activeTab
+  activeTab = 'dashboard'
 }) => {
+  const pageTitle = TAB_TITLES[activeTab] || profile.name;
+
   return (
-    <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-      {/* Top Nepal IRD & Fiscal Year Banner */}
-      <div className="bg-slate-900 text-slate-300 text-xs px-4 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center space-x-2">
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span>
-            IRD CBMS Realtime E-Billing Connected
-          </span>
-          <span className="text-slate-400 hidden sm:inline">|</span>
-          <span className="text-slate-300 font-medium hidden sm:inline">Fiscal Year:</span>
-          <span className="text-amber-400 font-mono font-bold hidden sm:inline">{profile.fiscalYear} B.S.</span>
-          <span className="text-slate-400 hidden md:inline">|</span>
-          <span className="text-slate-300 hidden md:inline">PAN/VAT:</span>
-          <span className="font-mono text-white font-semibold hidden md:inline">{profile.panVatNumber}</span>
-          <span className="text-slate-400 hidden lg:inline">|</span>
-          <span className="text-slate-300 hidden lg:inline">VAT:</span>
-          <span className="text-indigo-300 font-bold hidden lg:inline">13% Standard</span>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={onOpenCloudModal}
-            className="hover:text-white transition flex items-center space-x-1.5 text-[11px] text-slate-300 bg-slate-800/80 px-2.5 py-0.5 rounded border border-slate-700"
-          >
-            <Cloud className={`w-3 h-3 ${isCloudSynced ? 'text-emerald-400' : 'text-amber-400'}`} />
-            <span>{isCloudSynced ? 'Local & Cloud Synced' : 'Sync Pending'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Workshop Bar */}
-      <div className="px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
-        {/* Left: Mobile Toggle & Brand / Breadcrumb */}
-        <div className="flex items-center space-x-3">
+    <header className="sticky top-0 z-20 bg-[#FFFFFF] border-b border-[#E2E8F0] print:hidden">
+      <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        {/* Left: Mobile Toggle + Page Context & Workshop Meta */}
+        <div className="flex items-center space-x-3 min-w-0">
           {onToggleMobileMenu && (
             <button
               onClick={onToggleMobileMenu}
-              className="lg:hidden p-2 -ml-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition border border-slate-200 shadow-sm"
+              className="lg:hidden p-2 -ml-2 rounded-lg text-[#0F172A] hover:bg-[#F1F5F9] transition border border-[#E2E8F0]"
               aria-label="Toggle navigation drawer"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           )}
 
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-md shadow-indigo-100 flex-shrink-0">
-              <Wrench className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-base font-extrabold text-slate-900 tracking-tight leading-tight">
-                  {profile.name}
-                </h1>
-                <span className="hidden xl:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                  Independent Single Workshop
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 hidden sm:flex items-center space-x-1.5">
-                <span>{profile.address}, {profile.city}</span>
-                <span>•</span>
-                <span>{profile.contactNumber}</span>
-              </p>
-            </div>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-[#0F172A] tracking-tight truncate leading-tight">
+              {pageTitle}
+            </h2>
+            <p className="text-xs text-[#64748B] hidden sm:flex items-center space-x-2 truncate mt-0.5">
+              <span className="font-medium text-[#0F3D5E]">{profile.name}</span>
+              <span>·</span>
+              <span>FY <span className="font-mono">{profile.fiscalYear}</span></span>
+              <span className="hidden md:inline">·</span>
+              <span className="hidden md:inline">PAN <span className="font-mono">{profile.panVatNumber}</span></span>
+              <span className="hidden xl:inline">·</span>
+              <span className="hidden xl:inline">13% IRD VAT</span>
+            </p>
           </div>
         </div>
 
-        {/* User Role Switcher & Profile */}
-        <div className="flex items-center space-x-3">
-          {/* Role Pill */}
-          <div className="hidden sm:flex flex-col items-end">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-              Active Access Role
-            </span>
-            <div className="flex items-center space-x-1.5">
-              <span className={`inline-block w-2 h-2 rounded-full ${
-                currentUser.role === 'Admin' ? 'bg-purple-500' :
-                currentUser.role === 'Service Advisor' ? 'bg-blue-500' :
-                currentUser.role === 'Technician' ? 'bg-amber-500' :
-                currentUser.role === 'Inventory Manager' ? 'bg-teal-500' : 'bg-rose-500'
-              }`} />
-              <span className="text-xs font-bold text-slate-800">
-                {currentUser.role}
-              </span>
-            </div>
-          </div>
+        {/* Right: Sync, Role Switcher, Account & Logout */}
+        <div className="flex items-center space-x-2.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onOpenCloudModal}
+            className="hidden md:inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border border-[#E2E8F0] transition"
+            title="Backup & Sync Storage"
+          >
+            <Cloud className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-[#16A34A]' : 'text-[#F59E0B]'}`} />
+            <span>{isCloudSynced ? 'Synced' : 'Pending'}</span>
+          </button>
 
           {/* User Selector Dropdown */}
-          <div className="relative group">
+          <div className="relative">
             <select
               aria-label="Switch User Role"
               value={currentUser.id}
               onChange={(e) => onSwitchUser(e.target.value)}
-              className="appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs font-semibold rounded-xl pl-3 pr-8 py-2 cursor-pointer shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="appearance-none bg-[#F1F5F9] hover:bg-[#E2E8F0]/70 border border-[#E2E8F0] text-[#0F172A] text-xs font-semibold rounded-lg pl-3 pr-8 py-2 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
             >
               {(users || []).map((user) => (
                 <option key={user.id} value={user.id}>
@@ -148,33 +111,31 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[#64748B] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
-          {/* New Account Button */}
           {onOpenNewAccountModal && (
             <button
               id="navbar-btn-new-account"
               type="button"
               onClick={onOpenNewAccountModal}
-              className="hidden md:flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition shadow-sm"
-              title="Create New User Account with Role Options"
+              className="hidden md:flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-[#0F3D5E] hover:bg-[#F1F5F9] border border-[#E2E8F0] transition"
+              title="Create New User Account"
             >
-              <UserPlus className="w-3.5 h-3.5" />
+              <UserPlus className="w-3.5 h-3.5 text-[#0EA5E9]" />
               <span>New Account</span>
             </button>
           )}
 
-          {/* Explicit Logout Button */}
           <button
             id="navbar-btn-logout"
             type="button"
             onClick={onLogout}
-            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition shadow-sm active:scale-95"
+            className="flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-[#DC2626] hover:bg-red-50 border border-[#E2E8F0] hover:border-red-200 transition"
             title="Log Out of System"
           >
-            <LogOut className="w-3.5 h-3.5 text-rose-500" />
-            <span className="font-bold hidden sm:inline">Logout</span>
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </div>

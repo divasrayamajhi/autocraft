@@ -718,50 +718,42 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between relative overflow-hidden font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Subtle Background Accent Glows */}
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-10">
+    <div className="min-h-screen bg-[#F1F5F9] text-[#0F172A] flex flex-col justify-between font-sans selection:bg-[#0EA5E9] selection:text-white">
+      {/* Top Brand Header */}
+      <header className="bg-[#0F3D5E] text-white border-b border-white/10 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <Wrench className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-lg bg-[#0EA5E9] text-white flex items-center justify-center">
+            <Wrench className="w-4 h-4" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-base font-bold text-white tracking-tight">{workshopProfile.name}</h1>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-                Nepal IRD 13% VAT CBMS
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              {workshopProfile.address}, {workshopProfile.city} • PAN/VAT: {workshopProfile.panVatNumber}
+            <h1 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
+              {workshopProfile.name}
+            </h1>
+            <p className="text-xs text-sky-200/80">
+              {workshopProfile.address}, {workshopProfile.city} · PAN/VAT: {workshopProfile.panVatNumber}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-3 text-xs text-slate-300">
-          <span className="hidden sm:inline text-slate-400">Fiscal Year:</span>
-          <span className="font-mono text-amber-400 font-bold bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-            {workshopProfile.fiscalYear} B.S.
+        <div className="flex items-center space-x-3 text-xs text-sky-100">
+          <span className="font-mono font-semibold bg-white/10 px-2.5 py-1 rounded border border-white/15">
+            FY {workshopProfile.fiscalYear} B.S.
           </span>
-          <span className="hidden sm:inline-flex items-center text-emerald-400">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-            System Online
+          <span className="hidden sm:inline-flex items-center text-sky-200">
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-[#16A34A]" />
+            IRD 13% VAT Ready
           </span>
         </div>
       </header>
 
       {/* Main Content Card Container */}
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 z-10">
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
         {cardContent}
       </main>
 
       {/* Subtle Bottom Footer */}
-      <footer className="text-center py-3 text-xs text-slate-500 border-t border-slate-800 bg-slate-900/60 z-10">
-        Multi-Brand Workshop DMS & ERP • Compliant with Nepal Government IRD 13% VAT & CBMS Realtime E-Billing Rules
+      <footer className="text-center py-3 text-xs text-[#64748B] border-t border-[#E2E8F0] bg-[#FFFFFF]">
+        Multi-Brand Workshop DMS &amp; ERP · Nepal IRD 13% VAT Compliant
       </footer>
     </div>
   );

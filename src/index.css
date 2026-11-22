@@ -1,9 +1,144 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   Comprehensive Standard A4 Print & PDF Styles for Workshop Management System
-   Covers: Tax Invoices, Job Cards, Gate Passes, Purchase Orders, Quotations, VAT Register
+   Enterprise Workshop DMS Design Tokens & Color System
+   Primary Brand / Sidebar: #0F3D5E (Deep Petrol Blue)
+   Buttons / Active States: #0EA5E9 (Enterprise Cyan)
+   Application Background:  #F1F5F9 (Cool Grey)
+   Cards / Tables / Forms:  #FFFFFF (Pure White)
+   Primary Text:            #0F172A
+   Secondary Text:          #64748B
+   Borders:                 #E2E8F0
+   Success:                 #16A34A
+   Warning:                 #F59E0B
+   Danger:                  #DC2626
+   Info:                    #0284C7
    ========================================================================== */
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Brand Semantic Tokens */
+  --color-brand-petrol: #0F3D5E;
+  --color-brand-petrol-dark: #0A2B43;
+  --color-brand-petrol-light: #16507A;
+  --color-brand-cyan: #0EA5E9;
+  --color-brand-cyan-hover: #0284C7;
+  --color-app-bg: #F1F5F9;
+  --color-app-surface: #FFFFFF;
+  --color-app-text: #0F172A;
+  --color-app-muted: #64748B;
+  --color-app-border: #E2E8F0;
+
+  /* Harmonize legacy indigo utilities across the entire system to Enterprise Cyan / Deep Petrol Blue */
+  --color-indigo-50: #F0F9FF;
+  --color-indigo-100: #E0F2FE;
+  --color-indigo-200: #BAE6FD;
+  --color-indigo-300: #7DD3FC;
+  --color-indigo-400: #38BDF8;
+  --color-indigo-500: #0EA5E9;
+  --color-indigo-600: #0EA5E9;
+  --color-indigo-700: #0284C7;
+  --color-indigo-800: #0F3D5E;
+  --color-indigo-900: #0F3D5E;
+  --color-indigo-950: #0A2B43;
+
+  /* Harmonize purple accents to Deep Petrol Blue / Info Cyan for clean minimal coherence */
+  --color-purple-50: #F0F9FF;
+  --color-purple-100: #E0F2FE;
+  --color-purple-200: #BAE6FD;
+  --color-purple-300: #7DD3FC;
+  --color-purple-400: #38BDF8;
+  --color-purple-500: #0284C7;
+  --color-purple-600: #0284C7;
+  --color-purple-700: #0F3D5E;
+  --color-purple-800: #0F3D5E;
+  --color-purple-900: #0A2B43;
+
+  /* Supporting Semantic Scales */
+  --color-emerald-50: #F0FDF4;
+  --color-emerald-100: #DCFCE7;
+  --color-emerald-200: #BBF7D0;
+  --color-emerald-300: #86EFAC;
+  --color-emerald-400: #4ADE80;
+  --color-emerald-500: #16A34A;
+  --color-emerald-600: #16A34A;
+  --color-emerald-700: #15803D;
+  --color-emerald-800: #166534;
+
+  --color-amber-50: #FFFBEB;
+  --color-amber-100: #FEF3C7;
+  --color-amber-200: #FDE68A;
+  --color-amber-300: #FCD34D;
+  --color-amber-400: #FBBF24;
+  --color-amber-500: #F59E0B;
+  --color-amber-600: #D97706;
+  --color-amber-700: #B45309;
+  --color-amber-800: #92400E;
+
+  --color-rose-50: #FEF2F2;
+  --color-rose-100: #FEE2E2;
+  --color-rose-200: #FECACA;
+  --color-rose-300: #FCA5A5;
+  --color-rose-400: #F87171;
+  --color-rose-500: #DC2626;
+  --color-rose-600: #DC2626;
+  --color-rose-700: #B91C1C;
+  --color-rose-800: #991B1B;
+
+  --color-blue-50: #F0F9FF;
+  --color-blue-100: #E0F2FE;
+  --color-blue-200: #BAE6FD;
+  --color-blue-500: #0EA5E9;
+  --color-blue-600: #0284C7;
+  --color-blue-700: #0369A1;
+  --color-blue-800: #0F3D5E;
+}
+
+@layer base {
+  html {
+    background-color: #F1F5F9;
+    color: #0F172A;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: #F1F5F9;
+    color: #0F172A;
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Subtle custom scrollbars for Kanban & tables */
+.scrollbar-clean::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-clean::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-clean::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+.scrollbar-clean::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* ==========================================================================
+   Isolated A4 Print & PDF Architecture
+   Ensures ONLY the active document prints cleanly on A4 with zero sidebar
+   offset, zero scroll clipping, and zero background UI leakage.
+   ========================================================================== */
+
+#app-print-root {
+  display: none;
+}
 
 @media print {
   @page {
@@ -11,8 +146,7 @@
     margin: 10mm;
   }
 
-  /* Force color printing and clean page resets */
-  *, *:before, *:after {
+  *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
@@ -20,48 +154,53 @@
 
   html, body {
     background: #ffffff !important;
-    color: #0f172a !important;
-    font-size: 10.5pt !important;
-    line-height: 1.35 !important;
+    color: #0F172A !important;
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
-    min-height: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
   }
 
-  /* Hide app navigation, headers, sidebars, alerts, buttons, backdrops in print */
-  #app-fixed-sidebar,
-  #app-universal-navbar,
-  #sidebar-mobile-backdrop,
-  header,
-  nav,
-  aside,
-  button,
-  .print\:hidden,
-  [data-print="hidden"] {
+  /* Primary isolated print mode triggered by printElement() */
+  body.is-printing-doc > *:not(#app-print-root) {
     display: none !important;
   }
 
-  /* Remove fixed overlay positioning so the modal prints naturally on A4 pages */
-  .fixed.inset-0 {
+  body.is-printing-doc #app-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  /* Fallback if user triggers Ctrl+P directly while a print modal is open */
+  body:not(.is-printing-doc):has(.print-modal-root) #app-fixed-sidebar,
+  body:not(.is-printing-doc):has(.print-modal-root) #app-main-shell {
+    display: none !important;
+  }
+
+  body:not(.is-printing-doc) .print-modal-root {
     position: static !important;
     inset: auto !important;
     width: 100% !important;
     height: auto !important;
     max-height: none !important;
-    background: transparent !important;
+    background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
     display: block !important;
     overflow: visible !important;
-    box-shadow: none !important;
-    border: none !important;
   }
 
-  /* The print container card inside the modal */
-  .fixed.inset-0 > div,
-  .print-page-a4 {
+  body:not(.is-printing-doc) .print-modal-root > div {
     position: static !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -75,16 +214,27 @@
     background: #ffffff !important;
   }
 
-  /* Tables: clean borders and auto page breaks */
+  /* Hide non-printable controls inside printed documents */
+  .print\:hidden,
+  [data-print="hidden"],
+  #app-print-root button {
+    display: none !important;
+  }
+
+  /* Ensure scrollable wrappers never clip in print */
+  #app-print-root .overflow-y-auto,
+  #app-print-root .overflow-x-auto,
+  #app-print-root .overflow-hidden {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* Formal A4 Table Rules */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
     page-break-inside: auto !important;
-  }
-
-  tr {
-    page-break-inside: avoid !important;
-    page-break-after: auto !important;
   }
 
   thead {
@@ -95,20 +245,15 @@
     display: table-footer-group !important;
   }
 
-  /* Avoid breakages inside signature blocks, terms, and total cards */
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   .print-avoid-break,
   .signature-block,
   .financial-totals-block {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-  }
-
-  /* Ensure text and borders are sharp and dark in print */
-  .text-slate-900, .text-slate-800, .text-slate-700 {
-    color: #000000 !important;
-  }
-
-  .border-slate-200, .border-slate-300 {
-    border-color: #cbd5e1 !important;
   }
 }

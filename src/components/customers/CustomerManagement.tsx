@@ -524,39 +524,33 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Top Banner: Service Interval Policy & Global Metrics */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-4 text-white shadow-md border border-indigo-900/50">
+      {/* Clean Minimal Service Interval Header */}
+      <div className="bg-[#FFFFFF] rounded-xl p-5 border border-[#E2E8F0]">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                SYSTEM STANDARD INTERVAL
-              </span>
-              <span className="text-xs font-semibold text-slate-300">
-                Nepal Automotive Engineering Policy
-              </span>
-            </div>
-            <h2 className="text-sm sm:text-base font-bold text-white flex items-center space-x-2">
-              <span>Standard Service Interval: 5,000 km or 4 Months (120 Days)</span>
-              <span className="text-xs text-indigo-300 font-normal hidden sm:inline">(Whichever Comes First)</span>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#0284C7]">
+              Customer Directory &amp; Service Reminders
+            </p>
+            <h2 className="text-lg font-bold text-[#0F172A] tracking-tight">
+              Standard Service Interval: 5,000 km or 120 Days
             </h2>
-            <p className="text-[11px] text-slate-400 max-w-2xl">
-              All client garage vehicles track scheduled maintenance countdowns. When serviced, the timer resets to 120 days. Vehicles past 120 days turn red until serviced.
+            <p className="text-xs text-[#64748B] max-w-2xl">
+              Vehicles track scheduled maintenance countdowns automatically. Reminders reset upon invoicing and highlight overdue vehicles past 120 days.
             </p>
           </div>
 
-          <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-            <div className="px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-500/40 text-center min-w-[90px]">
-              <span className="text-[10px] font-bold text-rose-300 block uppercase">Overdue (&gt;120d)</span>
-              <span className="text-lg font-mono font-black text-rose-400">{overdueCount}</span>
+          <div className="flex items-center space-x-2.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+            <div className="px-3.5 py-2 rounded-lg bg-red-50 border border-red-200 text-center min-w-[92px]">
+              <span className="text-[10px] font-semibold text-[#DC2626] block uppercase">Overdue</span>
+              <span className="text-lg font-mono font-bold text-[#DC2626] tabular-nums">{overdueCount}</span>
             </div>
-            <div className="px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-center min-w-[85px]">
-              <span className="text-[10px] font-bold text-amber-300 block uppercase">Due Soon</span>
-              <span className="text-lg font-mono font-black text-amber-400">{dueTodayCount + dueSoonCount}</span>
+            <div className="px-3.5 py-2 rounded-lg bg-amber-50 border border-amber-200 text-center min-w-[92px]">
+              <span className="text-[10px] font-semibold text-[#B45309] block uppercase">Due Soon</span>
+              <span className="text-lg font-mono font-bold text-[#F59E0B] tabular-nums">{dueTodayCount + dueSoonCount}</span>
             </div>
-            <div className="px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-center min-w-[85px]">
-              <span className="text-[10px] font-bold text-emerald-300 block uppercase">Safe / Active</span>
-              <span className="text-lg font-mono font-black text-emerald-400">{safeCount}</span>
+            <div className="px-3.5 py-2 rounded-lg bg-green-50 border border-green-200 text-center min-w-[92px]">
+              <span className="text-[10px] font-semibold text-[#16A34A] block uppercase">Active</span>
+              <span className="text-lg font-mono font-bold text-[#16A34A] tabular-nums">{safeCount}</span>
             </div>
           </div>
         </div>

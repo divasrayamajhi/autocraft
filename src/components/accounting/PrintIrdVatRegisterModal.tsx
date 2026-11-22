@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Invoice, PurchaseOrder, WorkshopProfile } from '../../types';
 import { Printer, X, Download, FileSpreadsheet, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { printElement } from '../../utils/printDocument';
 
 interface PrintIrdVatRegisterModalProps {
   type: 'sales' | 'purchase' | 'vat_return';
@@ -20,6 +21,7 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
   onClose
 }) => {
   const [activeView, setActiveView] = useState<'sales' | 'purchase' | 'vat_return'>(type);
+  const printAreaRef = useRef<HTMLDivElement>(null);
 
   const workshopName = profile?.name || 'Continental Auto Kraft Pvt. Ltd.';
   const legalName = profile?.legalEntityName || workshopName;
@@ -43,50 +45,50 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
   const carryForwardCredit = Math.max(0, totalVatPurchases - totalVatSales);
 
   const handlePrint = () => {
-    window.print();
+    printElement(printAreaRef.current, `IRD-VAT-${activeView}-${fiscalYear}`);
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 print:p-0 print:bg-white">
-      <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+    <div className="print-modal-root fixed inset-0 z-50 overflow-y-auto bg-[#0F172A]/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6">
+      <div className="bg-[#FFFFFF] w-full max-w-5xl rounded-xl shadow-2xl border border-[#E2E8F0] overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Toolbar (hidden on print) */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between print:hidden">
+        <div className="bg-[#0F3D5E] text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 print:hidden">
           <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md">
-              <Printer className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-[#0EA5E9] flex items-center justify-center text-white">
+              <Printer className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white leading-tight">
                 Nepal IRD Standard VAT Register (Schedule 13)
               </h3>
-              <p className="text-xs text-slate-300">
-                Official Nepal Inland Revenue Department A4 Certified Print Layout
+              <p className="text-[11px] text-sky-200">
+                Official A4 Statutory Tax Register
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex bg-white/10 p-1 rounded-lg border border-white/10 text-xs">
               <button
                 onClick={() => setActiveView('sales')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                  activeView === 'sales' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-300 hover:text-white'
+                className={`px-3 py-1.5 rounded-md font-medium transition ${
+                  activeView === 'sales' ? 'bg-[#0EA5E9] text-white font-semibold' : 'text-sky-100 hover:text-white'
                 }`}
               >
                 Sales Register
               </button>
               <button
                 onClick={() => setActiveView('purchase')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                  activeView === 'purchase' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-300 hover:text-white'
+                className={`px-3 py-1.5 rounded-md font-medium transition ${
+                  activeView === 'purchase' ? 'bg-[#0EA5E9] text-white font-semibold' : 'text-sky-100 hover:text-white'
                 }`}
               >
                 Purchase Register
               </button>
               <button
                 onClick={() => setActiveView('vat_return')}
-                className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                  activeView === 'vat_return' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-300 hover:text-white'
+                className={`px-3 py-1.5 rounded-md font-medium transition ${
+                  activeView === 'vat_return' ? 'bg-[#0EA5E9] text-white font-semibold' : 'text-sky-100 hover:text-white'
                 }`}
               >
                 Monthly VAT Return
@@ -95,15 +97,15 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
 
             <button
               onClick={handlePrint}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md flex items-center space-x-1.5 transition"
+              className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
             >
               <Printer className="w-4 h-4" />
-              <span>Print A4 Document</span>
+              <span>Print A4 / PDF</span>
             </button>
 
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+              className="p-2 text-sky-200 hover:text-white rounded-lg hover:bg-white/10 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -111,7 +113,8 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
         </div>
 
         {/* Document Body (Printable A4) */}
-        <div className="p-8 overflow-y-auto print:p-0 text-slate-900 bg-white font-sans text-xs">
+        <div className="overflow-y-auto flex-1 bg-[#F1F5F9] p-4 sm:p-6">
+          <div ref={printAreaRef} className="a4-sheet p-6 sm:p-8 print:p-0 text-[#0F172A] bg-[#FFFFFF] border border-[#E2E8F0] print:border-0 font-sans text-xs">
           {/* Header Section */}
           <div className="text-center border-b-2 border-slate-900 pb-4 mb-5">
             <p className="text-[11px] font-semibold text-slate-600">Government of Nepal | Ministry of Finance | Inland Revenue Department</p>
@@ -373,6 +376,7 @@ export const PrintIrdVatRegisterModal: React.FC<PrintIrdVatRegisterModalProps> =
               <p className="font-bold text-slate-900">Authorized Signatory & Stamp</p>
               <p className="text-[10px] text-slate-500">Managing Director / Tax Agent</p>
             </div>
+          </div>
           </div>
         </div>
       </div>

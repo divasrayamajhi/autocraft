@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   JobCard, 
   Appointment, 
@@ -27,6 +27,10 @@ import {
   AlertCircle, 
   Filter,
   ArrowRight,
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
   Lock,
   FileText,
   History,
@@ -68,13 +72,13 @@ interface JobCardManagementProps {
   onCreateQuotation?: (quotation: PartsQuotation) => void;
 }
 
-const KANBAN_COLUMNS: { id: JobCardStatus; title: string; color: string }[] = [
-  { id: 'Vehicle Check-in', title: 'Vehicle Check-in', color: 'border-slate-400 text-slate-700 bg-slate-50' },
-  { id: 'Bay Assigned (In Progress)', title: 'In Bay (Repairs)', color: 'border-indigo-400 text-indigo-700 bg-indigo-50/50' },
-  { id: 'Awaiting Spares', title: 'Awaiting Spares', color: 'border-amber-400 text-amber-700 bg-amber-50/50' },
-  { id: 'Quality Check', title: 'Quality Check', color: 'border-purple-400 text-purple-700 bg-purple-50/50' },
-  { id: 'Ready for Billing', title: 'Ready for Billing', color: 'border-emerald-400 text-emerald-700 bg-emerald-50/50' },
-  { id: 'Delivered', title: 'Delivered Vehicles', color: 'border-slate-300 text-slate-500 bg-slate-50' }
+const KANBAN_COLUMNS: { id: JobCardStatus; title: string; accent: string; badgeBg: string }[] = [
+  { id: 'Vehicle Check-in', title: 'Vehicle Check-in', accent: '#64748B', badgeBg: 'bg-[#F1F5F9] text-[#0F172A]' },
+  { id: 'Bay Assigned (In Progress)', title: 'In Bay (Repairs)', accent: '#0EA5E9', badgeBg: 'bg-sky-50 text-[#0284C7]' },
+  { id: 'Awaiting Spares', title: 'Awaiting Spares', accent: '#F59E0B', badgeBg: 'bg-amber-50 text-[#B45309]' },
+  { id: 'Quality Check', title: 'Quality Check', accent: '#0284C7', badgeBg: 'bg-sky-50 text-[#0F3D5E]' },
+  { id: 'Ready for Billing', title: 'Ready for Billing', accent: '#16A34A', badgeBg: 'bg-green-50 text-[#16A34A]' },
+  { id: 'Delivered', title: 'Delivered', accent: '#0F3D5E', badgeBg: 'bg-[#F1F5F9] text-[#0F3D5E]' }
 ];
 
 export const JobCardManagement: React.FC<JobCardManagementProps> = ({
@@ -109,6 +113,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'kanban' | 'list' | 'appointments'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJobCard, setSelectedJobCard] = useState<JobCard | null>(null);
+  const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<JobCardStatus | null>(null);
 
   // Enhanced Filter States for Job Cards & Appointments
   const [showFilters, setShowFilters] = useState(false);
@@ -846,109 +853,126 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     setIsIntakeModalOpen(true);
   };
 
+  // Move Job Card to any target stage (supports drag-and-drop + prev/next buttons)
+  const handleMoveToStage = (jc: JobCard, targetStage: JobCardStatus, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (jc.isLocked || jc.status === targetStage) return;
+    onUpdateJobCard({ ...jc, status: targetStage });
+  };
+
   // Advance Stage in Kanban
   const handleAdvanceStage = (jc: JobCard, e: React.MouseEvent) => {
     e.stopPropagation();
     if (jc.isLocked) return;
 
-    const stages: JobCardStatus[] = [
-      'Vehicle Check-in',
-      'Bay Assigned (In Progress)',
-      'Awaiting Spares',
-      'Quality Check',
-      'Ready for Billing',
-      'Delivered'
-    ];
+    const stages = KANBAN_COLUMNS.map(c => c.id);
     const currentIdx = stages.indexOf(jc.status);
     if (currentIdx < stages.length - 1) {
-      const nextStage = stages[currentIdx + 1];
-      const updated = { ...jc, status: nextStage };
-      onUpdateJobCard(updated);
+      onUpdateJobCard({ ...jc, status: stages[currentIdx + 1] });
     }
   };
 
+  const handleRetreatStage = (jc: JobCard, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (jc.isLocked) return;
+
+    const stages = KANBAN_COLUMNS.map(c => c.id);
+    const currentIdx = stages.indexOf(jc.status);
+    if (currentIdx > 0) {
+      onUpdateJobCard({ ...jc, status: stages[currentIdx - 1] });
+    }
+  };
+
+  const scrollKanban = (direction: 'left' | 'right') => {
+    if (!kanbanScrollRef.current) return;
+    kanbanScrollRef.current.scrollBy({
+      left: direction === 'left' ? -320 : 320,
+      behavior: 'smooth'
+    });
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center space-x-2">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0]">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setActiveSubTab('kanban')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition ${
-              activeSubTab === 'kanban' 
-                ? 'bg-indigo-600 text-white shadow-sm' 
-                : 'text-slate-600 hover:bg-slate-100'
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition border ${
+              activeSubTab === 'kanban'
+                ? 'bg-[#0EA5E9] text-white border-[#0EA5E9]'
+                : 'bg-[#FFFFFF] text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border-[#E2E8F0]'
             }`}
           >
-            <Layers className="w-4 h-4" />
+            <Layers className="w-3.5 h-3.5" />
             <span>Agile Kanban Board</span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('list')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition ${
-              activeSubTab === 'list' 
-                ? 'bg-indigo-600 text-white shadow-sm' 
-                : 'text-slate-600 hover:bg-slate-100'
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition border ${
+              activeSubTab === 'list'
+                ? 'bg-[#0EA5E9] text-white border-[#0EA5E9]'
+                : 'bg-[#FFFFFF] text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border-[#E2E8F0]'
             }`}
           >
-            <Wrench className="w-4 h-4" />
+            <Wrench className="w-3.5 h-3.5" />
             <span>Job Card Register ({safeJobCards.length})</span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('appointments')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition ${
-              activeSubTab === 'appointments' 
-                ? 'bg-indigo-600 text-white shadow-sm' 
-                : 'text-slate-600 hover:bg-slate-100'
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition border ${
+              activeSubTab === 'appointments'
+                ? 'bg-[#0EA5E9] text-white border-[#0EA5E9]'
+                : 'bg-[#FFFFFF] text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border-[#E2E8F0]'
             }`}
           >
-            <Calendar className="w-4 h-4" />
+            <Calendar className="w-3.5 h-3.5" />
             <span>Appointments ({safeAppointments.length})</span>
           </button>
         </div>
 
-        <div className="flex items-center space-x-2.5">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 sm:flex-none">
+            <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search Reg, Chassis, Job Card, Customer..."
+              placeholder="Search Reg, Job Card, Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 sm:w-60"
+              className="pl-9 pr-7 py-2 text-xs bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] placeholder:text-[#64748B] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-[#FFFFFF] w-full sm:w-60 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 border transition ${
+            className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border transition ${
               hasActiveFilters || showFilters
-                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                ? 'bg-sky-50 border-[#0EA5E9] text-[#0284C7]'
+                : 'bg-[#FFFFFF] border-[#E2E8F0] text-[#0F172A] hover:bg-[#F1F5F9]'
             }`}
             title="Filter by Date, Status, Technician, and Service Type"
           >
             <Filter className="w-3.5 h-3.5" />
             <span>Filters</span>
             {hasActiveFilters && (
-              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0EA5E9]" />
             )}
           </button>
 
           {activeSubTab === 'appointments' ? (
             <button
               onClick={() => setIsNewAptModalOpen(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-sm"
+              className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
             >
               <Plus className="w-4 h-4" />
               <span>Book Appointment</span>
@@ -956,7 +980,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           ) : (
             <button
               onClick={() => setIsIntakeModalOpen(true)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-sm"
+              className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
             >
               <Plus className="w-4 h-4" />
               <span>Create Job Card</span>
@@ -1110,93 +1134,237 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
       {/* SUBTAB 1: AGILE KANBAN BOARD */}
       {activeSubTab === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 overflow-x-auto pb-4">
-          {KANBAN_COLUMNS.map((col) => {
-            const columnCards = filteredCards.filter((jc) => jc.status === col.id);
+        <div className="space-y-3">
+          {/* Board Navigation & Summary Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <div className="flex items-center space-x-3 text-xs text-[#64748B]">
+              <span className="font-semibold text-[#0F172A]">
+                {filteredCards.filter(c => c.status !== 'Delivered').length} Active Vehicles
+              </span>
+              <span>·</span>
+              <span>{filteredCards.length} Total Displayed</span>
+              <span className="hidden md:inline">·</span>
+              <span className="hidden md:inline">Drag cards between stages or click a card to open details</span>
+            </div>
 
-            return (
-              <div
-                key={col.id}
-                className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-3 min-w-[240px] flex flex-col h-[calc(100vh-280px)] min-h-[500px]"
+            <div className="flex items-center space-x-1.5">
+              <button
+                type="button"
+                onClick={() => scrollKanban('left')}
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E2E8F0] text-xs font-medium text-[#0F172A] hover:bg-[#F1F5F9] transition"
+                title="Scroll board left"
               >
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
-                  <span className="text-xs font-bold text-slate-800">{col.title}</span>
-                  <span className="text-xs font-mono font-bold bg-white text-slate-600 px-2 py-0.5 rounded-full border border-slate-200 shadow-2xs">
-                    {columnCards.length}
-                  </span>
-                </div>
+                <ChevronLeft className="w-3.5 h-3.5 text-[#64748B]" />
+                <span>Left</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollKanban('right')}
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-[#FFFFFF] border border-[#E2E8F0] text-xs font-medium text-[#0F172A] hover:bg-[#F1F5F9] transition"
+                title="Scroll board right"
+              >
+                <span>Right</span>
+                <ChevronRight className="w-3.5 h-3.5 text-[#64748B]" />
+              </button>
+            </div>
+          </div>
 
-                <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
-                  {columnCards.map((jc) => {
-                    const totalLabor = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
-                    const partsList = jc.partsRequested || jc.partsItems || [];
-                    const totalParts = partsList.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
-                    const totalEstimate = totalLabor + totalParts;
+          {/* Horizontal Scrollable Lanes */}
+          <div
+            ref={kanbanScrollRef}
+            className="flex items-stretch gap-4 overflow-x-auto pb-4 scrollbar-clean"
+          >
+            {KANBAN_COLUMNS.map((col, colIdx) => {
+              const columnCards = filteredCards.filter((jc) => jc.status === col.id);
+              const columnTotal = columnCards.reduce((sum, jc) => {
+                const lSum = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
+                const pList = jc.partsRequested || jc.partsItems || [];
+                const pSum = pList.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
+                return sum + lSum + pSum;
+              }, 0);
+              const isDropTarget = dragOverColumn === col.id;
 
-                    return (
-                      <div
-                        key={jc.id}
-                        onClick={() => setSelectedJobCard(jc)}
-                        className={`bg-white rounded-xl p-3 border shadow-2xs hover:shadow-md transition cursor-pointer relative group ${
-                          jc.isLocked ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-mono text-[11px] font-bold text-indigo-700">
-                            {jc.jobCardNumber}
-                          </span>
-                          {jc.isLocked ? (
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded flex items-center space-x-0.5">
-                              <Lock className="w-2.5 h-2.5" />
-                              <span>Locked</span>
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-semibold text-slate-400">
-                              {jc.serviceType.split(' ')[0]}
-                            </span>
-                          )}
-                        </div>
+              return (
+                <div
+                  key={col.id}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (dragOverColumn !== col.id) setDragOverColumn(col.id);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverColumn === col.id) setDragOverColumn(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverColumn(null);
+                    const cardId = e.dataTransfer.getData('text/plain') || draggedCardId;
+                    setDraggedCardId(null);
+                    if (!cardId) return;
+                    const card = safeJobCards.find(c => c.id === cardId);
+                    if (card && !card.isLocked) {
+                      handleMoveToStage(card, col.id);
+                    }
+                  }}
+                  className={`w-[295px] shrink-0 rounded-xl border flex flex-col max-h-[calc(100vh-270px)] min-h-[500px] overflow-hidden transition-colors ${
+                    isDropTarget
+                      ? 'bg-sky-50/70 border-[#0EA5E9] ring-2 ring-[#0EA5E9]/20'
+                      : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                  }`}
+                >
+                  {/* Stage Top Color Accent Bar */}
+                  <div className="h-1 w-full" style={{ backgroundColor: col.accent }} />
 
-                        <div className="text-xs font-mono font-bold text-slate-900 truncate">
-                          {jc.vehicle.registrationNumber}
-                        </div>
-                        <div className="text-[11px] text-slate-500 truncate">
-                          {jc.vehicle.brand} {jc.vehicle.model}
-                        </div>
+                  {/* Column Header */}
+                  <div className="px-3.5 py-3 bg-[#FFFFFF] border-b border-[#E2E8F0]">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-bold text-[#0F172A] tracking-tight truncate">
+                        {col.title}
+                      </h3>
+                      <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-md ${col.badgeBg}`}>
+                        {columnCards.length}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-[#64748B]">
+                      <span>Stage Value</span>
+                      <span className="font-mono font-semibold text-[#0F3D5E] tabular-nums">
+                        Rs. {columnTotal.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
 
-                        <div className="mt-2 text-[11px] text-slate-600 truncate flex items-center space-x-1">
-                          <User className="w-3 h-3 text-slate-400" />
-                          <span>{jc.customerName}</span>
-                        </div>
-
-                        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-[10px]">
-                            {jc.bayNumber}
-                          </span>
-                          <span className="font-mono font-bold text-slate-800">
-                            Rs. {totalEstimate.toLocaleString()}
-                          </span>
-                        </div>
-
-                        {!jc.isLocked && col.id !== 'Delivered' && (
-                          <div className="mt-2 pt-2 border-t border-slate-100 flex justify-end">
-                            <button
-                              onClick={(e) => handleAdvanceStage(jc, e)}
-                              className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-0.5 p-1 rounded hover:bg-indigo-50"
-                              title="Advance to next repair stage"
-                            >
-                              <span>Next Stage</span>
-                              <ArrowRight className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
+                  {/* Cards Stack */}
+                  <div className="p-3 space-y-2.5 overflow-y-auto flex-1 scrollbar-clean">
+                    {columnCards.length === 0 ? (
+                      <div className="h-28 rounded-lg border border-dashed border-[#CBD5E1] flex flex-col items-center justify-center text-center px-4 text-[#64748B]">
+                        <span className="text-[11px] font-medium">No vehicles in stage</span>
+                        <span className="text-[10px] mt-0.5 text-[#94A3B8]">Drop a job card here</span>
                       </div>
-                    );
-                  })}
+                    ) : (
+                      columnCards.map((jc) => {
+                        const totalLabor = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
+                        const partsList = jc.partsRequested || jc.partsItems || [];
+                        const totalParts = partsList.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
+                        const totalEstimate = totalLabor + totalParts;
+                        const isDragging = draggedCardId === jc.id;
+
+                        return (
+                          <div
+                            key={jc.id}
+                            draggable={!jc.isLocked}
+                            onDragStart={(e) => {
+                              if (jc.isLocked) {
+                                e.preventDefault();
+                                return;
+                              }
+                              setDraggedCardId(jc.id);
+                              e.dataTransfer.setData('text/plain', jc.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                            }}
+                            onDragEnd={() => {
+                              setDraggedCardId(null);
+                              setDragOverColumn(null);
+                            }}
+                            onClick={() => setSelectedJobCard(jc)}
+                            className={`bg-[#FFFFFF] rounded-lg p-3.5 border transition cursor-pointer group ${
+                              isDragging
+                                ? 'opacity-50 border-[#0EA5E9]'
+                                : jc.isLocked
+                                  ? 'border-amber-300 bg-amber-50/30 hover:border-amber-400'
+                                  : 'border-[#E2E8F0] hover:border-[#0EA5E9]'
+                            }`}
+                          >
+                            {/* Row 1: Job Card # & Lock/Drag */}
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <div className="flex items-center space-x-1.5 min-w-0">
+                                {!jc.isLocked && (
+                                  <GripVertical className="w-3.5 h-3.5 text-[#CBD5E1] group-hover:text-[#64748B] flex-shrink-0 cursor-grab" />
+                                )}
+                                <span className="font-mono text-[11px] font-bold text-[#0F3D5E] truncate">
+                                  {jc.jobCardNumber}
+                                </span>
+                              </div>
+
+                              {jc.isLocked ? (
+                                <span className="text-[10px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1 flex-shrink-0">
+                                  <Lock className="w-2.5 h-2.5" />
+                                  <span>Invoiced</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium text-[#64748B] truncate max-w-[95px]">
+                                  {jc.serviceType.split(' ')[0]}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Row 2: Vehicle Reg + Make/Model */}
+                            <div className="text-sm font-mono font-bold text-[#0F172A] tracking-tight truncate">
+                              {jc.vehicle.registrationNumber}
+                            </div>
+                            <div className="text-[11px] text-[#64748B] truncate mt-0.5">
+                              {jc.vehicle.brand} {jc.vehicle.model}
+                            </div>
+
+                            {/* Row 3: Customer & Tech Metadata */}
+                            <div className="mt-2.5 text-[11px] text-[#64748B] truncate flex items-center space-x-1.5">
+                              <User className="w-3 h-3 text-[#94A3B8] flex-shrink-0" />
+                              <span className="text-[#0F172A] font-medium truncate">{jc.customerName}</span>
+                              {jc.assignedTechnicianName && (
+                                <>
+                                  <span>·</span>
+                                  <span className="truncate">{jc.assignedTechnicianName.split(' ')[0]}</span>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Row 4: Bay & Estimate */}
+                            <div className="mt-3 pt-2.5 border-t border-[#E2E8F0] flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-[#0284C7] bg-sky-50 px-2 py-0.5 rounded text-[10px]">
+                                {jc.bayNumber || 'Unassigned'}
+                              </span>
+                              <span className="font-mono font-bold text-[#0F172A] tabular-nums">
+                                Rs. {totalEstimate.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+
+                            {/* Row 5: Stage Controls */}
+                            {!jc.isLocked && (
+                              <div className="mt-2.5 pt-2 border-t border-[#F1F5F9] flex items-center justify-between">
+                                {colIdx > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleRetreatStage(jc, e)}
+                                    className="text-[11px] font-medium text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] px-1.5 py-1 rounded inline-flex items-center space-x-1 transition"
+                                    title="Move to previous stage"
+                                  >
+                                    <ArrowLeft className="w-3 h-3" />
+                                    <span>Prev</span>
+                                  </button>
+                                ) : (
+                                  <span />
+                                )}
+
+                                {colIdx < KANBAN_COLUMNS.length - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleAdvanceStage(jc, e)}
+                                    className="text-[11px] font-semibold text-[#0EA5E9] hover:text-[#0284C7] hover:bg-sky-50 px-2 py-1 rounded inline-flex items-center space-x-1 transition"
+                                    title="Advance to next repair stage"
+                                  >
+                                    <span>Next Stage</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 

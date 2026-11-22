@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { JobCard, Invoice, GatePass } from '../../types';
+import { printElement } from '../../utils/printDocument';
 import { 
   History, 
   Car, 
@@ -44,6 +45,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
   onSelectJobCard
 }) => {
   const [expandedJcId, setExpandedJcId] = useState<string | null>(null);
+  const printHistoryRef = useRef<HTMLDivElement>(null);
 
   // Filter all job cards matching this vehicle (by registration or chassis or customer phone)
   const cleanTargetReg = (vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -73,40 +75,40 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
   const primaryVehicle = latestCard?.vehicle;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden">
+    <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
+      <div ref={printHistoryRef} className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col border border-[#E2E8F0] overflow-hidden">
         {/* Header Bar */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-[#0F3D5E] text-white px-5 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold">
+            <div className="w-9 h-9 rounded-lg bg-[#0EA5E9] flex items-center justify-center text-white font-bold">
               <History className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="text-base font-extrabold tracking-tight">
-                  Comprehensive Vehicle Service History
+                <h3 className="text-sm sm:text-base font-bold tracking-tight">
+                  Vehicle Service History
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono">
-                  {matchedJobCards.length} Workshop Visits
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-white/15 text-sky-100 font-mono">
+                  {matchedJobCards.length} Visits
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                {vehicleReg} • {primaryVehicle?.brand || 'Multi-Brand'} {primaryVehicle?.model || ''} • Owner: {customerName || latestCard?.customerName || 'Customer'}
+              <p className="text-xs text-sky-200">
+                {vehicleReg} · {primaryVehicle?.brand || 'Multi-Brand'} {primaryVehicle?.model || ''} · Owner: {customerName || latestCard?.customerName || 'Customer'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 print:hidden">
             <button
-              onClick={() => window.print()}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1 transition"
+              onClick={() => printElement(printHistoryRef.current, `Service-History-${vehicleReg}`)}
+              className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold flex items-center space-x-1 transition"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print Log</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+              className="p-1.5 text-sky-200 hover:text-white rounded-lg hover:bg-white/10 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -114,7 +116,7 @@ export const VehicleServiceHistoryModal: React.FC<VehicleServiceHistoryModalProp
         </div>
 
         {/* Vehicle Intelligence Snapshot Cards */}
-        <div className="bg-slate-50 border-b border-slate-200 p-4 sm:px-6">
+        <div className="bg-[#F1F5F9] border-b border-[#E2E8F0] p-4 sm:px-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div className="bg-white p-3 rounded-xl border border-slate-200">
               <span className="text-[10px] font-bold text-slate-400 uppercase block">Vehicle Info</span>

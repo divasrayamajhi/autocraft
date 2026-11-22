@@ -15,10 +15,8 @@ import {
   X,
   FileCheck,
   ShieldAlert,
-  Server,
-  Palette
+  Server
 } from 'lucide-react';
-import { ThemeCustomizer } from './ThemeCustomizer';
 import { DraggableTabBar } from '../common/DraggableTabBar';
 import { 
   UserAccount, 
@@ -51,7 +49,7 @@ interface AdminMasterSettingsProps {
   onUpdateTechnicians: (technicians: Technician[]) => void;
 }
 
-type AdminSubTab = 'theme' | 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'profile' | 'ird_config';
+type AdminSubTab = 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'profile' | 'ird_config';
 
 export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   profile,
@@ -206,26 +204,23 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Admin Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Admin Header */}
+      <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#E2E8F0] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-400/30">
-              Admin Exclusive Access
-            </span>
-            <span className="text-xs text-slate-400">Master Data Control Panel</span>
-          </div>
-          <h2 className="text-2xl font-black mt-1 tracking-tight">
-            Workshop Master Configuration & Governance
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#0284C7]">
+            Workshop Configuration &amp; Governance
+          </p>
+          <h2 className="text-xl font-bold text-[#0F172A] mt-0.5 tracking-tight">
+            Master Settings
           </h2>
-          <p className="text-xs text-slate-300 max-w-2xl mt-1">
-            Configure workshop legal profiles, staff role-based permissions (Admin + 4 limited roles), Nepal IRD CBMS 13% VAT endpoints, service labor price book, bay areas, and technician commissions.
+          <p className="text-xs text-[#64748B] max-w-2xl mt-1">
+            Configure staff role-based access, fixed-price labor catalog, workshop bays, technician master, legal workshop profile, and Nepal IRD 13% VAT settings.
           </p>
         </div>
 
         {savedSuccess && (
-          <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-4 py-2.5 rounded-xl text-xs flex items-center space-x-2 animate-fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <div className="bg-green-50 border border-green-200 text-[#16A34A] px-3.5 py-2 rounded-lg text-xs flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
             <span className="font-semibold">{savedSuccess}</span>
           </div>
         )}
@@ -234,9 +229,8 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
       {/* Sub-Navigation Tabs with Click & Drag Scrolling */}
       <DraggableTabBar className="mb-4">
         {[
-          { id: 'theme', label: 'Theme & Appearance', icon: Palette },
           { id: 'staff', label: 'Staff & Roles (RBAC)', icon: Users },
-          { id: 'services', label: 'Labor Price Book (Fixed Price)', icon: DollarSign },
+          { id: 'services', label: 'Labor Price Book', icon: DollarSign },
           { id: 'bays', label: 'Workshop Bays & Lifts', icon: Layers },
           { id: 'technicians', label: 'Technician Master', icon: Wrench },
           { id: 'profile', label: 'Workshop Profile', icon: Building2 },
@@ -248,10 +242,10 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveSubTab(tab.id as AdminSubTab)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex-shrink-0 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap flex-shrink-0 border ${
                 isActive
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  ? 'bg-[#0EA5E9] text-white border-[#0EA5E9]'
+                  : 'bg-[#FFFFFF] text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border-[#E2E8F0]'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -260,11 +254,6 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
           );
         })}
       </DraggableTabBar>
-
-      {/* SUBTAB 0: THEME & UI CUSTOMIZER */}
-      {activeSubTab === 'theme' && (
-        <ThemeCustomizer onNotify={showNotification} />
-      )}
 
       {/* SUBTAB 1: STAFF & USER ROLES (RBAC) */}
       {activeSubTab === 'staff' && (

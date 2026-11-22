@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { X, Printer, CheckCircle2, QrCode } from 'lucide-react';
 import { PartsQuotation, PartsSalesOrder, PartsSalesReturn, WorkshopProfile } from '../../types';
+import { printElement } from '../../utils/printDocument';
 
 interface InventoryDocSlipModalProps {
   isOpen: boolean;
@@ -19,43 +20,52 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
   salesReturn,
   profile
 }) => {
+  const printAreaRef = useRef<HTMLDivElement>(null);
   if (!isOpen) return null;
 
-  const workshopName = profile?.name || profile?.legalEntityName || 'MULTI-BRAND AUTO WORKSHOP & SPARES';
+  const workshopName = profile?.name || profile?.legalEntityName || 'CONTINENTAL AUTO KRAFT';
   const workshopAddress = profile?.address ? `${profile.address}, ${profile.city || 'Kathmandu'}, Nepal` : 'Ring Road Sukedhara, Kathmandu, Nepal';
-  const workshopPan = profile?.panVatNumber || '601239845';
+  const workshopPan = profile?.panVatNumber || '609812453';
   const workshopPhone = profile?.contactNumber || '+977-1-4370000';
 
+  const docTitle = quotation
+    ? `Quotation-${quotation.quotationNumber}`
+    : salesOrder
+      ? `Sales-Order-${salesOrder.orderNumber}`
+      : salesReturn
+        ? `Credit-Note-${salesReturn.creditNoteNumber}`
+        : 'Inventory-Document';
+
   const handlePrint = () => {
-    window.print();
+    printElement(printAreaRef.current, docTitle);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 text-xs my-8 max-h-[90vh] flex flex-col">
+    <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-lg w-full p-5 border border-[#E2E8F0] text-xs my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-          <h3 className="text-sm font-bold text-slate-900">
+        <div className="print:hidden flex items-center justify-between pb-3 border-b border-[#E2E8F0] shrink-0">
+          <h3 className="text-sm font-bold text-[#0F172A]">
             {quotation && 'Spare Parts Quotation / Pro-Forma Slip'}
             {salesOrder && 'OTC Spares Sales Order & Dispatch Challan'}
             {salesReturn && 'IRD Credit Note / Return Voucher'}
           </h3>
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1.5">
             <button
               onClick={handlePrint}
-              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg flex items-center space-x-1"
+              className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white font-semibold rounded-lg flex items-center space-x-1 transition"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print</span>
+              <span>Print / PDF</span>
             </button>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+            <button onClick={onClose} className="text-[#64748B] hover:text-[#0F172A] p-1.5 rounded-lg hover:bg-[#F1F5F9]">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Document Body (Printable) */}
-        <div className="overflow-y-auto py-4 space-y-4 font-mono shrink grow text-slate-800">
+        <div ref={printAreaRef} className="a4-sheet overflow-y-auto py-4 space-y-4 font-mono shrink grow text-[#0F172A] bg-[#FFFFFF]">
           {/* Workshop Header */}
           <div className="text-center pb-3 border-b border-dashed border-slate-300">
             <h2 className="text-base font-black tracking-tight text-slate-900 font-sans uppercase">
