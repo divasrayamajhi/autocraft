@@ -289,6 +289,14 @@ export interface PartsQuotation {
   notes?: string;
 }
 
+export interface CompanyBillingDetails {
+  isCompanyBill: boolean;
+  companyName: string;
+  panVatNumber: string;
+  address: string;
+  phone: string;
+}
+
 export interface PartsSalesOrder {
   id: string;
   orderNumber: string;
@@ -302,6 +310,7 @@ export interface PartsSalesOrder {
   grandTotal: number;
   dispatchStatus: 'Pending' | 'Partially Dispatched' | 'Fully Dispatched';
   invoiceStatus: 'Not Invoiced' | 'Invoiced';
+  companyBilling?: CompanyBillingDetails;
 }
 
 export interface PartsSalesReturn {
@@ -471,8 +480,15 @@ export interface Invoice {
   customerId?: string;
   customerName: string;
   customerPhone: string;
+  customerAddress?: string;
   customerPan?: string;
   customerPanVat?: string; // Buyer PAN
+  // Corporate / Company Tax Invoice Billing Fields
+  billedToType?: 'Individual' | 'Company';
+  companyName?: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  buyerContactPerson?: string; // Original customer / vehicle owner name when billed to company
   vehicleReg: string;
   vehicleBrand?: string;
   vehicleModel: string;
@@ -759,6 +775,28 @@ export interface DaybookTransaction {
   balanceDue: number;
   irdCbmsStatus: 'Synced' | 'Pending' | 'Exempt';
   cashierName?: string;
+}
+
+export type CashierVoucherType = 'Cash In' | 'Cash Out';
+
+// Cashier Daybook Manual Cash Receipt (Cash In) & Cash Payment (Cash Out) Voucher
+export interface CashierVoucher {
+  id: string;
+  transactionDate: string; // YYYY-MM-DD
+  bsDate?: string;
+  voucherNumber: string; // Unique transaction ID e.g. CRV-81-0001 / CPV-81-0001
+  transactionType: CashierVoucherType;
+  accountHead: string; // Sales, Expense, Advance, etc.
+  glAccountCode?: string; // Mapped General Ledger account code
+  particulars: string; // Description
+  referenceNumber?: string; // Invoice or payment reference
+  amount: number; // Positive NPR transaction amount
+  paymentMode: 'Cash';
+  partyName: string; // Received From (Cash In) / Paid To (Cash Out)
+  remarks?: string; // Additional information
+  createdBy: string; // Logged-in cashier
+  approvedBy?: string; // Authorizing person, if required
+  createdAt: string; // ISO timestamp
 }
 
 // Master Settings Theme Customizer Types

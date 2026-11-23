@@ -12,7 +12,8 @@ import {
   PartsQuotation,
   WorkshopProfile,
   ServicePriceItem,
-  WorkshopBay
+  WorkshopBay,
+  Customer
 } from '../../types';
 import { 
   Wrench, 
@@ -45,11 +46,13 @@ import {
 import { VehicleServiceHistoryModal } from '../common/VehicleServiceHistoryModal';
 import { AccidentQuotationModal } from './AccidentQuotationModal';
 import { PrintJobCardModal } from './PrintJobCardModal';
+import { GenerateTaxInvoiceModal, TaxInvoiceGenerationOptions } from '../billing/GenerateTaxInvoiceModal';
 
 interface JobCardDetailModalProps {
   jobCard: JobCard;
   availableParts: SparePart[];
   technicians: Technician[];
+  customers?: Customer[];
   currentUser: UserAccount;
   profile?: WorkshopProfile;
   servicePrices?: ServicePriceItem[];
@@ -61,7 +64,7 @@ interface JobCardDetailModalProps {
   onUpdateJobCard: (updated: JobCard) => void;
   onUpdatePart?: (part: SparePart) => void;
   onUpdateBay?: (bay: WorkshopBay) => void;
-  onConvertToInvoice: (jc: JobCard) => void;
+  onConvertToInvoice: (jc: JobCard, options?: TaxInvoiceGenerationOptions) => void;
   onViewInvoice?: (invoice: Invoice) => void;
   onCreateQuotation?: (quotation: PartsQuotation) => void;
 }
@@ -70,6 +73,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   jobCard,
   availableParts = [],
   technicians = [],
+  customers = [],
   currentUser,
   profile,
   servicePrices = [],
@@ -86,6 +90,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   onCreateQuotation
 }) => {
   const [activeTab, setActiveTab] = useState<'inspection' | 'labor' | 'parts' | 'status'>('inspection');
+  const [isGenerateInvoiceOpen, setIsGenerateInvoiceOpen] = useState(false);
   const [currentJobCard, setCurrentJobCard] = useState<JobCard>(() => ({
     ...jobCard,
     laborItems: jobCard.laborItems || [],
@@ -1265,8 +1270,8 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
 
               return (
                 <button
-                  onClick={() => onConvertToInvoice(currentJobCard)}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-900 transition flex items-center space-x-1.5"
+                  onClick={() => setIsGenerateInvoiceOpen(true)}
+                  className="px-5 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5"
                 >
                   <FileText className="w-4 h-4" />
                   <span>Proceed to IRD Tax Invoice</span>
@@ -1393,6 +1398,22 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
           onClose={() => setIsPrintModalOpen(false)}
         />
       )}
+
+      {/* GENERATE IRD TAX INVOICE MODAL (INDIVIDUAL OR COMPANY BILLING) */}
+      <GenerateTaxInvoiceModal
+        isOpen={isGenerateInvoiceOpen}
+        jobCard={currentJobCard}
+        customer={customers.find(
+          (c) =>
+            (currentJobCard.customerId && c.id === currentJobCard.customerId) ||
+            c.name.trim().toLowerCase() === (currentJobCard.customerName || '').trim().toLowerCase()
+        )}
+        onClose={() => setIsGenerateInvoiceOpen(false)}
+        onConfirm={(jc, options) => {
+          setIsGenerateInvoiceOpen(false);
+          onConvertToInvoice(jc, options);
+        }}
+      />
     </div>
   );
 };

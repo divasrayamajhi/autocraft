@@ -21,7 +21,8 @@ import {
   VatLedgerEntry,
   InsuranceClaim,
   PurchaseOrder,
-  GatePass
+  GatePass,
+  CashierVoucher
 } from '../types';
 import {
   recomputeGlBalancesFromJournal,
@@ -56,6 +57,7 @@ export interface AppDatabase {
   vatLedger: VatLedgerEntry[];
   insuranceClaims: InsuranceClaim[];
   purchaseOrders: PurchaseOrder[];
+  cashierVouchers: CashierVoucher[];
   lastCloudSync: string;
   isCloudSynced: boolean;
 }
@@ -1345,6 +1347,7 @@ export class StorageService {
         }
       ],
       purchaseOrders: INITIAL_PURCHASE_ORDERS,
+      cashierVouchers: [],
       lastCloudSync: new Date().toISOString(),
       isCloudSynced: true
     };
@@ -1532,6 +1535,7 @@ export class StorageService {
       vatLedger: Array.isArray(parsed.vatLedger) ? parsed.vatLedger : [],
       insuranceClaims: Array.isArray(parsed.insuranceClaims) && parsed.insuranceClaims.length > 0 ? parsed.insuranceClaims : fallback.insuranceClaims,
       purchaseOrders: Array.isArray(parsed.purchaseOrders) && parsed.purchaseOrders.length > 0 ? parsed.purchaseOrders : INITIAL_PURCHASE_ORDERS,
+      cashierVouchers: Array.isArray(parsed.cashierVouchers) ? parsed.cashierVouchers : [],
       lastCloudSync: parsed.lastCloudSync || new Date().toISOString(),
       isCloudSynced: typeof parsed.isCloudSynced === 'boolean' ? parsed.isCloudSynced : true
     };

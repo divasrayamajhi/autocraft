@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, ShoppingBag, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Plus, Trash2, ShoppingBag, FileText, CheckCircle2, AlertCircle, Building2 } from 'lucide-react';
 import { SparePart, Customer, PartsQuotation, PartsSalesOrder, PartsQuotationItem } from '../../types';
 
 interface OtcOrderModalProps {
@@ -26,6 +26,13 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   const [walkinName, setWalkinName] = useState<string>('Walk-in Customer (Kathmandu)');
   const [walkinPhone, setWalkinPhone] = useState<string>('+977-98');
   const [pricingTier, setPricingTier] = useState<'Retail' | 'Fleet' | 'Insurance' | 'Wholesale'>('Retail');
+
+  // Optional Corporate / Company Tax Invoice Billing
+  const [billToCompany, setBillToCompany] = useState<boolean>(false);
+  const [companyName, setCompanyName] = useState<string>('');
+  const [companyPanVat, setCompanyPanVat] = useState<string>('');
+  const [companyAddress, setCompanyAddress] = useState<string>('');
+  const [companyPhone, setCompanyPhone] = useState<string>('');
 
   // Active line item selection
   const [selectedPartId, setSelectedPartId] = useState<string>(parts[0]?.id || '');
@@ -159,18 +166,34 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
       }
       onNotify(`Quotation ${quotation.quotationNumber} generated successfully!`);
     } else {
+      if (billToCompany) {
+        if (!companyName.trim() || !companyPanVat.trim() || !companyAddress.trim() || !companyPhone.trim()) {
+          onNotify('Please complete Company Name, VAT/PAN Number, Address, and Phone Number for company billing.');
+          return;
+        }
+      }
+
       const salesOrder: PartsSalesOrder = {
         id: `PSO-${Date.now().toString().slice(-4)}`,
         orderNumber: `PSO-81-${Math.floor(1000 + Math.random() * 9000)}`,
         customerId: selectedCustomerId,
-        customerName,
+        customerName: billToCompany ? companyName.trim() : customerName,
         date: todayStr,
         items: cartItems,
         subtotal,
         vatAmount,
         grandTotal,
         dispatchStatus: 'Fully Dispatched',
-        invoiceStatus: 'Invoiced'
+        invoiceStatus: 'Invoiced',
+        companyBilling: billToCompany
+          ? {
+              isCompanyBill: true,
+              companyName: companyName.trim(),
+              panVatNumber: companyPanVat.trim(),
+              address: companyAddress.trim(),
+              phone: companyPhone.trim(),
+            }
+          : undefined
       };
 
       if (onCreateSalesOrder) {
@@ -290,6 +313,64 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                   />
                 </div>
               </>
+            )}
+
+            {docType === 'order' && (
+              <div className="md:col-span-2 pt-2 border-t border-[#E2E8F0] space-y-2.5">
+                <label className="flex items-center space-x-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={billToCompany}
+                    onChange={(e) => setBillToCompany(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#CBD5E1] text-[#0EA5E9] focus:ring-[#0EA5E9]"
+                  />
+                  <Building2 className="w-4 h-4 text-[#0F3D5E]" />
+                  <span className="font-bold text-[#0F172A]">
+                    Bill Tax Invoice in Company Name (Corporate VAT / PAN Bill)
+                  </span>
+                </label>
+
+                {billToCompany && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-[#FFFFFF] p-3 rounded-lg border border-[#CBD5E1]">
+                    <div className="sm:col-span-2">
+                      <label className="block font-semibold text-[#0F172A] mb-1">Company Name *</label>
+                      <input
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="e.g. Himalayan Traders Pvt. Ltd."
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#0F172A] mb-1">VAT / PAN Number *</label>
+                      <input
+                        value={companyPanVat}
+                        onChange={(e) => setCompanyPanVat(e.target.value)}
+                        placeholder="e.g. 601234567"
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 font-mono outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#0F172A] mb-1">Company Phone *</label>
+                      <input
+                        value={companyPhone}
+                        onChange={(e) => setCompanyPhone(e.target.value)}
+                        placeholder="+977-1-4220192"
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 font-mono outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block font-semibold text-[#0F172A] mb-1">Company Address *</label>
+                      <input
+                        value={companyAddress}
+                        onChange={(e) => setCompanyAddress(e.target.value)}
+                        placeholder="e.g. Durbar Marg, Kathmandu"
+                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

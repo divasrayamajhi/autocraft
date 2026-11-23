@@ -43,10 +43,13 @@ import {
   PartsSalesReturn,
   GatePass,
   GLAccount,
-  GLJournalEntry
+  GLJournalEntry,
+  CashierVoucher
 } from './types';
+import { TaxInvoiceGenerationOptions } from './components/billing/GenerateTaxInvoiceModal';
 import {
   applyJournalEntryToAccounts,
+  buildCashierVoucherJournalEntry,
   buildCreditNoteJournalEntry,
   buildInvoiceJournalEntry,
   buildPaymentJournalEntry,
@@ -126,8 +129,8 @@ export default function App() {
     updateDb({ appointments: updatedApts });
   };
 
-  // Convert Job Card to Nepal IRD Tax Invoice (13% VAT)
-  const handleConvertJobCardToInvoice = (jc: JobCard) => {
+  // Convert Job Card to Nepal IRD Tax Invoice (13% VAT) — supports Individual or Company VAT Billing
+  const handleConvertJobCardToInvoice = (jc: JobCard, options?: TaxInvoiceGenerationOptions) => {
     const rawParts = jc.partsRequested || jc.partsItems || [];
     const rawLabor = jc.laborItems || [];
     const partsSubtotal = rawParts.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
@@ -137,15 +140,30 @@ export default function App() {
     const vatAmount = Math.round(taxableAmount * 0.13);
     const grandTotal = taxableAmount + vatAmount;
 
+    const cb = options?.companyBilling;
+    const isCompanyBill = Boolean(cb?.isCompanyBill && cb.companyName?.trim());
+    const todayIso = new Date().toISOString();
+    const todayDate = todayIso.slice(0, 10);
+
     const newInvoice: Invoice = {
       id: `INV-${Date.now().toString().slice(-5)}`,
       invoiceNumber: `TAX-81-${Math.floor(100 + Math.random() * 900)}`,
+      fiscalYear: db.profile.fiscalYear || '2081/82',
+      date: todayDate,
+      bsDate: toNepalBsDate(todayDate),
       jobCardId: jc.id,
       jobCardNumber: jc.jobCardNumber,
       customerId: jc.customerId,
-      customerName: jc.customerName,
-      customerPhone: jc.customerPhone,
-      customerPan: undefined,
+      customerName: isCompanyBill ? cb!.companyName.trim() : jc.customerName,
+      customerPhone: isCompanyBill ? cb!.phone.trim() : jc.customerPhone,
+      customerAddress: isCompanyBill ? cb!.address.trim() : options?.customerAddress,
+      customerPan: isCompanyBill ? cb!.panVatNumber.trim() : (options?.customerPan || jc.customerPan),
+      customerPanVat: isCompanyBill ? cb!.panVatNumber.trim() : (options?.customerPan || jc.customerPan),
+      billedToType: isCompanyBill ? 'Company' : 'Individual',
+      companyName: isCompanyBill ? cb!.companyName.trim() : undefined,
+      companyAddress: isCompanyBill ? cb!.address.trim() : undefined,
+      companyPhone: isCompanyBill ? cb!.phone.trim() : undefined,
+      buyerContactPerson: jc.customerName,
       vehicleReg: jc.vehicle?.registrationNumber || 'BA 01 PA 0001',
       vehicleBrand: jc.vehicle?.brand || 'Generic',
       vehicleModel: jc.vehicle?.model || 'Model',
@@ -157,14 +175,14 @@ export default function App() {
       grandTotal,
       paidAmount: 0,
       balanceDue: grandTotal,
-      paymentMethod: 'Fonepay',
+      paymentMethod: options?.paymentMethod || 'Fonepay',
       status: 'Unpaid',
-      createdAt: new Date().toISOString(),
+      createdAt: todayIso,
       type: jc.isInsuranceClaim ? 'Split Invoice - Customer Share' : 'Tax Invoice',
       isLocked: false,
       irdSyncDetails: {
         isSynced: true,
-        syncedAt: new Date().toISOString(),
+        syncedAt: todayIso,
         cbmsAckNumber: `CBMS-${Date.now().toString().slice(-6)}`,
         fiscalYear: db.profile.fiscalYear
       },
@@ -252,7 +270,7 @@ export default function App() {
     const updatedGatePasses = [vehicleGatePass, ...(db.gatePasses || [])];
 
     // Automatically update customer directory: aggregate lifetime totalSpent, last visit date, and vehicle garage records
-    const invoiceCustName = (newInvoice.customerName || '').trim().toLowerCase();
+    const invoiceCustName = (jc.customerName || newInvoice.customerName || '').trim().toLowerCase();
     const invoiceVehReg = (newInvoice.vehicleReg || '').trim().toUpperCase();
     const updatedCustomers = (db.customers || []).map(cust => {
       const matchesId = newInvoice.customerId && cust.id === newInvoice.customerId;
@@ -812,19 +830,32 @@ export default function App() {
       );
     }
 
-    // Automatically generate OTC Invoice in billing
+    // Automatically generate OTC Invoice in billing (supports Company VAT Billing)
+    const otcCb = order.companyBilling;
+    const isOtcCompany = Boolean(otcCb?.isCompanyBill && otcCb.companyName?.trim());
+    const otcDate = order.date || new Date().toISOString().slice(0, 10);
+
     const otcInvoice: Invoice = {
       id: `INV-OTC-${order.id}`,
       invoiceNumber: `INV-81-OTC-${Math.floor(1000 + Math.random() * 9000)}`,
       fiscalYear: db.profile.fiscalYear || '2081/82',
       jobCardId: 'JC-OTC',
       jobCardNumber: 'OTC-SALES',
-      customerName: order.customerName,
-      customerPhone: '+977-9800000000',
+      customerName: isOtcCompany ? otcCb!.companyName.trim() : order.customerName,
+      customerPhone: isOtcCompany ? otcCb!.phone.trim() : '+977-9800000000',
+      customerAddress: isOtcCompany ? otcCb!.address.trim() : undefined,
+      customerPan: isOtcCompany ? otcCb!.panVatNumber.trim() : undefined,
+      customerPanVat: isOtcCompany ? otcCb!.panVatNumber.trim() : undefined,
+      billedToType: isOtcCompany ? 'Company' : 'Individual',
+      companyName: isOtcCompany ? otcCb!.companyName.trim() : undefined,
+      companyAddress: isOtcCompany ? otcCb!.address.trim() : undefined,
+      companyPhone: isOtcCompany ? otcCb!.phone.trim() : undefined,
+      buyerContactPerson: order.customerName,
       vehicleReg: 'OTC-WALKIN',
       vehicleModel: 'Direct Spares Sale',
       type: 'Tax Invoice',
-      date: order.date || new Date().toISOString().slice(0, 10),
+      date: otcDate,
+      bsDate: toNepalBsDate(otcDate),
       isLocked: false,
       items: order.items.map((item, idx) => ({
         id: `OTC-ITEM-${idx}`,
@@ -1058,6 +1089,20 @@ export default function App() {
     });
   };
 
+  // --- CASHIER DAYBOOK VOUCHER HANDLER (CASH IN / CASH OUT + AUTO DOUBLE-ENTRY GL) ---
+  const handleAddCashierVoucher = (voucher: CashierVoucher) => {
+    const updatedVouchers = [voucher, ...(db.cashierVouchers || [])];
+    const cbJv = buildCashierVoucherJournalEntry(voucher, (db.journalEntries || []).length);
+    const updatedJournalEntries = cbJv ? [cbJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
+    const updatedGlAccounts = cbJv ? applyJournalEntryToAccounts(db.glAccounts || [], cbJv) : (db.glAccounts || []);
+
+    updateDb({
+      cashierVouchers: updatedVouchers,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts,
+    });
+  };
+
   // --- CUSTOMER HANDLERS ---
   const handleAddCustomer = (customer: Customer) => {
     const updated = [customer, ...(db.customers || [])];
@@ -1261,14 +1306,17 @@ export default function App() {
               jobCards={db.jobCards}
               customers={db.customers}
               availableParts={db.parts}
+              cashierVouchers={db.cashierVouchers || []}
               userRole={currentUser.role}
               gatePasses={db.gatePasses || []}
               profile={db.profile}
               currentUserName={currentUser.name}
               onCreateInvoice={handleCreateInvoice}
+              onConvertJobCardToInvoice={handleConvertJobCardToInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               onRecordPayment={handleRecordPayment}
               onCreateCreditNote={handleCreateCreditNote}
+              onAddCashierVoucher={handleAddCashierVoucher}
               onViewGatePass={(gp) => setPrintGatePass(gp)}
             />
           )}

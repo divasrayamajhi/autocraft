@@ -65,7 +65,7 @@ interface JobCardManagementProps {
   onCreateJobCard: (newJc: JobCard) => void;
   onUpdateJobCard: (updatedJc: JobCard) => void;
   onCreateAppointment: (newApt: Appointment) => void;
-  onConvertToInvoice: (jc: JobCard) => void;
+  onConvertToInvoice: (jc: JobCard, options?: import('../billing/GenerateTaxInvoiceModal').TaxInvoiceGenerationOptions) => void;
   onAddCustomer?: (customer: Customer) => void;
   onUpdateCustomer?: (customer: Customer) => void;
   onViewInvoice?: (invoice: Invoice) => void;
@@ -1542,6 +1542,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           gatePasses={gatePasses}
           availableParts={availableParts}
           technicians={technicians}
+          customers={safeCustomers}
           currentUser={currentUser}
           profile={profile}
           servicePrices={servicePrices}
@@ -1553,9 +1554,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             onUpdateJobCard(upd);
             setSelectedJobCard(upd);
           }}
-          onConvertToInvoice={(jc) => {
+          onConvertToInvoice={(jc, options) => {
             setSelectedJobCard(null);
-            onConvertToInvoice(jc);
+            onConvertToInvoice(jc, options);
           }}
           onViewInvoice={onViewInvoice}
           onCreateQuotation={onCreateQuotation}

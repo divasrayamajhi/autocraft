@@ -201,17 +201,45 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               {/* Buyer & Vehicle Information Grid */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="border border-[#E2E8F0] rounded-lg p-3.5 space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#0284C7] pb-1 border-b border-[#E2E8F0]">
-                    Billed To (Buyer Details)
+                  <div className="flex items-center justify-between pb-1 border-b border-[#E2E8F0]">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#0284C7]">
+                      {invoice.billedToType === 'Company' || invoice.companyName
+                        ? 'Billed To (Company / VAT Buyer)'
+                        : 'Billed To (Buyer Details)'}
+                    </p>
+                    {(invoice.billedToType === 'Company' || invoice.companyName) && (
+                      <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-sky-50 text-[#0F3D5E] border border-sky-200">
+                        Company Bill
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold text-[#0F172A] pt-1">
+                    {invoice.companyName || invoice.customerName}
                   </p>
-                  <p className="text-xs font-bold text-[#0F172A] pt-1">{invoice.customerName}</p>
-                  <div className="grid grid-cols-[90px_1fr] gap-y-0.5 text-[11px]">
-                    <span className="text-[#64748B]">Phone:</span>
-                    <span className="font-mono text-[#0F172A]">{invoice.customerPhone || 'N/A'}</span>
-                    <span className="text-[#64748B]">Buyer PAN:</span>
-                    <span className="font-mono font-semibold text-[#0F172A]">
-                      {invoice.customerPan || 'Consumer (Unregistered)'}
+                  <div className="grid grid-cols-[95px_1fr] gap-y-0.5 text-[11px]">
+                    <span className="text-[#64748B]">Buyer VAT/PAN:</span>
+                    <span className="font-mono font-bold text-[#0F3D5E]">
+                      {invoice.customerPan || invoice.customerPanVat || 'Consumer (Unregistered)'}
                     </span>
+                    {(invoice.companyAddress || invoice.customerAddress) && (
+                      <>
+                        <span className="text-[#64748B]">Address:</span>
+                        <span className="text-[#0F172A] leading-snug">
+                          {invoice.companyAddress || invoice.customerAddress}
+                        </span>
+                      </>
+                    )}
+                    <span className="text-[#64748B]">Phone:</span>
+                    <span className="font-mono text-[#0F172A]">
+                      {invoice.companyPhone || invoice.customerPhone || 'N/A'}
+                    </span>
+                    {invoice.buyerContactPerson &&
+                      invoice.buyerContactPerson !== (invoice.companyName || invoice.customerName) && (
+                        <>
+                          <span className="text-[#64748B]">Attn / Owner:</span>
+                          <span className="font-medium text-[#0F172A]">{invoice.buyerContactPerson}</span>
+                        </>
+                      )}
                     <span className="text-[#64748B]">Payment Mode:</span>
                     <span className="font-semibold text-[#0F3D5E]">{invoice.paymentMethod || 'Cash'}</span>
                     {invoice.paymentReference && (

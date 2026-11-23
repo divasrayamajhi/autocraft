@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
+  CashierVoucher,
   Invoice,
   JobCard,
   Customer,
@@ -24,9 +25,12 @@ import {
   CalendarDays,
   RotateCcw,
   AlertCircle,
+  Building2,
+  Plus,
 } from 'lucide-react';
 import { PrintInvoiceModal } from '../common/PrintInvoiceModal';
 import { DaybookView } from './DaybookView';
+import { GenerateTaxInvoiceModal, TaxInvoiceGenerationOptions } from './GenerateTaxInvoiceModal';
 import {
   formatAccountingNPR,
   isCreditNoteInvoice,
@@ -40,11 +44,13 @@ interface BillingManagementProps {
   jobCards: JobCard[];
   customers: Customer[];
   availableParts: SparePart[];
+  cashierVouchers?: CashierVoucher[];
   userRole: UserRole;
   gatePasses?: GatePass[];
   profile?: WorkshopProfile;
   currentUserName?: string;
   onCreateInvoice: (newInv: Invoice) => void;
+  onConvertJobCardToInvoice?: (jc: JobCard, options?: TaxInvoiceGenerationOptions) => void;
   onUpdateInvoice: (updatedInv: Invoice) => void;
   onRecordPayment: (invoiceId: string, amount: number, method: NepalPaymentMethod, ref: string) => void;
   onCreateCreditNote?: (
@@ -53,6 +59,7 @@ interface BillingManagementProps {
     reason: string,
     refundMethod: NepalPaymentMethod
   ) => void;
+  onAddCashierVoucher?: (voucher: CashierVoucher) => void;
   onViewGatePass?: (gatePass: GatePass) => void;
 }
 
@@ -61,19 +68,26 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
   jobCards,
   customers,
   availableParts,
+  cashierVouchers = [],
   userRole,
   gatePasses = [],
   profile,
   currentUserName,
+  onConvertJobCardToInvoice,
   onUpdateInvoice,
   onRecordPayment,
   onCreateCreditNote,
+  onAddCashierVoucher,
   onViewGatePass,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Partially Paid' | 'Unpaid' | 'Credit Note'>('All');
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<Invoice | null>(null);
   const [billingSubTab, setBillingSubTab] = useState<'invoices' | 'daybook'>('invoices');
+
+  // Generate Tax Invoice from Job Card (supports Bill in Company Name)
+  const [isJobCardPickerOpen, setIsJobCardPickerOpen] = useState(false);
+  const [jobCardToBill, setJobCardToBill] = useState<JobCard | null>(null);
 
   // Dynamic QR Payment Modal State
   const [qrModalInvoice, setQrModalInvoice] = useState<Invoice | null>(null);
@@ -94,6 +108,19 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
 
   // Notification Banner
   const [notification, setNotification] = useState<string | null>(null);
+
+  const unbilledJobCards = useMemo(() => {
+    return (jobCards || []).filter((jc) => {
+      const alreadyBilled = invoices.some(
+        (inv) =>
+          !isCreditNoteInvoice(inv) &&
+          ((inv.jobCardId && inv.jobCardId === jc.id) ||
+            (inv.jobCardNumber && inv.jobCardNumber === jc.jobCardNumber) ||
+            (jc.invoiceId && inv.id === jc.invoiceId))
+      );
+      return !alreadyBilled;
+    });
+  }, [jobCards, invoices]);
 
   const workshopName = profile?.name || 'Auto Workshop Pvt. Ltd.';
   const workshopPan = profile?.panVatNumber || '302849182';
@@ -288,9 +315,18 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
       {billingSubTab === 'daybook' ? (
         <DaybookView
           invoices={invoices}
+          cashierVouchers={cashierVouchers}
           profile={profile}
           userRole={userRole}
           currentUserName={currentUserName}
+          onAddCashierVoucher={(v) => {
+            if (onAddCashierVoucher) {
+              onAddCashierVoucher(v);
+              notify(
+                `${v.transactionType} Voucher ${v.voucherNumber} (${formatAccountingNPR(v.amount)}) saved & posted to GL.`
+              );
+            }
+          }}
           onPrintInvoice={(inv) => setSelectedInvoiceForPrint(inv)}
         />
       ) : (
@@ -379,6 +415,17 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                   {status}
                 </button>
               ))}
+
+              {onConvertJobCardToInvoice && (
+                <button
+                  type="button"
+                  onClick={() => setIsJobCardPickerOpen(true)}
+                  className="px-3.5 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Generate Tax Invoice</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -437,10 +484,18 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                     </div>
 
                     <div className="text-xs">
-                      <div className="font-semibold text-[#0F172A]">{inv.customerName}</div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-semibold text-[#0F172A]">{inv.companyName || inv.customerName}</span>
+                        {(inv.billedToType === 'Company' || inv.companyName) && (
+                          <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded bg-sky-50 text-[#0F3D5E] border border-sky-200 text-[9px] font-bold uppercase">
+                            <Building2 className="w-2.5 h-2.5" />
+                            <span>Company</span>
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-[#64748B] font-mono">
                         {inv.vehicleReg} • {inv.jobCardNumber}
-                        {inv.customerPan ? ` • PAN: ${inv.customerPan}` : ''}
+                        {(inv.customerPan || inv.customerPanVat) ? ` • VAT/PAN: ${inv.customerPan || inv.customerPanVat}` : ''}
                       </div>
                     </div>
 
@@ -605,12 +660,22 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                           </td>
 
                           <td className="p-3.5">
-                            <div className="font-semibold text-[#0F172A]">{inv.customerName}</div>
+                            <div className="flex items-center space-x-1.5">
+                              <span className="font-semibold text-[#0F172A]">{inv.companyName || inv.customerName}</span>
+                              {(inv.billedToType === 'Company' || inv.companyName) && (
+                                <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded bg-sky-50 text-[#0F3D5E] border border-sky-200 text-[9px] font-bold uppercase">
+                                  <Building2 className="w-2.5 h-2.5" />
+                                  <span>Company</span>
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[11px] text-[#64748B] font-mono">
                               {inv.vehicleReg} • {inv.jobCardNumber}
                             </div>
-                            {inv.customerPan && (
-                              <div className="text-[10px] text-[#0284C7] font-mono">PAN: {inv.customerPan}</div>
+                            {(inv.customerPan || inv.customerPanVat) && (
+                              <div className="text-[10px] text-[#0284C7] font-mono">
+                                VAT/PAN: {inv.customerPan || inv.customerPanVat}
+                              </div>
                             )}
                           </td>
 
@@ -1056,6 +1121,80 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
           onClose={() => setSelectedInvoiceForPrint(null)}
         />
       )}
+
+      {/* MODAL 5: PICK UNBILLED JOB CARD TO GENERATE TAX INVOICE */}
+      {isJobCardPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4">
+          <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-lg w-full border border-[#E2E8F0] overflow-hidden">
+            <div className="p-4 bg-[#0F3D5E] text-white flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm">Select Job Card for Tax Invoice</h4>
+                <p className="text-[11px] text-sky-200">
+                  Choose an unbilled Job Card to issue an Individual or Company VAT Invoice
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsJobCardPickerOpen(false)}
+                className="text-sky-200 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 max-h-96 overflow-y-auto divide-y divide-[#E2E8F0]">
+              {unbilledJobCards.length === 0 ? (
+                <div className="py-8 text-center text-xs text-[#64748B]">
+                  All active Job Cards already have an IRD Tax Invoice issued.
+                </div>
+              ) : (
+                unbilledJobCards.map((jc) => (
+                  <button
+                    key={jc.id}
+                    type="button"
+                    onClick={() => {
+                      setIsJobCardPickerOpen(false);
+                      setJobCardToBill(jc);
+                    }}
+                    className="w-full py-3 px-2 text-left hover:bg-[#F8FAFC] flex items-center justify-between transition"
+                  >
+                    <div>
+                      <div className="font-mono font-bold text-xs text-[#0284C7]">
+                        {jc.jobCardNumber} • {jc.vehicle?.registrationNumber}
+                      </div>
+                      <div className="text-xs font-semibold text-[#0F172A] mt-0.5">
+                        {jc.customerName} ({jc.vehicle?.brand} {jc.vehicle?.model})
+                      </div>
+                      <div className="text-[10px] text-[#64748B]">Status: {jc.status}</div>
+                    </div>
+                    <span className="px-2.5 py-1 bg-[#0EA5E9] text-white rounded-lg text-[11px] font-semibold">
+                      Bill Now
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: GENERATE TAX INVOICE WITH COMPANY BILLING OPTION */}
+      <GenerateTaxInvoiceModal
+        isOpen={Boolean(jobCardToBill)}
+        jobCard={jobCardToBill}
+        customer={customers.find(
+          (c) =>
+            jobCardToBill &&
+            ((jobCardToBill.customerId && c.id === jobCardToBill.customerId) ||
+              c.name.trim().toLowerCase() === (jobCardToBill.customerName || '').trim().toLowerCase())
+        )}
+        onClose={() => setJobCardToBill(null)}
+        onConfirm={(jc, options) => {
+          setJobCardToBill(null);
+          if (onConvertJobCardToInvoice) {
+            onConvertJobCardToInvoice(jc, options);
+          }
+        }}
+      />
     </div>
   );
 };

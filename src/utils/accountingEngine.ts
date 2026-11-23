@@ -1,4 +1,5 @@
 import {
+  CashierVoucher,
   GLAccount,
   GLJournalEntry,
   GLJournalLine,
@@ -120,18 +121,22 @@ export const STANDARD_GL_ACCOUNT_TEMPLATES: Omit<GLAccount, 'currentBalance'>[] 
   { accountCode: '1030', accountName: 'Fonepay Settlement Clearing Account', category: 'Asset', subCategory: 'Payment Gateway Clearing' },
   { accountCode: '1040', accountName: 'NCHL NepalPay / connectIPS Clearing', category: 'Asset', subCategory: 'Payment Gateway Clearing' },
   { accountCode: '1100', accountName: 'Accounts Receivable - Trade Debtors', category: 'Asset', subCategory: 'Current Assets' },
+  { accountCode: '1150', accountName: 'Staff & Supplier Advances', category: 'Asset', subCategory: 'Current Assets' },
   { accountCode: '1200', accountName: 'Spare Parts Inventory Asset', category: 'Asset', subCategory: 'Inventory' },
   { accountCode: '1250', accountName: 'Nepal IRD VAT Input Tax Credit (13%)', category: 'Asset', subCategory: 'Duties & Taxes' },
   { accountCode: '1500', accountName: 'Workshop Equipment (Lifts, Paint Booth)', category: 'Asset', subCategory: 'Fixed Assets' },
   { accountCode: '2010', accountName: 'Accounts Payable - Parts Vendors', category: 'Liability', subCategory: 'Current Liabilities' },
   { accountCode: '2020', accountName: 'Nepal IRD VAT Output Payable (13%)', category: 'Liability', subCategory: 'Duties & Taxes' },
   { accountCode: '2030', accountName: 'Accrued Payroll & Technician Incentives', category: 'Liability', subCategory: 'Current Liabilities' },
+  { accountCode: '2040', accountName: 'Customer Advances & Booking Deposits', category: 'Liability', subCategory: 'Current Liabilities' },
   { accountCode: '3010', accountName: "Owner's Capital & Retained Reserves", category: 'Equity', subCategory: 'Equity' },
   { accountCode: '4010', accountName: 'Service Labor Revenue', category: 'Revenue', subCategory: 'Operating Revenue' },
   { accountCode: '4020', accountName: 'Spare Parts Sales Revenue', category: 'Revenue', subCategory: 'Operating Revenue' },
+  { accountCode: '4090', accountName: 'Miscellaneous & Scrap Income', category: 'Revenue', subCategory: 'Other Income' },
   { accountCode: '5010', accountName: 'Cost of Spare Parts Sold (COGS)', category: 'Expense', subCategory: 'Direct Cost' },
   { accountCode: '5020', accountName: 'Direct Technician Labor Commission', category: 'Expense', subCategory: 'Direct Cost' },
   { accountCode: '6010', accountName: 'Workshop Electricity & Rent', category: 'Expense', subCategory: 'Overheads' },
+  { accountCode: '6020', accountName: 'Petty Cash & Workshop Operating Expenses', category: 'Expense', subCategory: 'Overheads' },
   { accountCode: '6090', accountName: 'Invoice Rounding Adjustment', category: 'Expense', subCategory: 'Overheads' },
 ];
 
@@ -522,6 +527,109 @@ export const buildPurchaseReceiptJournalEntry = (
     sourceDocument: po.poNumber,
     narration: `Goods Received Note (GRN) for ${po.poNumber} from ${po.supplierName} (PAN: ${po.supplierPanVat || 'N/A'})`,
     totalAmount: round2(lines.reduce((s, l) => s + l.debit, 0)),
+    lines,
+  };
+};
+
+export interface CashbookAccountHeadOption {
+  label: string;
+  glAccountCode: string;
+  glAccountName: string;
+  allowedFor: 'Cash In' | 'Cash Out' | 'Both';
+}
+
+export const CASHBOOK_ACCOUNT_HEADS: CashbookAccountHeadOption[] = [
+  // Cash In (Receipt) Heads
+  { label: 'Sales / Service Cash Receipt', glAccountCode: '4010', glAccountName: 'Service Labor Revenue', allowedFor: 'Cash In' },
+  { label: 'Counter Spares Cash Sale', glAccountCode: '4020', glAccountName: 'Spare Parts Sales Revenue', allowedFor: 'Cash In' },
+  { label: 'Customer Advance / Booking Deposit', glAccountCode: '2040', glAccountName: 'Customer Advances & Booking Deposits', allowedFor: 'Cash In' },
+  { label: 'Debtors Recovery (AR Settlement)', glAccountCode: '1100', glAccountName: 'Accounts Receivable - Trade Debtors', allowedFor: 'Cash In' },
+  { label: 'Bank Withdrawal / Drawer Float Top-Up', glAccountCode: '1020', glAccountName: 'Nabil Bank Ltd. - Current Account', allowedFor: 'Cash In' },
+  { label: 'Scrap / Miscellaneous Cash Income', glAccountCode: '4090', glAccountName: 'Miscellaneous & Scrap Income', allowedFor: 'Cash In' },
+  { label: 'Staff Advance Recovery', glAccountCode: '1150', glAccountName: 'Staff & Supplier Advances', allowedFor: 'Cash In' },
+  { label: 'Owner Capital / Cash Injection', glAccountCode: '3010', glAccountName: "Owner's Capital & Retained Reserves", allowedFor: 'Cash In' },
+
+  // Cash Out (Payment) Heads
+  { label: 'Workshop Expense / Petty Cash', glAccountCode: '6020', glAccountName: 'Petty Cash & Workshop Operating Expenses', allowedFor: 'Cash Out' },
+  { label: 'Electricity, Water & Facility Rent', glAccountCode: '6010', glAccountName: 'Workshop Electricity & Rent', allowedFor: 'Cash Out' },
+  { label: 'Staff Advance / Petty Imprest', glAccountCode: '1150', glAccountName: 'Staff & Supplier Advances', allowedFor: 'Cash Out' },
+  { label: 'Staff Salary / Technician Incentive', glAccountCode: '2030', glAccountName: 'Accrued Payroll & Technician Incentives', allowedFor: 'Cash Out' },
+  { label: 'Supplier / Parts Vendor Payment (AP)', glAccountCode: '2010', glAccountName: 'Accounts Payable - Parts Vendors', allowedFor: 'Cash Out' },
+  { label: 'Cash Parts Purchase (Local Market)', glAccountCode: '1200', glAccountName: 'Spare Parts Inventory Asset', allowedFor: 'Cash Out' },
+  { label: 'Bank Cash Deposit (Counter to Bank)', glAccountCode: '1020', glAccountName: 'Nabil Bank Ltd. - Current Account', allowedFor: 'Cash Out' },
+  { label: 'Customer Advance Refund', glAccountCode: '2040', glAccountName: 'Customer Advances & Booking Deposits', allowedFor: 'Cash Out' },
+  { label: 'Owner Drawings / Cash Withdrawal', glAccountCode: '3010', glAccountName: "Owner's Capital & Retained Reserves", allowedFor: 'Cash Out' },
+];
+
+/**
+ * Builds a balanced Double-Entry Journal Voucher for a Cashier Daybook Cash In (Receipt) or Cash Out (Payment).
+ * - Cash In:  Dr 1010 Cash in Hand, Cr Mapped Account Head
+ * - Cash Out: Dr Mapped Account Head, Cr 1010 Cash in Hand
+ */
+export const buildCashierVoucherJournalEntry = (
+  voucher: CashierVoucher,
+  existingEntriesCount: number
+): GLJournalEntry | null => {
+  const amt = round2(Math.abs(Number(voucher.amount) || 0));
+  if (amt <= 0) return null;
+
+  const matchedHead = CASHBOOK_ACCOUNT_HEADS.find(
+    (h) =>
+      (voucher.glAccountCode && h.glAccountCode === voucher.glAccountCode) ||
+      h.label.toLowerCase() === (voucher.accountHead || '').toLowerCase()
+  );
+
+  const counterCode =
+    voucher.glAccountCode ||
+    matchedHead?.glAccountCode ||
+    (voucher.transactionType === 'Cash In' ? '4090' : '6020');
+
+  const counterName =
+    matchedHead?.glAccountName ||
+    STANDARD_GL_ACCOUNT_TEMPLATES.find((t) => t.accountCode === counterCode)?.accountName ||
+    voucher.accountHead;
+
+  const isCashIn = voucher.transactionType === 'Cash In';
+  const lines: GLJournalLine[] = isCashIn
+    ? [
+        {
+          accountCode: '1010',
+          accountName: 'Cash in Hand (Cashier Drawer)',
+          debit: amt,
+          credit: 0,
+        },
+        {
+          accountCode: counterCode,
+          accountName: counterName,
+          debit: 0,
+          credit: amt,
+        },
+      ]
+    : [
+        {
+          accountCode: counterCode,
+          accountName: counterName,
+          debit: amt,
+          credit: 0,
+        },
+        {
+          accountCode: '1010',
+          accountName: 'Cash in Hand (Cashier Drawer)',
+          debit: 0,
+          credit: amt,
+        },
+      ];
+
+  const partyPrefix = isCashIn ? 'Received from' : 'Paid to';
+  return {
+    id: `JV-CB-${Date.now().toString().slice(-6)}`,
+    entryNumber: makeVoucherNumber(existingEntriesCount, isCashIn ? 'CRV' : 'CPV'),
+    date: (voucher.transactionDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
+    sourceDocument: voucher.voucherNumber,
+    narration: `${voucher.transactionType} (${voucher.accountHead}) — ${partyPrefix} ${voucher.partyName}: ${voucher.particulars}${
+      voucher.referenceNumber ? ` [Ref: ${voucher.referenceNumber}]` : ''
+    }`,
+    totalAmount: amt,
     lines,
   };
 };

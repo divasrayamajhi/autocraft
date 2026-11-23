@@ -1,6 +1,12 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { printElement } from '../../utils/printDocument';
-import { Invoice, WorkshopProfile, UserRole } from '../../types';
+import { printElement, numberToWordsNPR } from '../../utils/printDocument';
+import {
+  CashierVoucher,
+  CashierVoucherType,
+  Invoice,
+  UserRole,
+  WorkshopProfile,
+} from '../../types';
 import {
   Calendar,
   Download,
@@ -15,8 +21,12 @@ import {
   Receipt,
   Clock,
   X,
+  ArrowDownLeft,
+  ArrowUpRight,
+  FileCheck2,
 } from 'lucide-react';
 import {
+  CASHBOOK_ACCOUNT_HEADS,
   formatAccountingNPR,
   isCreditNoteInvoice,
   isInvoiceSyncedToCbms,
@@ -26,38 +36,54 @@ import {
 
 interface DaybookViewProps {
   invoices: Invoice[];
+  cashierVouchers?: CashierVoucher[];
   profile?: WorkshopProfile;
   userRole?: UserRole;
   currentUserName?: string;
+  onAddCashierVoucher?: (voucher: CashierVoucher) => void;
   onPrintInvoice?: (invoice: Invoice) => void;
 }
+
+type DaybookEntryKind =
+  | 'Sales Invoice'
+  | 'Credit Note'
+  | 'Prior Invoice Settlement'
+  | 'Cash In'
+  | 'Cash Out';
 
 interface DaybookEntry {
   id: string;
   time: string;
   date: string;
   bsDate: string;
-  entryKind: 'Sales Invoice' | 'Credit Note' | 'Prior Invoice Settlement';
-  referenceNumber: string;
+  entryKind: DaybookEntryKind;
+  voucherOrDocNumber: string;
+  accountHead: string;
   particulars: string;
-  customerName: string;
+  partyName: string; // Customer OR Received From / Paid To
   customerPan?: string;
   vehicleReg?: string;
   paymentMode: string;
-  paymentReference?: string;
+  referenceNumber?: string;
+  remarks?: string;
+  createdBy?: string;
+  approvedBy?: string;
   taxableAmount: number;
   vatAmount: number;
   grossTotal: number;
-  cashFlowToday: number; // positive = inflow collected today; negative = cash/bank refund today
+  cashFlowToday: number; // positive = inflow today; negative = outflow today
   balanceDue: number;
-  irdCbmsStatus: 'Synced' | 'Pending';
-  rawInvoice: Invoice;
+  irdCbmsStatus: 'Synced' | 'Pending' | 'N/A';
+  rawInvoice?: Invoice;
+  rawVoucher?: CashierVoucher;
 }
 
 export const DaybookView: React.FC<DaybookViewProps> = ({
   invoices = [],
+  cashierVouchers = [],
   profile,
   currentUserName,
+  onAddCashierVoucher,
   onPrintInvoice,
 }) => {
   const workshopName = profile?.name || 'Auto Workshop Pvt. Ltd.';
@@ -65,7 +91,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
   const workshopAddress = profile?.address || 'Kathmandu, Nepal';
   const cashierLabel = currentUserName || 'Accounts Desk';
 
-  // Extract all distinct dates with billing OR payment receipt activity
+  // Extract all distinct dates with billing, payment receipt, or cash voucher activity
   const availableDates = useMemo(() => {
     const datesSet = new Set<string>();
     invoices.forEach((inv) => {
@@ -77,10 +103,13 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
         });
       }
     });
+    cashierVouchers.forEach((v) => {
+      if (v.transactionDate) datesSet.add(v.transactionDate.slice(0, 10));
+    });
     const todayStr = new Date().toISOString().slice(0, 10);
     datesSet.add(todayStr);
     return Array.from(datesSet).sort().reverse();
-  }, [invoices]);
+  }, [invoices, cashierVouchers]);
 
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -95,6 +124,134 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
   const printDaybookRef = useRef<HTMLDivElement>(null);
   const [cashOpeningFloat, setCashOpeningFloat] = useState<number>(10000);
   const [isDayClosed, setIsDayClosed] = useState<boolean>(false);
+
+  // Cash In / Cash Out Entry Modal State (all 12 required fields)
+  const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+  const [vDate, setVDate] = useState<string>(selectedDate);
+  const [vNumber, setVNumber] = useState<string>('');
+  const [vType, setVType] = useState<CashierVoucherType>('Cash In');
+  const [vAccountHead, setVAccountHead] = useState<string>(
+    CASHBOOK_ACCOUNT_HEADS.find((h) => h.allowedFor === 'Cash In')?.label || 'Sales / Service Cash Receipt'
+  );
+  const [vParticulars, setVParticulars] = useState<string>('');
+  const [vReference, setVReference] = useState<string>('');
+  const [vAmount, setVAmount] = useState<string>('');
+  const [vPartyName, setVPartyName] = useState<string>('');
+  const [vRemarks, setVRemarks] = useState<string>('');
+  const [vApprovedBy, setVApprovedBy] = useState<string>('');
+  const [vError, setVError] = useState<string>('');
+
+  // Print Single Cash Receipt / Payment Voucher Modal
+  const [printVoucher, setPrintVoucher] = useState<CashierVoucher | null>(null);
+  const printVoucherRef = useRef<HTMLDivElement>(null);
+
+  const generateNextVoucherNumber = (type: CashierVoucherType): string => {
+    const prefix = type === 'Cash In' ? 'CRV' : 'CPV';
+    const existingCount = cashierVouchers.filter((v) => v.transactionType === type).length;
+    let seq = existingCount + 1;
+    let candidate = `${prefix}-81-${String(seq).padStart(4, '0')}`;
+    const existingSet = new Set(cashierVouchers.map((v) => v.voucherNumber.toUpperCase()));
+    while (existingSet.has(candidate.toUpperCase())) {
+      seq += 1;
+      candidate = `${prefix}-81-${String(seq).padStart(4, '0')}`;
+    }
+    return candidate;
+  };
+
+  const openVoucherModal = (type: CashierVoucherType) => {
+    setVType(type);
+    setVDate(selectedDate);
+    setVNumber(generateNextVoucherNumber(type));
+    const defaultHead =
+      CASHBOOK_ACCOUNT_HEADS.find((h) => h.allowedFor === type || h.allowedFor === 'Both')?.label ||
+      (type === 'Cash In' ? 'Sales / Service Cash Receipt' : 'Workshop Expense / Petty Cash');
+    setVAccountHead(defaultHead);
+    setVParticulars('');
+    setVReference('');
+    setVAmount('');
+    setVPartyName('');
+    setVRemarks('');
+    setVApprovedBy('');
+    setVError('');
+    setIsVoucherModalOpen(true);
+  };
+
+  const handleVoucherTypeSwitch = (nextType: CashierVoucherType) => {
+    setVType(nextType);
+    setVNumber(generateNextVoucherNumber(nextType));
+    const defaultHead =
+      CASHBOOK_ACCOUNT_HEADS.find((h) => h.allowedFor === nextType || h.allowedFor === 'Both')?.label ||
+      '';
+    setVAccountHead(defaultHead);
+    setVError('');
+  };
+
+  const handleSaveCashierVoucher = (e: React.FormEvent) => {
+    e.preventDefault();
+    setVError('');
+
+    const trimmedVoucherNo = vNumber.trim();
+    const numericAmount = round2(parseFloat(vAmount) || 0);
+
+    if (!vDate) {
+      setVError('Transaction Date is required.');
+      return;
+    }
+    if (!trimmedVoucherNo) {
+      setVError('Voucher Number is required.');
+      return;
+    }
+    const isDuplicate = cashierVouchers.some(
+      (v) => v.voucherNumber.trim().toLowerCase() === trimmedVoucherNo.toLowerCase()
+    );
+    if (isDuplicate) {
+      setVError(`Voucher Number "${trimmedVoucherNo}" already exists. Please use a unique Voucher Number.`);
+      return;
+    }
+    if (!vAccountHead.trim()) {
+      setVError('Account Head is required.');
+      return;
+    }
+    if (!vParticulars.trim()) {
+      setVError('Particulars / description is required.');
+      return;
+    }
+    if (!vPartyName.trim()) {
+      setVError(vType === 'Cash In' ? 'Received From is required.' : 'Paid To is required.');
+      return;
+    }
+    if (numericAmount <= 0) {
+      setVError('Amount must be greater than NPR 0.');
+      return;
+    }
+
+    const headObj = CASHBOOK_ACCOUNT_HEADS.find((h) => h.label === vAccountHead);
+
+    const newVoucher: CashierVoucher = {
+      id: `CV-${Date.now().toString().slice(-6)}`,
+      transactionDate: vDate,
+      bsDate: toNepalBsDate(vDate),
+      voucherNumber: trimmedVoucherNo,
+      transactionType: vType,
+      accountHead: vAccountHead,
+      glAccountCode: headObj?.glAccountCode,
+      particulars: vParticulars.trim(),
+      referenceNumber: vReference.trim() || undefined,
+      amount: numericAmount,
+      paymentMode: 'Cash',
+      partyName: vPartyName.trim(),
+      remarks: vRemarks.trim() || undefined,
+      createdBy: cashierLabel,
+      approvedBy: vApprovedBy.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (onAddCashierVoucher) {
+      onAddCashierVoucher(newVoucher);
+    }
+    setSelectedDate(vDate);
+    setIsVoucherModalOpen(false);
+  };
 
   const handleJumpDate = (offset: number) => {
     const currIndex = availableDates.indexOf(selectedDate);
@@ -115,8 +272,9 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
   };
 
   // Build Chartered Accountant reconciled Daybook entries for `selectedDate`
-  // Includes: (1) Invoices & Credit Notes issued on selectedDate, AND
-  //           (2) Payment settlements collected on selectedDate for prior-day invoices
+  // Includes: (1) Invoices & Credit Notes issued on selectedDate,
+  //           (2) Payment settlements collected on selectedDate for prior-day invoices, AND
+  //           (3) Manual Cash In (Receipt) & Cash Out (Payment) Vouchers recorded on selectedDate
   const dayTransactions = useMemo<DaybookEntry[]>(() => {
     const list: DaybookEntry[] = [];
 
@@ -125,7 +283,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
       const isCN = isCreditNoteInvoice(inv);
       const synced = isInvoiceSyncedToCbms(inv);
 
-      // Payments recorded specifically on selectedDate
       const paymentsOnDate = (inv.payments || []).filter(
         (p) => (p.date || '').slice(0, 10) === selectedDate
       );
@@ -140,7 +297,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
         const vat = Number(inv.vatAmount ?? inv.totalVatAmount ?? 0);
         const grand = Number(inv.grandTotal ?? round2(taxable + vat));
 
-        // Actual cash/bank flow on selectedDate for this invoice
         let flowToday = 0;
         let modeUsed = inv.paymentMethod || 'Unpaid';
         let refUsed = inv.paymentReference || inv.jobCardNumber || '';
@@ -150,7 +306,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           modeUsed = paymentsOnDate[paymentsOnDate.length - 1].method || modeUsed;
           refUsed = paymentsOnDate[paymentsOnDate.length - 1].referenceNumber || refUsed;
         } else {
-          // Fallback if legacy invoice had paidAmount set on creation without payments[] array
           const legacyPaid = Number(inv.paidAmount ?? inv.amountPaid ?? 0);
           if ((!inv.payments || inv.payments.length === 0) && legacyPaid !== 0) {
             flowToday = legacyPaid;
@@ -163,17 +318,19 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           date: invDate,
           bsDate: inv.bsDate || toNepalBsDate(invDate),
           entryKind: isCN ? 'Credit Note' : 'Sales Invoice',
-          referenceNumber: inv.invoiceNumber,
+          voucherOrDocNumber: inv.invoiceNumber,
+          accountHead: isCN ? 'Sales Return / Credit Note' : 'Sales / Service Revenue',
           particulars: isCN
             ? `IRD Credit Note — ${inv.vehicleModel || 'Sales Adjustment'}`
             : inv.jobCardNumber && inv.jobCardNumber !== 'OTC-SALES'
             ? `Workshop Service (${inv.jobCardNumber}) — ${inv.vehicleModel || 'Vehicle'}`
             : `Over-The-Counter Spares Sale`,
-          customerName: inv.customerName,
-          customerPan: inv.customerPan,
+          partyName: inv.companyName || inv.customerName,
+          customerPan: inv.customerPan || inv.customerPanVat,
           vehicleReg: inv.vehicleReg,
           paymentMode: flowToday === 0 && !isCN ? 'Credit (AR)' : modeUsed,
-          paymentReference: refUsed,
+          referenceNumber: refUsed,
+          createdBy: cashierLabel,
           taxableAmount: taxable,
           vatAmount: vat,
           grossTotal: grand,
@@ -183,7 +340,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           rawInvoice: inv,
         });
       } else if (paymentsOnDate.length > 0) {
-        // Payment collected TODAY against an earlier day's invoice!
         paymentsOnDate.forEach((pay, idx) => {
           const payTime =
             pay.date && pay.date.length >= 16
@@ -195,14 +351,16 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             date: selectedDate,
             bsDate: toNepalBsDate(selectedDate),
             entryKind: 'Prior Invoice Settlement',
-            referenceNumber: pay.referenceNumber || inv.invoiceNumber,
+            voucherOrDocNumber: pay.referenceNumber || inv.invoiceNumber,
+            accountHead: 'Accounts Receivable (AR)',
             particulars: `AR Recovery against ${inv.invoiceNumber} (Issued ${invDate})`,
-            customerName: inv.customerName,
-            customerPan: inv.customerPan,
+            partyName: inv.companyName || inv.customerName,
+            customerPan: inv.customerPan || inv.customerPanVat,
             vehicleReg: inv.vehicleReg,
             paymentMode: pay.method || 'Cash',
-            paymentReference: pay.referenceNumber || inv.invoiceNumber,
-            taxableAmount: 0, // Already recognized in Sales Book on original invoice date
+            referenceNumber: inv.invoiceNumber,
+            createdBy: cashierLabel,
+            taxableAmount: 0,
             vatAmount: 0,
             grossTotal: 0,
             cashFlowToday: round2(Number(pay.amount) || 0),
@@ -214,8 +372,43 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
       }
     });
 
+    // Include Manual Cashier Cash In (Receipt) & Cash Out (Payment) Vouchers
+    cashierVouchers
+      .filter((v) => (v.transactionDate || '').slice(0, 10) === selectedDate)
+      .forEach((v) => {
+        const vTime =
+          v.createdAt && v.createdAt.length >= 16
+            ? new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '11:00 AM';
+        const signedFlow = v.transactionType === 'Cash In' ? round2(v.amount) : -round2(v.amount);
+
+        list.push({
+          id: `CV-${v.id}`,
+          time: vTime,
+          date: v.transactionDate.slice(0, 10),
+          bsDate: v.bsDate || toNepalBsDate(v.transactionDate),
+          entryKind: v.transactionType,
+          voucherOrDocNumber: v.voucherNumber,
+          accountHead: v.accountHead,
+          particulars: v.particulars,
+          partyName: v.partyName,
+          paymentMode: v.paymentMode || 'Cash',
+          referenceNumber: v.referenceNumber,
+          remarks: v.remarks,
+          createdBy: v.createdBy || cashierLabel,
+          approvedBy: v.approvedBy,
+          taxableAmount: 0,
+          vatAmount: 0,
+          grossTotal: 0,
+          cashFlowToday: signedFlow,
+          balanceDue: 0,
+          irdCbmsStatus: 'N/A',
+          rawVoucher: v,
+        });
+      });
+
     return list;
-  }, [invoices, selectedDate]);
+  }, [invoices, cashierVouchers, selectedDate, cashierLabel]);
 
   // Filtered view
   const filteredTransactions = useMemo(() => {
@@ -227,10 +420,13 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
         t.paymentMode.toLowerCase().includes(modeFilter.toLowerCase());
       const matchesSearch =
         !q ||
-        t.referenceNumber.toLowerCase().includes(q) ||
-        t.customerName.toLowerCase().includes(q) ||
+        t.voucherOrDocNumber.toLowerCase().includes(q) ||
+        t.partyName.toLowerCase().includes(q) ||
+        t.accountHead.toLowerCase().includes(q) ||
+        (t.referenceNumber || '').toLowerCase().includes(q) ||
         (t.vehicleReg || '').toLowerCase().includes(q) ||
-        t.particulars.toLowerCase().includes(q);
+        t.particulars.toLowerCase().includes(q) ||
+        (t.remarks || '').toLowerCase().includes(q);
       return matchesType && matchesMode && matchesSearch;
     });
   }, [dayTransactions, typeFilter, modeFilter, searchQuery]);
@@ -240,8 +436,10 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
     let grossTaxableBilled = 0;
     let netOutputVat = 0;
     let netBilledTotal = 0;
-    let cashInflow = 0;
-    let cashOutflow = 0;
+    let invoiceCashIn = 0;
+    let manualCashIn = 0;
+    let invoiceCashOut = 0;
+    let manualCashOut = 0;
     let digitalInflow = 0;
     let digitalOutflow = 0;
     let creditSalesUnpaid = 0;
@@ -252,11 +450,15 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
       netBilledTotal = round2(netBilledTotal + t.grossTotal);
 
       const isCashMode = t.paymentMode.toLowerCase().includes('cash');
-      if (t.cashFlowToday > 0) {
-        if (isCashMode) cashInflow = round2(cashInflow + t.cashFlowToday);
+      if (t.entryKind === 'Cash In') {
+        manualCashIn = round2(manualCashIn + Math.abs(t.cashFlowToday));
+      } else if (t.entryKind === 'Cash Out') {
+        manualCashOut = round2(manualCashOut + Math.abs(t.cashFlowToday));
+      } else if (t.cashFlowToday > 0) {
+        if (isCashMode) invoiceCashIn = round2(invoiceCashIn + t.cashFlowToday);
         else digitalInflow = round2(digitalInflow + t.cashFlowToday);
       } else if (t.cashFlowToday < 0) {
-        if (isCashMode) cashOutflow = round2(cashOutflow + Math.abs(t.cashFlowToday));
+        if (isCashMode) invoiceCashOut = round2(invoiceCashOut + Math.abs(t.cashFlowToday));
         else digitalOutflow = round2(digitalOutflow + Math.abs(t.cashFlowToday));
       }
 
@@ -265,22 +467,26 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
       }
     });
 
-    const netCashMovement = round2(cashInflow - cashOutflow);
+    const totalCashInflow = round2(invoiceCashIn + manualCashIn);
+    const totalCashOutflow = round2(invoiceCashOut + manualCashOut);
+    const netCashMovement = round2(totalCashInflow - totalCashOutflow);
     const netDigitalMovement = round2(digitalInflow - digitalOutflow);
-    const totalNetCollected = round2(netCashMovement + netDigitalMovement);
     const closingCashInDrawer = round2(cashOpeningFloat + netCashMovement);
 
     return {
       grossTaxableBilled,
       netOutputVat,
       netBilledTotal,
-      cashInflow,
-      cashOutflow,
+      invoiceCashIn,
+      manualCashIn,
+      totalCashInflow,
+      invoiceCashOut,
+      manualCashOut,
+      totalCashOutflow,
       netCashMovement,
       digitalInflow,
       digitalOutflow,
       netDigitalMovement,
-      totalNetCollected,
       creditSalesUnpaid,
       closingCashInDrawer,
     };
@@ -291,48 +497,59 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
       'Date (AD)',
       'Date (BS)',
       'Time',
-      'Entry Type',
-      'Ref / Invoice #',
-      'Customer',
-      'Vehicle Reg',
+      'Transaction Type',
+      'Voucher / Invoice #',
+      'Account Head',
+      'Received From / Paid To',
+      'Particulars',
+      'Reference #',
       'Payment Mode',
       'Taxable (NPR)',
       '13% VAT (NPR)',
       'Billed Total (NPR)',
-      'Collected / Refunded Today (NPR)',
-      'CBMS Status',
+      'Cash/Bank In (+)/Out (-) (NPR)',
+      'Remarks',
+      'Created By',
+      'Approved By',
     ];
     const rows = filteredTransactions.map((t) => [
       t.date,
       t.bsDate,
       t.time,
       t.entryKind,
-      t.referenceNumber,
-      `"${t.customerName.replace(/"/g, '""')}"`,
-      t.vehicleReg || '',
+      t.voucherOrDocNumber,
+      `"${t.accountHead.replace(/"/g, '""')}"`,
+      `"${t.partyName.replace(/"/g, '""')}"`,
+      `"${t.particulars.replace(/"/g, '""')}"`,
+      `"${(t.referenceNumber || '').replace(/"/g, '""')}"`,
       t.paymentMode,
       t.taxableAmount,
       t.vatAmount,
       t.grossTotal,
       t.cashFlowToday,
-      t.irdCbmsStatus,
+      `"${(t.remarks || '').replace(/"/g, '""')}"`,
+      `"${(t.createdBy || '').replace(/"/g, '""')}"`,
+      `"${(t.approvedBy || '').replace(/"/g, '""')}"`,
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Daybook_${selectedDate}.csv`;
+    a.download = `Cashier_Daybook_${selectedDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const selectedBsDateLabel = toNepalBsDate(selectedDate, true);
+  const contextualAccountHeads = CASHBOOK_ACCOUNT_HEADS.filter(
+    (h) => h.allowedFor === vType || h.allowedFor === 'Both'
+  );
 
   return (
     <div className="space-y-5">
-      {/* Daybook Date Controller & Actions */}
-      <div className="bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      {/* Daybook Date Controller & Primary Actions */}
+      <div className="bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0] flex flex-col xl:flex-row xl:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center space-x-1 bg-[#F1F5F9] p-1 rounded-lg border border-[#E2E8F0]">
             <button
@@ -378,12 +595,35 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Primary Cashier Daybook Actions: Cash In (Receipt) & Cash Out (Payment) */}
+          {onAddCashierVoucher && (
+            <>
+              <button
+                type="button"
+                onClick={() => openVoucherModal('Cash In')}
+                className="px-3.5 py-2 bg-[#16A34A] hover:bg-green-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
+              >
+                <ArrowDownLeft className="w-3.5 h-3.5" />
+                <span>Cash In (Receipt)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openVoucherModal('Cash Out')}
+                className="px-3.5 py-2 bg-[#DC2626] hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
+              >
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span>Cash Out (Payment)</span>
+              </button>
+            </>
+          )}
+
           <button
             onClick={handleExportCsv}
             className="px-3 py-2 bg-[#FFFFFF] hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition"
           >
             <Download className="w-3.5 h-3.5 text-[#64748B]" />
-            <span>Export CSV</span>
+            <span>CSV</span>
           </button>
 
           <button
@@ -403,13 +643,13 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             }`}
           >
             {isDayClosed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-            <span>{isDayClosed ? 'Day Closed & Signed Off' : 'Close Day Shift'}</span>
+            <span>{isDayClosed ? 'Day Closed' : 'Close Day Shift'}</span>
           </button>
         </div>
       </div>
 
       {/* Daily Financial & Cashier Drawer Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0]">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
@@ -417,55 +657,71 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             </span>
             <Receipt className="w-4 h-4 text-[#0284C7]" />
           </div>
-          <div className="text-lg sm:text-xl font-bold text-[#0F172A] font-mono tabular-nums mt-1">
+          <div className="text-lg font-bold text-[#0F172A] font-mono tabular-nums mt-1 truncate">
             {formatAccountingNPR(summary.netBilledTotal)}
           </div>
-          <span className="text-[11px] text-[#64748B] block mt-0.5">
-            Taxable: {formatAccountingNPR(summary.grossTaxableBilled)} • VAT: {formatAccountingNPR(summary.netOutputVat)}
+          <span className="text-[10px] text-[#64748B] block mt-0.5 truncate">
+            Tax: {formatAccountingNPR(summary.grossTaxableBilled)} • VAT: {formatAccountingNPR(summary.netOutputVat)}
           </span>
         </div>
 
         <div className="bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0]">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
-              Cash Drawer Net Flow
+              Total Cash In
             </span>
-            <Banknote className="w-4 h-4 text-[#16A34A]" />
+            <ArrowDownLeft className="w-4 h-4 text-[#16A34A]" />
           </div>
-          <div className="text-lg sm:text-xl font-bold text-[#16A34A] font-mono tabular-nums mt-1">
-            {formatAccountingNPR(summary.netCashMovement)}
+          <div className="text-lg font-bold text-[#16A34A] font-mono tabular-nums mt-1 truncate">
+            {formatAccountingNPR(summary.totalCashInflow)}
           </div>
-          <span className="text-[11px] text-[#64748B] block mt-0.5">
-            In: {formatAccountingNPR(summary.cashInflow)} • Refunds: {formatAccountingNPR(summary.cashOutflow)}
+          <span className="text-[10px] text-[#64748B] block mt-0.5 truncate">
+            Bills: {formatAccountingNPR(summary.invoiceCashIn)} • Vouchers: {formatAccountingNPR(summary.manualCashIn)}
           </span>
         </div>
 
         <div className="bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0]">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
-              Digital &amp; Bank Receipts
+              Total Cash Out
+            </span>
+            <ArrowUpRight className="w-4 h-4 text-[#DC2626]" />
+          </div>
+          <div className="text-lg font-bold text-[#DC2626] font-mono tabular-nums mt-1 truncate">
+            {formatAccountingNPR(summary.totalCashOutflow)}
+          </div>
+          <span className="text-[10px] text-[#64748B] block mt-0.5 truncate">
+            Payments: {formatAccountingNPR(summary.manualCashOut)} • Refunds: {formatAccountingNPR(summary.invoiceCashOut)}
+          </span>
+        </div>
+
+        <div className="bg-[#FFFFFF] p-4 rounded-xl border border-[#E2E8F0]">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+              Digital &amp; Bank
             </span>
             <QrCode className="w-4 h-4 text-[#0EA5E9]" />
           </div>
-          <div className="text-lg sm:text-xl font-bold text-[#0284C7] font-mono tabular-nums mt-1">
+          <div className="text-lg font-bold text-[#0284C7] font-mono tabular-nums mt-1 truncate">
             {formatAccountingNPR(summary.netDigitalMovement)}
           </div>
-          <span className="text-[11px] text-[#64748B] block mt-0.5">
-            Fonepay, NepalPay, Bank &amp; Card
+          <span className="text-[10px] text-[#64748B] block mt-0.5 truncate">
+            Fonepay, NepalPay &amp; Bank
           </span>
         </div>
 
-        <div className="bg-[#0F3D5E] p-4 rounded-xl text-white">
+        <div className="bg-[#0F3D5E] p-4 rounded-xl text-white col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-sky-200 uppercase tracking-wider">
-              Closing Cash in Drawer
+              Closing Drawer Cash
             </span>
+            <Banknote className="w-4 h-4 text-[#0EA5E9]" />
           </div>
-          <div className="text-lg sm:text-xl font-bold font-mono tabular-nums mt-1">
+          <div className="text-lg font-bold font-mono tabular-nums mt-1 truncate">
             {formatAccountingNPR(summary.closingCashInDrawer)}
           </div>
-          <div className="flex items-center justify-between mt-1.5 text-[10px] text-sky-200">
-            <span>Opening Float (NPR):</span>
+          <div className="flex items-center justify-between mt-1 text-[10px] text-sky-200">
+            <span>Opening Float:</span>
             <input
               type="number"
               min={0}
@@ -485,7 +741,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter today's entries by invoice #, customer, vehicle reg, or narration..."
+            placeholder="Filter by voucher #, invoice #, account head, received from / paid to, reference, or particulars..."
             className="w-full pl-9 pr-3 py-2 text-xs bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg focus:bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
           />
         </div>
@@ -497,6 +753,8 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             className="px-3 py-2 text-xs bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg font-medium text-[#0F172A] outline-none"
           >
             <option value="All">All Entry Types</option>
+            <option value="Cash In">Cash In (Receipts)</option>
+            <option value="Cash Out">Cash Out (Payments)</option>
             <option value="Sales Invoice">Sales Invoices</option>
             <option value="Credit Note">Credit Notes</option>
             <option value="Prior Invoice Settlement">AR Settlements</option>
@@ -517,21 +775,117 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
         </div>
       </div>
 
-      {/* Daybook Ledger Table */}
-      <div className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] overflow-hidden">
+      {/* Mobile Cards (< lg) */}
+      <div className="block lg:hidden space-y-3">
+        {filteredTransactions.length === 0 ? (
+          <div className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] p-8 text-center text-xs text-[#64748B]">
+            No billing, cash in, or cash out transactions recorded on {selectedDate} ({selectedBsDateLabel}).
+          </div>
+        ) : (
+          filteredTransactions.map((tx) => (
+            <div
+              key={tx.id}
+              className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] p-4 space-y-2.5 text-xs"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="font-mono font-bold text-[#0284C7] block">{tx.voucherOrDocNumber}</span>
+                  <span className="text-[10px] text-[#64748B] font-mono">
+                    {tx.date} • {tx.time}
+                  </span>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    tx.entryKind === 'Cash In'
+                      ? 'bg-emerald-100 text-[#16A34A]'
+                      : tx.entryKind === 'Cash Out'
+                      ? 'bg-red-100 text-[#DC2626]'
+                      : tx.entryKind === 'Credit Note'
+                      ? 'bg-red-50 text-[#DC2626]'
+                      : tx.entryKind === 'Prior Invoice Settlement'
+                      ? 'bg-emerald-50 text-[#16A34A]'
+                      : 'bg-[#F1F5F9] text-[#0F3D5E]'
+                  }`}
+                >
+                  {tx.entryKind}
+                </span>
+              </div>
+
+              <div>
+                <div className="font-semibold text-[#0F172A]">
+                  {tx.entryKind === 'Cash In'
+                    ? `Received From: ${tx.partyName}`
+                    : tx.entryKind === 'Cash Out'
+                    ? `Paid To: ${tx.partyName}`
+                    : tx.partyName}
+                </div>
+                <div className="text-[11px] text-[#0F3D5E] font-medium">{tx.accountHead}</div>
+                <div className="text-[11px] text-[#64748B] mt-0.5">{tx.particulars}</div>
+                {tx.referenceNumber && (
+                  <div className="text-[10px] text-[#64748B] font-mono mt-0.5">Ref: {tx.referenceNumber}</div>
+                )}
+                {tx.remarks && (
+                  <div className="text-[10px] text-[#64748B] italic mt-0.5">Remarks: {tx.remarks}</div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
+                <div className="text-[10px] text-[#64748B]">
+                  <div>Mode: <strong className="text-[#0F172A]">{tx.paymentMode}</strong></div>
+                  <div>By: {tx.createdBy}{tx.approvedBy ? ` • Appr: ${tx.approvedBy}` : ''}</div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span
+                    className={`font-mono font-bold text-sm tabular-nums ${
+                      tx.cashFlowToday > 0
+                        ? 'text-[#16A34A]'
+                        : tx.cashFlowToday < 0
+                        ? 'text-[#DC2626]'
+                        : 'text-[#64748B]'
+                    }`}
+                  >
+                    {tx.cashFlowToday !== 0 ? formatAccountingNPR(tx.cashFlowToday) : 'Credit (AR)'}
+                  </span>
+                  {tx.rawInvoice && onPrintInvoice && (
+                    <button
+                      onClick={() => onPrintInvoice(tx.rawInvoice!)}
+                      className="p-1.5 text-[#0F3D5E] bg-[#F1F5F9] rounded-lg"
+                      title="Print Invoice"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {tx.rawVoucher && (
+                    <button
+                      onClick={() => setPrintVoucher(tx.rawVoucher!)}
+                      className="p-1.5 text-[#0F3D5E] bg-[#F1F5F9] rounded-lg"
+                      title="Print Cash Voucher"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop Daybook Ledger Table (>= lg) */}
+      <div className="hidden lg:block bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-[#F8FAFC] text-[#64748B] uppercase text-[11px] font-semibold tracking-wider border-b border-[#E2E8F0]">
                 <th className="p-3">Time</th>
-                <th className="p-3">Type &amp; Ref #</th>
-                <th className="p-3">Customer / Particulars</th>
+                <th className="p-3">Voucher / Doc #</th>
+                <th className="p-3">Account Head &amp; Party</th>
+                <th className="p-3">Particulars &amp; Reference</th>
                 <th className="p-3">Mode</th>
-                <th className="p-3 text-right">Taxable</th>
-                <th className="p-3 text-right">13% VAT</th>
                 <th className="p-3 text-right">Billed Total</th>
-                <th className="p-3 text-right">Cash/Bank Flow</th>
-                <th className="p-3 text-center">CBMS</th>
+                <th className="p-3 text-right">Cash / Bank In (+)</th>
+                <th className="p-3 text-right">Cash Out (-)</th>
+                <th className="p-3">Audit (By / Appr)</th>
                 <th className="p-3 text-center">Print</th>
               </tr>
             </thead>
@@ -539,21 +893,34 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
               {filteredTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="p-8 text-center text-[#64748B]">
-                    No billing or payment receipt transactions recorded on {selectedDate} ({selectedBsDateLabel}).
+                    No billing, Cash In, or Cash Out transactions recorded on {selectedDate} ({selectedBsDateLabel}).
                   </td>
                 </tr>
               ) : (
                 filteredTransactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-[#F8FAFC] transition">
+                  <tr
+                    key={tx.id}
+                    className={`hover:bg-[#F8FAFC] transition ${
+                      tx.entryKind === 'Cash In'
+                        ? 'bg-emerald-50/20'
+                        : tx.entryKind === 'Cash Out'
+                        ? 'bg-red-50/20'
+                        : ''
+                    }`}
+                  >
                     <td className="p-3 font-mono text-[#64748B] whitespace-nowrap">{tx.time}</td>
                     <td className="p-3 whitespace-nowrap">
-                      <span className="font-mono font-bold text-[#0284C7] block">{tx.referenceNumber}</span>
+                      <span className="font-mono font-bold text-[#0284C7] block">{tx.voucherOrDocNumber}</span>
                       <span
                         className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                          tx.entryKind === 'Credit Note'
-                            ? 'bg-red-100 text-[#DC2626]'
-                            : tx.entryKind === 'Prior Invoice Settlement'
+                          tx.entryKind === 'Cash In'
                             ? 'bg-emerald-100 text-[#16A34A]'
+                            : tx.entryKind === 'Cash Out'
+                            ? 'bg-red-100 text-[#DC2626]'
+                            : tx.entryKind === 'Credit Note'
+                            ? 'bg-red-50 text-[#DC2626]'
+                            : tx.entryKind === 'Prior Invoice Settlement'
+                            ? 'bg-emerald-50 text-[#16A34A]'
                             : 'bg-[#F1F5F9] text-[#0F3D5E]'
                         }`}
                       >
@@ -561,52 +928,70 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                       </span>
                     </td>
                     <td className="p-3">
-                      <div className="font-semibold text-[#0F172A]">{tx.customerName}</div>
-                      <div className="text-[11px] text-[#64748B]">{tx.particulars}</div>
+                      <div className="font-semibold text-[#0F172A]">{tx.partyName}</div>
+                      <div className="text-[11px] text-[#0F3D5E] font-medium">{tx.accountHead}</div>
+                      {tx.entryKind === 'Cash In' && (
+                        <span className="text-[10px] text-[#16A34A]">Received From</span>
+                      )}
+                      {tx.entryKind === 'Cash Out' && (
+                        <span className="text-[10px] text-[#DC2626]">Paid To</span>
+                      )}
+                    </td>
+                    <td className="p-3 max-w-xs">
+                      <div className="text-[#0F172A] leading-snug">{tx.particulars}</div>
+                      <div className="flex flex-wrap gap-x-2 text-[10px] text-[#64748B] mt-0.5">
+                        {tx.referenceNumber && (
+                          <span className="font-mono">Ref: {tx.referenceNumber}</span>
+                        )}
+                        {tx.remarks && <span className="italic">Note: {tx.remarks}</span>}
+                      </div>
                     </td>
                     <td className="p-3 whitespace-nowrap">
                       <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0]">
                         {tx.paymentMode}
                       </span>
                     </td>
-                    <td className="p-3 text-right font-mono tabular-nums whitespace-nowrap">
-                      {tx.taxableAmount !== 0 ? formatAccountingNPR(tx.taxableAmount) : '—'}
-                    </td>
-                    <td className="p-3 text-right font-mono tabular-nums text-[#0284C7] whitespace-nowrap">
-                      {tx.vatAmount !== 0 ? formatAccountingNPR(tx.vatAmount) : '—'}
-                    </td>
-                    <td className="p-3 text-right font-mono tabular-nums font-bold text-[#0F172A] whitespace-nowrap">
+                    <td className="p-3 text-right font-mono tabular-nums font-semibold text-[#0F172A] whitespace-nowrap">
                       {tx.grossTotal !== 0 ? formatAccountingNPR(tx.grossTotal) : '—'}
                     </td>
-                    <td
-                      className={`p-3 text-right font-mono tabular-nums font-bold whitespace-nowrap ${
-                        tx.cashFlowToday > 0
-                          ? 'text-[#16A34A]'
-                          : tx.cashFlowToday < 0
-                          ? 'text-[#DC2626]'
-                          : 'text-[#64748B]'
-                      }`}
-                    >
-                      {tx.cashFlowToday !== 0 ? formatAccountingNPR(tx.cashFlowToday) : 'Credit (AR)'}
+                    <td className="p-3 text-right font-mono tabular-nums font-bold text-[#16A34A] whitespace-nowrap">
+                      {tx.cashFlowToday > 0 ? formatAccountingNPR(tx.cashFlowToday) : '—'}
                     </td>
-                    <td className="p-3 text-center whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
-                          tx.irdCbmsStatus === 'Synced'
-                            ? 'bg-emerald-50 text-[#16A34A]'
-                            : 'bg-amber-50 text-[#F59E0B]'
-                        }`}
-                      >
-                        <ShieldCheck className="w-3 h-3" />
-                        <span>{tx.irdCbmsStatus}</span>
-                      </span>
+                    <td className="p-3 text-right font-mono tabular-nums font-bold text-[#DC2626] whitespace-nowrap">
+                      {tx.cashFlowToday < 0 ? formatAccountingNPR(Math.abs(tx.cashFlowToday)) : '—'}
+                    </td>
+                    <td className="p-3 text-[10px] text-[#64748B] whitespace-nowrap">
+                      <div className="font-medium text-[#0F172A]">{tx.createdBy || cashierLabel}</div>
+                      {tx.approvedBy ? (
+                        <div className="text-[#16A34A]">Appr: {tx.approvedBy}</div>
+                      ) : tx.irdCbmsStatus !== 'N/A' ? (
+                        <span
+                          className={`inline-flex items-center space-x-0.5 ${
+                            tx.irdCbmsStatus === 'Synced' ? 'text-[#16A34A]' : 'text-[#F59E0B]'
+                          }`}
+                        >
+                          <ShieldCheck className="w-2.5 h-2.5" />
+                          <span>CBMS {tx.irdCbmsStatus}</span>
+                        </span>
+                      ) : (
+                        <span>—</span>
+                      )}
                     </td>
                     <td className="p-3 text-center">
-                      {onPrintInvoice && (
+                      {tx.rawInvoice && onPrintInvoice && (
                         <button
-                          onClick={() => onPrintInvoice(tx.rawInvoice)}
+                          onClick={() => onPrintInvoice(tx.rawInvoice!)}
                           className="p-1.5 text-[#0F3D5E] hover:bg-[#F1F5F9] rounded-lg transition"
-                          title="Print Invoice"
+                          title="Print Tax Invoice"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {tx.rawVoucher && (
+                        <button
+                          onClick={() => setPrintVoucher(tx.rawVoucher!)}
+                          className="p-1.5 text-[#0F3D5E] hover:bg-[#F1F5F9] rounded-lg transition"
+                          title="Print Cash Receipt / Payment Voucher"
                         >
                           <Printer className="w-3.5 h-3.5" />
                         </button>
@@ -619,20 +1004,21 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             {filteredTransactions.length > 0 && (
               <tfoot>
                 <tr className="bg-[#F8FAFC] font-bold text-[#0F172A] border-t-2 border-[#E2E8F0]">
-                  <td colSpan={4} className="p-3 text-right uppercase text-[11px]">
+                  <td colSpan={5} className="p-3 text-right uppercase text-[11px]">
                     Day Total ({filteredTransactions.length} entries):
-                  </td>
-                  <td className="p-3 text-right font-mono tabular-nums">
-                    {formatAccountingNPR(filteredTransactions.reduce((s, t) => s + t.taxableAmount, 0))}
-                  </td>
-                  <td className="p-3 text-right font-mono tabular-nums text-[#0284C7]">
-                    {formatAccountingNPR(filteredTransactions.reduce((s, t) => s + t.vatAmount, 0))}
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums">
                     {formatAccountingNPR(filteredTransactions.reduce((s, t) => s + t.grossTotal, 0))}
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums text-[#16A34A]">
-                    {formatAccountingNPR(filteredTransactions.reduce((s, t) => s + t.cashFlowToday, 0))}
+                    {formatAccountingNPR(
+                      filteredTransactions.reduce((s, t) => s + (t.cashFlowToday > 0 ? t.cashFlowToday : 0), 0)
+                    )}
+                  </td>
+                  <td className="p-3 text-right font-mono tabular-nums text-[#DC2626]">
+                    {formatAccountingNPR(
+                      filteredTransactions.reduce((s, t) => s + (t.cashFlowToday < 0 ? Math.abs(t.cashFlowToday) : 0), 0)
+                    )}
                   </td>
                   <td colSpan={2} />
                 </tr>
@@ -641,6 +1027,466 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* MODAL: CASH IN (RECEIPT) / CASH OUT (PAYMENT) VOUCHER ENTRY */}
+      {isVoucherModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-2xl w-full border border-[#E2E8F0] overflow-hidden my-auto max-h-[94vh] flex flex-col">
+            <div
+              className={`px-5 py-4 text-white flex items-center justify-between shrink-0 ${
+                vType === 'Cash In' ? 'bg-[#0F3D5E]' : 'bg-[#0F3D5E]'
+              }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    vType === 'Cash In' ? 'bg-[#16A34A]' : 'bg-[#DC2626]'
+                  }`}
+                >
+                  {vType === 'Cash In' ? (
+                    <ArrowDownLeft className="w-4 h-4 text-white" />
+                  ) : (
+                    <ArrowUpRight className="w-4 h-4 text-white" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">
+                    {vType === 'Cash In'
+                      ? 'Cash In (Receipt Voucher) — Money Received by Cashier'
+                      : 'Cash Out (Payment Voucher) — Money Paid Out by Cashier'}
+                  </h3>
+                  <p className="text-[11px] text-sky-200">
+                    Automatically updates Cashier Drawer balance &amp; posts balanced Double-Entry Journal to GL
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVoucherModalOpen(false)}
+                className="p-1.5 text-sky-200 hover:text-white rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveCashierVoucher}
+              className="p-5 space-y-4 text-xs overflow-y-auto flex-1"
+            >
+              {/* Field 3: Transaction Type Toggle */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#64748B] uppercase tracking-wider mb-1.5">
+                  Transaction Type *
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleVoucherTypeSwitch('Cash In')}
+                    className={`py-2.5 px-3 rounded-lg border font-bold flex items-center justify-center space-x-2 transition ${
+                      vType === 'Cash In'
+                        ? 'bg-emerald-50 border-[#16A34A] text-[#16A34A] ring-1 ring-[#16A34A]'
+                        : 'bg-[#FFFFFF] border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    <ArrowDownLeft className="w-4 h-4" />
+                    <span>Cash In (Receipt)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleVoucherTypeSwitch('Cash Out')}
+                    className={`py-2.5 px-3 rounded-lg border font-bold flex items-center justify-center space-x-2 transition ${
+                      vType === 'Cash Out'
+                        ? 'bg-red-50 border-[#DC2626] text-[#DC2626] ring-1 ring-[#DC2626]'
+                        : 'bg-[#FFFFFF] border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                    <span>Cash Out (Payment)</span>
+                  </button>
+                </div>
+              </div>
+
+              {vError && (
+                <div className="bg-red-50 border border-red-200 text-[#DC2626] px-3 py-2 rounded-lg font-semibold">
+                  {vError}
+                </div>
+              )}
+
+              {/* Row 1: Transaction Date + Voucher Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Transaction Date <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={vDate}
+                    onChange={(e) => setVDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                  <span className="text-[10px] text-[#64748B] mt-0.5 block">
+                    Nepal B.S.: {toNepalBsDate(vDate, true)}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Voucher Number (Unique ID) <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={vNumber}
+                    onChange={(e) => setVNumber(e.target.value)}
+                    placeholder={vType === 'Cash In' ? 'CRV-81-0001' : 'CPV-81-0001'}
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-mono font-bold text-[#0F3D5E] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Account Head + Payment Mode */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Account Head <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <select
+                    value={vAccountHead}
+                    onChange={(e) => setVAccountHead(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-medium text-[#0F172A] outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  >
+                    {contextualAccountHeads.map((head) => (
+                      <option key={`${head.glAccountCode}-${head.label}`} value={head.label}>
+                        {head.label} (GL {head.glAccountCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Payment Mode</label>
+                  <input
+                    type="text"
+                    value="Cash"
+                    readOnly
+                    className="w-full px-3 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg font-bold text-[#0F3D5E] cursor-not-allowed"
+                  />
+                  <span className="text-[10px] text-[#64748B] mt-0.5 block">
+                    Cashier Drawer — GL 1010 Cash in Hand
+                  </span>
+                </div>
+              </div>
+
+              {/* Row 3: Received From / Paid To + Amount */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    {vType === 'Cash In'
+                      ? 'Received From (Person / Department)'
+                      : 'Paid To (Person / Department)'}{' '}
+                    <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={vPartyName}
+                    onChange={(e) => setVPartyName(e.target.value)}
+                    placeholder={
+                      vType === 'Cash In'
+                        ? 'e.g. Customer Name / Counter Desk'
+                        : 'e.g. Store Runner / NEA Electricity / Technician'
+                    }
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Amount (NPR) <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0.01}
+                    value={vAmount}
+                    onChange={(e) => setVAmount(e.target.value)}
+                    placeholder="0.00"
+                    className={`w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-mono font-bold text-sm focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] ${
+                      vType === 'Cash In' ? 'text-[#16A34A]' : 'text-[#DC2626]'
+                    }`}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Particulars + Reference Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Particulars (Description) <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={vParticulars}
+                    onChange={(e) => setVParticulars(e.target.value)}
+                    placeholder={
+                      vType === 'Cash In'
+                        ? 'e.g. Booking advance received for full body repaint'
+                        : 'e.g. Local spares purchase / tea & workshop consumables'
+                    }
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Reference Number
+                  </label>
+                  <input
+                    type="text"
+                    value={vReference}
+                    onChange={(e) => setVReference(e.target.value)}
+                    placeholder="Invoice / Bill / Receipt #"
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  />
+                </div>
+              </div>
+
+              {/* Row 5: Remarks */}
+              <div>
+                <label className="block font-semibold text-[#0F172A] mb-1">
+                  Remarks (Additional Information)
+                </label>
+                <textarea
+                  rows={2}
+                  value={vRemarks}
+                  onChange={(e) => setVRemarks(e.target.value)}
+                  placeholder="Optional audit remarks, bill attachment note, or authorization context..."
+                  className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                />
+              </div>
+
+              {/* Row 6: Created By + Approved By */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#E2E8F0]">
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Created By (Logged-in Cashier)
+                  </label>
+                  <input
+                    type="text"
+                    value={cashierLabel}
+                    readOnly
+                    className="w-full px-3 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Approved By (Authorizing Person, if required)
+                  </label>
+                  <input
+                    type="text"
+                    value={vApprovedBy}
+                    onChange={(e) => setVApprovedBy(e.target.value)}
+                    placeholder="e.g. Workshop Manager / Chief Accountant"
+                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-[#E2E8F0]">
+                <button
+                  type="button"
+                  onClick={() => setIsVoucherModalOpen(false)}
+                  className="px-4 py-2 border border-[#E2E8F0] text-[#0F172A] rounded-lg font-semibold hover:bg-[#F1F5F9] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`px-5 py-2 text-white rounded-lg font-bold flex items-center space-x-1.5 transition ${
+                    vType === 'Cash In'
+                      ? 'bg-[#16A34A] hover:bg-green-700'
+                      : 'bg-[#DC2626] hover:bg-red-700'
+                  }`}
+                >
+                  <FileCheck2 className="w-4 h-4" />
+                  <span>
+                    {vType === 'Cash In' ? 'Save Cash In Receipt' : 'Save Cash Out Payment'}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PRINT INDIVIDUAL CASH RECEIPT / PAYMENT VOUCHER (A4) */}
+      {printVoucher && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0F172A]/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FFFFFF] w-full max-w-3xl rounded-xl shadow-2xl border border-[#E2E8F0] overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="bg-[#0F3D5E] text-white px-5 py-3.5 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold">
+                  {printVoucher.transactionType === 'Cash In'
+                    ? 'Cash Receipt Voucher (CRV)'
+                    : 'Cash Payment Voucher (CPV)'}{' '}
+                  · <span className="font-mono">{printVoucher.voucherNumber}</span>
+                </h3>
+                <p className="text-[11px] text-sky-200">
+                  {printVoucher.transactionDate} • {printVoucher.bsDate || toNepalBsDate(printVoucher.transactionDate)} BS
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() =>
+                    printElement(
+                      printVoucherRef.current,
+                      `${printVoucher.transactionType === 'Cash In' ? 'CRV' : 'CPV'}-${printVoucher.voucherNumber}`
+                    )
+                  }
+                  className="px-4 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print A4 / Save PDF</span>
+                </button>
+                <button
+                  onClick={() => setPrintVoucher(null)}
+                  className="p-1.5 text-sky-200 hover:text-white rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto p-6 bg-[#F1F5F9]">
+              <div
+                ref={printVoucherRef}
+                className="a4-sheet bg-[#FFFFFF] p-8 border border-[#E2E8F0] text-[#0F172A] text-xs space-y-5"
+              >
+                <div className="flex justify-between items-start border-b-2 border-[#0F3D5E] pb-4">
+                  <div>
+                    <h1 className="text-lg font-extrabold uppercase text-[#0F3D5E]">{workshopName}</h1>
+                    <p className="text-[11px] text-[#64748B]">{workshopAddress}</p>
+                    <p className="text-[11px] font-mono font-bold text-[#0F172A]">
+                      PAN / VAT No.: {workshopPan}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className={`inline-block px-3 py-1 border-2 font-extrabold text-sm uppercase tracking-wider ${
+                        printVoucher.transactionType === 'Cash In'
+                          ? 'border-[#16A34A] text-[#16A34A]'
+                          : 'border-[#DC2626] text-[#DC2626]'
+                      }`}
+                    >
+                      {printVoucher.transactionType === 'Cash In'
+                        ? 'CASH RECEIPT VOUCHER'
+                        : 'CASH PAYMENT VOUCHER'}
+                    </div>
+                    <p className="text-[11px] font-mono font-bold mt-1.5">
+                      Voucher No.: {printVoucher.voucherNumber}
+                    </p>
+                    <p className="text-[11px] text-[#64748B] font-mono">
+                      Date: {printVoucher.transactionDate} ({printVoucher.bsDate || toNepalBsDate(printVoucher.transactionDate)} BS)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 bg-[#F8FAFC] p-4 rounded-lg border border-[#E2E8F0] text-[11px]">
+                  <div>
+                    <span className="text-[#64748B] block uppercase text-[10px] font-bold">
+                      {printVoucher.transactionType === 'Cash In' ? 'Received From' : 'Paid To'}
+                    </span>
+                    <strong className="text-sm text-[#0F172A]">{printVoucher.partyName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[#64748B] block uppercase text-[10px] font-bold">
+                      Account Head &amp; Payment Mode
+                    </span>
+                    <strong className="text-[#0F3D5E]">
+                      {printVoucher.accountHead}
+                      {printVoucher.glAccountCode ? ` (GL ${printVoucher.glAccountCode})` : ''}
+                    </strong>
+                    <div className="text-[#64748B]">Mode: {printVoucher.paymentMode} (GL 1010)</div>
+                  </div>
+                </div>
+
+                <table className="w-full border-collapse border border-[#CBD5E1] text-[11px]">
+                  <thead>
+                    <tr className="bg-[#0F3D5E] text-white">
+                      <th className="p-2.5 text-left border-r border-white/20">Particulars / Description</th>
+                      <th className="p-2.5 text-left border-r border-white/20 w-36">Reference #</th>
+                      <th className="p-2.5 text-right w-36">Amount (NPR)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="p-3 border-r border-[#CBD5E1]">
+                        <div className="font-semibold text-[#0F172A]">{printVoucher.particulars}</div>
+                        {printVoucher.remarks && (
+                          <div className="text-[10px] text-[#64748B] mt-1">
+                            Remarks: {printVoucher.remarks}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3 border-r border-[#CBD5E1] font-mono">
+                        {printVoucher.referenceNumber || '—'}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-sm tabular-nums">
+                        {formatAccountingNPR(printVoucher.amount, true)}
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-[#F8FAFC] font-bold border-t-2 border-[#CBD5E1]">
+                      <td colSpan={2} className="p-2.5 text-right uppercase">
+                        Total {printVoucher.transactionType === 'Cash In' ? 'Received' : 'Paid'} (NPR):
+                      </td>
+                      <td className="p-2.5 text-right font-mono text-sm tabular-nums">
+                        {formatAccountingNPR(printVoucher.amount, true)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div className="border border-[#E2E8F0] rounded-lg p-3 bg-[#F8FAFC]">
+                  <span className="text-[10px] font-bold uppercase text-[#64748B] block">
+                    Amount in Words
+                  </span>
+                  <strong className="text-xs text-[#0F172A]">
+                    {numberToWordsNPR(Math.abs(printVoucher.amount))}
+                  </strong>
+                </div>
+
+                <div className="grid grid-cols-3 gap-8 pt-12 text-center text-[11px]">
+                  <div>
+                    <div className="border-b border-dashed border-[#94A3B8] h-10 mb-1.5" />
+                    <div className="font-bold">{printVoucher.createdBy}</div>
+                    <div className="text-[10px] text-[#64748B]">Created By (Cashier)</div>
+                  </div>
+                  <div>
+                    <div className="border-b border-dashed border-[#94A3B8] h-10 mb-1.5" />
+                    <div className="font-bold">{printVoucher.partyName}</div>
+                    <div className="text-[10px] text-[#64748B]">
+                      {printVoucher.transactionType === 'Cash In' ? 'Depositor Signature' : 'Receiver Signature'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="border-b border-dashed border-[#94A3B8] h-10 mb-1.5" />
+                    <div className="font-bold">{printVoucher.approvedBy || 'Authorized Signatory'}</div>
+                    <div className="text-[10px] text-[#64748B]">Approved By</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* A4 Printable Daybook Modal */}
       {isPrintModalOpen && (
@@ -680,10 +1526,11 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                     {workshopName}
                   </h1>
                   <p className="text-[11px] text-[#64748B]">
-                    {workshopAddress} | PAN / VAT Reg: <strong className="font-mono text-[#0F172A]">{workshopPan}</strong>
+                    {workshopAddress} | PAN / VAT Reg:{' '}
+                    <strong className="font-mono text-[#0F172A]">{workshopPan}</strong>
                   </p>
                   <h2 className="text-sm font-bold uppercase tracking-wider mt-2 text-[#0F172A]">
-                    Daily Cashier Daybook &amp; Sales Reconciliation Sheet
+                    Daily Cashier Daybook &amp; Cash Drawer Reconciliation Sheet
                   </h2>
                 </div>
 
@@ -702,17 +1549,17 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                   </div>
                 </div>
 
-                <table className="w-full border-collapse border border-[#CBD5E1] text-[11px]">
+                <table className="w-full border-collapse border border-[#CBD5E1] text-[10px]">
                   <thead>
                     <tr className="bg-[#F1F5F9] text-[#0F172A] font-bold">
-                      <th className="border border-[#CBD5E1] p-2">Ref #</th>
-                      <th className="border border-[#CBD5E1] p-2">Type</th>
-                      <th className="border border-[#CBD5E1] p-2">Customer &amp; Particulars</th>
-                      <th className="border border-[#CBD5E1] p-2">Mode</th>
-                      <th className="border border-[#CBD5E1] p-2 text-right">Taxable</th>
-                      <th className="border border-[#CBD5E1] p-2 text-right">13% VAT</th>
-                      <th className="border border-[#CBD5E1] p-2 text-right">Billed Total</th>
-                      <th className="border border-[#CBD5E1] p-2 text-right">Collected</th>
+                      <th className="border border-[#CBD5E1] p-1.5">Voucher / Ref #</th>
+                      <th className="border border-[#CBD5E1] p-1.5">Type</th>
+                      <th className="border border-[#CBD5E1] p-1.5">Account Head &amp; Party</th>
+                      <th className="border border-[#CBD5E1] p-1.5">Particulars</th>
+                      <th className="border border-[#CBD5E1] p-1.5">Mode</th>
+                      <th className="border border-[#CBD5E1] p-1.5 text-right">Billed Total</th>
+                      <th className="border border-[#CBD5E1] p-1.5 text-right">Cash/Bank In</th>
+                      <th className="border border-[#CBD5E1] p-1.5 text-right">Cash Out</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -725,16 +1572,29 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                     ) : (
                       dayTransactions.map((tx) => (
                         <tr key={tx.id}>
-                          <td className="border border-[#CBD5E1] p-2 font-mono font-bold">{tx.referenceNumber}</td>
-                          <td className="border border-[#CBD5E1] p-2">{tx.entryKind}</td>
-                          <td className="border border-[#CBD5E1] p-2">
-                            <strong>{tx.customerName}</strong> — {tx.particulars}
+                          <td className="border border-[#CBD5E1] p-1.5 font-mono font-bold">
+                            {tx.voucherOrDocNumber}
                           </td>
-                          <td className="border border-[#CBD5E1] p-2">{tx.paymentMode}</td>
-                          <td className="border border-[#CBD5E1] p-2 text-right font-mono">{formatAccountingNPR(tx.taxableAmount)}</td>
-                          <td className="border border-[#CBD5E1] p-2 text-right font-mono">{formatAccountingNPR(tx.vatAmount)}</td>
-                          <td className="border border-[#CBD5E1] p-2 text-right font-mono font-bold">{formatAccountingNPR(tx.grossTotal)}</td>
-                          <td className="border border-[#CBD5E1] p-2 text-right font-mono font-bold">{formatAccountingNPR(tx.cashFlowToday)}</td>
+                          <td className="border border-[#CBD5E1] p-1.5">{tx.entryKind}</td>
+                          <td className="border border-[#CBD5E1] p-1.5">
+                            <strong>{tx.partyName}</strong>
+                            <div className="text-[9px] text-[#64748B]">{tx.accountHead}</div>
+                          </td>
+                          <td className="border border-[#CBD5E1] p-1.5">
+                            {tx.particulars}
+                            {tx.referenceNumber ? ` (Ref: ${tx.referenceNumber})` : ''}
+                            {tx.approvedBy ? ` [Appr: ${tx.approvedBy}]` : ''}
+                          </td>
+                          <td className="border border-[#CBD5E1] p-1.5">{tx.paymentMode}</td>
+                          <td className="border border-[#CBD5E1] p-1.5 text-right font-mono">
+                            {tx.grossTotal !== 0 ? formatAccountingNPR(tx.grossTotal) : '—'}
+                          </td>
+                          <td className="border border-[#CBD5E1] p-1.5 text-right font-mono font-bold text-[#16A34A]">
+                            {tx.cashFlowToday > 0 ? formatAccountingNPR(tx.cashFlowToday) : '—'}
+                          </td>
+                          <td className="border border-[#CBD5E1] p-1.5 text-right font-mono font-bold text-[#DC2626]">
+                            {tx.cashFlowToday < 0 ? formatAccountingNPR(Math.abs(tx.cashFlowToday)) : '—'}
+                          </td>
                         </tr>
                       ))
                     )}
@@ -773,12 +1633,18 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                       <span className="font-mono">{formatAccountingNPR(cashOpeningFloat)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Add: Cash Receipts Today:</span>
-                      <span className="font-mono text-[#16A34A]">{formatAccountingNPR(summary.cashInflow)}</span>
+                      <span>Add: Invoice Cash Receipts:</span>
+                      <span className="font-mono text-[#16A34A]">{formatAccountingNPR(summary.invoiceCashIn)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Less: Cash Refunds Today:</span>
-                      <span className="font-mono text-[#DC2626]">-{formatAccountingNPR(summary.cashOutflow)}</span>
+                      <span>Add: Cash In Vouchers (CRV):</span>
+                      <span className="font-mono text-[#16A34A]">{formatAccountingNPR(summary.manualCashIn)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Less: Cash Out Vouchers (CPV) &amp; Refunds:</span>
+                      <span className="font-mono text-[#DC2626]">
+                        -{formatAccountingNPR(summary.totalCashOutflow)}
+                      </span>
                     </div>
                     <div className="flex justify-between font-bold border-t border-[#E2E8F0] pt-1">
                       <span>Closing Cash in Drawer:</span>
