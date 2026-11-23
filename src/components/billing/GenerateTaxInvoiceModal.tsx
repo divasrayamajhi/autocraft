@@ -22,12 +22,15 @@ export interface TaxInvoiceGenerationOptions {
   paymentMethod?: NepalPaymentMethod;
   customerPan?: string;
   customerAddress?: string;
+  onlyUnbilledItems?: boolean;
 }
 
 interface GenerateTaxInvoiceModalProps {
   isOpen: boolean;
   jobCard: JobCard | null;
   customer?: Customer;
+  onlyUnbilledItems?: boolean;
+  previousPaidInvoiceNumber?: string;
   onClose: () => void;
   onConfirm: (jobCard: JobCard, options: TaxInvoiceGenerationOptions) => void;
 }
@@ -36,6 +39,8 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
   isOpen,
   jobCard,
   customer,
+  onlyUnbilledItems = false,
+  previousPaidInvoiceNumber,
   onClose,
   onConfirm,
 }) => {
@@ -70,8 +75,12 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
 
   if (!isOpen || !jobCard) return null;
 
-  const rawParts = jobCard.partsRequested || jobCard.partsItems || [];
-  const rawLabor = jobCard.laborItems || [];
+  const billedPartSet = new Set(jobCard.billedPartIds || []);
+  const billedLaborSet = new Set(jobCard.billedLaborIds || []);
+  const allParts = jobCard.partsRequested || jobCard.partsItems || [];
+  const allLabor = jobCard.laborItems || [];
+  const rawParts = onlyUnbilledItems ? allParts.filter((p) => !billedPartSet.has(p.id)) : allParts;
+  const rawLabor = onlyUnbilledItems ? allLabor.filter((l) => !billedLaborSet.has(l.id)) : allLabor;
   const partsSubtotal = round2(
     rawParts.reduce(
       (acc, p) =>
@@ -120,6 +129,7 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
           phone: companyPhone.trim(),
         },
         paymentMethod,
+        onlyUnbilledItems,
       });
     } else {
       onConfirm(jobCard, {
@@ -133,6 +143,7 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
         customerPan: individualPan.trim() || undefined,
         customerAddress: individualAddress.trim() || undefined,
         paymentMethod,
+        onlyUnbilledItems,
       });
     }
   };
@@ -163,6 +174,14 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+          {onlyUnbilledItems && (
+            <div className="bg-emerald-50 border border-emerald-200 text-[#16A34A] px-3.5 py-2.5 rounded-lg text-[11px] font-medium">
+              <strong>Separate Supplementary Invoice:</strong> Earlier Paid Invoice{' '}
+              <span className="font-mono font-bold">{previousPaidInvoiceNumber || ''}</span> remains fully Paid and untouched. This separate invoice bills only the{' '}
+              <strong>{rawLabor.length} new labor</strong> and <strong>{rawParts.length} new part</strong> item(s) added after re-opening.
+            </div>
+          )}
+
           {/* Financial Preview Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-[#F1F5F9] p-3 rounded-lg border border-[#E2E8F0]">
             <div>

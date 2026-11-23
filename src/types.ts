@@ -386,6 +386,7 @@ export interface JobCard {
   customerPan?: string;
   vehicle: Vehicle;
   serviceType: 'Periodic Maintenance Service' | 'Major Mechanical Repair' | 'Running Repair' | 'Accident & Dent Paint' | 'Electrical & AC' | 'Warranty Service' | string;
+  serviceBillingType?: 'Paid Service' | 'Free Service';
   assignedTechnicianId?: string;
   assignedTechnicianName?: string;
   bayNumber: string;
@@ -422,9 +423,19 @@ export interface JobCard {
   couponNumber?: string;
   couponNotes?: string;
 
-  // Billing & IRD Tax Invoice Reference
+  // Billing & IRD Tax Invoice Reference (supports separate supplementary invoices on re-opened paid job cards)
   invoiceId?: string;
   invoiceNumber?: string;
+  billedLaborIds?: string[];
+  billedPartIds?: string[];
+  invoiceHistory?: {
+    invoiceId: string;
+    invoiceNumber: string;
+    date: string;
+    amount: number;
+    status: string;
+  }[];
+  readyNotificationSentAt?: string;
 
   inspection: {
     fuelLevel: number; // 0 - 100%
@@ -493,6 +504,9 @@ export interface Invoice {
   vehicleBrand?: string;
   vehicleModel: string;
   type: string; // 'Tax Invoice' | 'Cashless Insurance Invoice' | 'Warranty Claim Invoice' | 'Credit Note' | etc.
+  originalInvoiceId?: string; // Linked Tax Invoice ID when type === 'Credit Note'
+  originalInvoiceNumber?: string; // Linked Tax Invoice # when type === 'Credit Note'
+  creditNoteReason?: string;
   
   // Tax Computations per Nepal IRD
   subTotal?: number;
@@ -797,6 +811,23 @@ export interface CashierVoucher {
   createdBy: string; // Logged-in cashier
   approvedBy?: string; // Authorizing person, if required
   createdAt: string; // ISO timestamp
+}
+
+// Vehicle Ready & Pickup SMS / Message Notification Log
+export interface ReadyNotificationLog {
+  id: string;
+  jobCardId: string;
+  jobCardNumber: string;
+  vehicleReg: string;
+  vehicleLabel: string;
+  customerName: string;
+  recipientPhone: string;
+  businessOwnerPhone?: string;
+  channel: 'SMS & Message' | 'SMS' | 'WhatsApp';
+  message: string;
+  sentAt: string; // ISO timestamp
+  bsDate: string;
+  isRead: boolean;
 }
 
 // Master Settings Theme Customizer Types

@@ -111,14 +111,22 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
 
   const unbilledJobCards = useMemo(() => {
     return (jobCards || []).filter((jc) => {
-      const alreadyBilled = invoices.some(
+      const existingRegular = invoices.filter(
         (inv) =>
           !isCreditNoteInvoice(inv) &&
           ((inv.jobCardId && inv.jobCardId === jc.id) ||
             (inv.jobCardNumber && inv.jobCardNumber === jc.jobCardNumber) ||
             (jc.invoiceId && inv.id === jc.invoiceId))
       );
-      return !alreadyBilled;
+      if (existingRegular.length === 0) return true;
+      // Allow re-opened Paid Job Cards that have newly added unbilled labor/parts to issue a separate invoice
+      const allPaid = existingRegular.every((inv) => inv.status === 'Paid');
+      if (!allPaid || jc.isLocked) return false;
+      const billedLabor = new Set(jc.billedLaborIds || []);
+      const billedParts = new Set(jc.billedPartIds || []);
+      const hasNewLabor = (jc.laborItems || []).some((l) => !billedLabor.has(l.id));
+      const hasNewParts = (jc.partsRequested || jc.partsItems || []).some((p) => !billedParts.has(p.id));
+      return hasNewLabor || hasNewParts;
     });
   }, [jobCards, invoices]);
 
@@ -301,14 +309,22 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center space-x-2 px-3 py-1.5 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0] text-[11px] text-[#0F172A] self-start sm:self-auto">
-          <ShieldCheck className="w-3.5 h-3.5 text-[#16A34A]" />
-          <span className="font-semibold">
-            IRD CBMS: {metrics.syncedCount}/{invoices.length} Synced
-          </span>
-          <span className="text-[#E2E8F0]">|</span>
-          <span className="font-mono text-[#64748B]">PAN: {workshopPan}</span>
-        </div>
+        {billingSubTab === 'invoices' ? (
+          <div className="flex items-center space-x-2 px-3 py-1.5 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0] text-[11px] text-[#0F172A] self-start sm:self-auto">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#16A34A]" />
+            <span className="font-semibold">
+              IRD CBMS: {metrics.syncedCount}/{invoices.length} Synced
+            </span>
+            <span className="text-[#E2E8F0]">|</span>
+            <span className="font-mono text-[#64748B]">PAN: {workshopPan}</span>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2 px-3 py-1.5 bg-[#F1F5F9] rounded-lg border border-[#E2E8F0] text-[11px] text-[#0F172A] self-start sm:self-auto">
+            <span className="font-semibold text-[#0F3D5E]">Cashier Daily Cash Book</span>
+            <span className="text-[#E2E8F0]">|</span>
+            <span className="font-mono text-[#64748B]">No CBMS Sync Required</span>
+          </div>
+        )}
       </div>
 
       {/* Render Daybook View when selected */}
@@ -1119,6 +1135,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
           )}
           profile={profile}
           onClose={() => setSelectedInvoiceForPrint(null)}
+          onCreateCreditNote={onCreateCreditNote}
         />
       )}
 
@@ -1178,23 +1195,38 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
       )}
 
       {/* MODAL 6: GENERATE TAX INVOICE WITH COMPANY BILLING OPTION */}
-      <GenerateTaxInvoiceModal
-        isOpen={Boolean(jobCardToBill)}
-        jobCard={jobCardToBill}
-        customer={customers.find(
-          (c) =>
-            jobCardToBill &&
-            ((jobCardToBill.customerId && c.id === jobCardToBill.customerId) ||
-              c.name.trim().toLowerCase() === (jobCardToBill.customerName || '').trim().toLowerCase())
-        )}
-        onClose={() => setJobCardToBill(null)}
-        onConfirm={(jc, options) => {
-          setJobCardToBill(null);
-          if (onConvertJobCardToInvoice) {
-            onConvertJobCardToInvoice(jc, options);
-          }
-        }}
-      />
+      {(() => {
+        const prevPaid = jobCardToBill
+          ? invoices.find(
+              (inv) =>
+                !isCreditNoteInvoice(inv) &&
+                inv.status === 'Paid' &&
+                ((inv.jobCardId && inv.jobCardId === jobCardToBill.id) ||
+                  (inv.jobCardNumber && inv.jobCardNumber === jobCardToBill.jobCardNumber))
+            )
+          : undefined;
+        return (
+          <GenerateTaxInvoiceModal
+            isOpen={Boolean(jobCardToBill)}
+            jobCard={jobCardToBill}
+            customer={customers.find(
+              (c) =>
+                jobCardToBill &&
+                ((jobCardToBill.customerId && c.id === jobCardToBill.customerId) ||
+                  c.name.trim().toLowerCase() === (jobCardToBill.customerName || '').trim().toLowerCase())
+            )}
+            onlyUnbilledItems={Boolean(prevPaid)}
+            previousPaidInvoiceNumber={prevPaid?.invoiceNumber}
+            onClose={() => setJobCardToBill(null)}
+            onConfirm={(jc, options) => {
+              setJobCardToBill(null);
+              if (onConvertJobCardToInvoice) {
+                onConvertJobCardToInvoice(jc, { ...options, onlyUnbilledItems: Boolean(prevPaid) });
+              }
+            }}
+          />
+        );
+      })()}
     </div>
   );
 };

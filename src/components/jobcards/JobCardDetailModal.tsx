@@ -13,7 +13,8 @@ import {
   WorkshopProfile,
   ServicePriceItem,
   WorkshopBay,
-  Customer
+  Customer,
+  NepalPaymentMethod
 } from '../../types';
 import { 
   Wrench, 
@@ -41,12 +42,18 @@ import {
   FileSpreadsheet, 
   Tag,
   Package,
-  Search
+  Search,
+  Send,
+  MessageSquare,
+  Phone
 } from 'lucide-react';
 import { VehicleServiceHistoryModal } from '../common/VehicleServiceHistoryModal';
 import { AccidentQuotationModal } from './AccidentQuotationModal';
 import { PrintJobCardModal } from './PrintJobCardModal';
 import { GenerateTaxInvoiceModal, TaxInvoiceGenerationOptions } from '../billing/GenerateTaxInvoiceModal';
+import { DualCalendarPicker } from '../common/DualCalendarPicker';
+import { adToBs } from '../../utils/nepaliDate';
+import { formatAccountingNPR, isCreditNoteInvoice, round2 } from '../../utils/accountingEngine';
 
 interface JobCardDetailModalProps {
   jobCard: JobCard;
@@ -67,6 +74,13 @@ interface JobCardDetailModalProps {
   onConvertToInvoice: (jc: JobCard, options?: TaxInvoiceGenerationOptions) => void;
   onViewInvoice?: (invoice: Invoice) => void;
   onCreateQuotation?: (quotation: PartsQuotation) => void;
+  onCreateCreditNote?: (
+    originalInv: Invoice,
+    refundTaxable: number,
+    reason: string,
+    refundMethod: NepalPaymentMethod
+  ) => void;
+  onTriggerReadyNotification?: (jc: JobCard) => void;
 }
 
 export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
@@ -87,10 +101,13 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   onUpdateBay,
   onConvertToInvoice,
   onViewInvoice,
-  onCreateQuotation
+  onCreateQuotation,
+  onCreateCreditNote,
+  onTriggerReadyNotification
 }) => {
   const [activeTab, setActiveTab] = useState<'inspection' | 'labor' | 'parts' | 'status'>('inspection');
   const [isGenerateInvoiceOpen, setIsGenerateInvoiceOpen] = useState(false);
+  const [invoiceOnlyUnbilled, setInvoiceOnlyUnbilled] = useState(false);
   const [currentJobCard, setCurrentJobCard] = useState<JobCard>(() => ({
     ...jobCard,
     laborItems: jobCard.laborItems || [],
@@ -122,20 +139,37 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   const [editCouponNumber, setEditCouponNumber] = useState(jobCard.couponNumber || '');
   const [editCouponNotes, setEditCouponNotes] = useState(jobCard.couponNotes || '');
   const [editRemarks, setEditRemarks] = useState(jobCard.inspection.generalRemarks || '');
+  const [editServiceBillingType, setEditServiceBillingType] = useState<'Paid Service' | 'Free Service'>(
+    jobCard.serviceBillingType || 'Paid Service'
+  );
 
-  // Labor Task Code state
-  const [laborTaskCode, setLaborTaskCode] = useState('');
-  const [newLaborDesc, setNewLaborDesc] = useState('');
-  const [newLaborHours, setNewLaborHours] = useState(1);
-  const [newLaborRate, setNewLaborRate] = useState(1500);
+  // Labor Search & Results State (explicit Search input + Search button -> results list below with Add button)
+  const [laborSearchInput, setLaborSearchInput] = useState('');
+  const [laborSearchTerm, setLaborSearchTerm] = useState('');
+  const [hasSearchedLabor, setHasSearchedLabor] = useState(false);
   const [newLaborTechId, setNewLaborTechId] = useState(technicians[0]?.id || '');
-  const [matchedLaborService, setMatchedLaborService] = useState<ServicePriceItem | null>(null);
+  const [showCustomLaborForm, setShowCustomLaborForm] = useState(false);
+  const [customLaborCode, setCustomLaborCode] = useState('');
+  const [customLaborDesc, setCustomLaborDesc] = useState('');
+  const [customLaborRate, setCustomLaborRate] = useState<number>(0);
 
-  // Part SKU / Code Search state
-  const [partSearchQuery, setPartSearchQuery] = useState('');
-  const [matchedPart, setMatchedPart] = useState<SparePart | null>(null);
-  const [partQty, setPartQty] = useState(1);
-  const [isCoveredByInsurance, setIsCoveredByInsurance] = useState(false);
+  // Spare Parts Search & Results State (explicit Search input + Search button -> results list below with Add button)
+  const [partSearchInput, setPartSearchInput] = useState('');
+  const [partSearchTerm, setPartSearchTerm] = useState('');
+  const [hasSearchedParts, setHasSearchedParts] = useState(false);
+  const [partQtyById, setPartQtyById] = useState<Record<string, number>>({});
+
+  // Vehicle Ready SMS / Owner Notification state
+  const [readyBannerMsg, setReadyBannerMsg] = useState<string | null>(null);
+  const [businessOwnerPhone, setBusinessOwnerPhone] = useState(profile?.contactNumber || '');
+  const [smsSentConfirmation, setSmsSentConfirmation] = useState<string | null>(null);
+
+  // Direct Credit Note Modal state (separate from Purchase Orders)
+  const [creditNoteTarget, setCreditNoteTarget] = useState<Invoice | null>(null);
+  const [cnTaxable, setCnTaxable] = useState<number>(0);
+  const [cnReason, setCnReason] = useState('Customer billing adjustment / returned service or spare part');
+  const [cnMethod, setCnMethod] = useState<NepalPaymentMethod>('Cash');
+  const [cnSuccessMsg, setCnSuccessMsg] = useState<string | null>(null);
 
   const STAGES: JobCardStatus[] = [
     'Vehicle Check-in',
@@ -148,10 +182,110 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
 
   const isLocked = currentJobCard.isLocked;
   const isAdmin = currentUser.role === 'Admin';
+  const isFreeService = currentJobCard.serviceBillingType === 'Free Service';
+
+  // Linked Invoices (Regular Tax Invoices vs Credit Notes)
+  const jcRegularInvoices = (invoices || []).filter(
+    (inv) =>
+      !isCreditNoteInvoice(inv) &&
+      ((inv.jobCardId && inv.jobCardId === currentJobCard.id) ||
+        (inv.jobCardNumber && inv.jobCardNumber === currentJobCard.jobCardNumber) ||
+        (currentJobCard.invoiceId && inv.id === currentJobCard.invoiceId) ||
+        (currentJobCard.invoiceNumber && inv.invoiceNumber === currentJobCard.invoiceNumber))
+  );
+  const latestInvoice = jcRegularInvoices[0] || null;
+  const hasPaidInvoice = jcRegularInvoices.some((inv) => inv.status === 'Paid');
+
+  const billedLaborSet = new Set(currentJobCard.billedLaborIds || []);
+  const billedPartSet = new Set(currentJobCard.billedPartIds || []);
+  const unbilledLaborItems = (currentJobCard.laborItems || []).filter((l) => !billedLaborSet.has(l.id));
+  const unbilledPartItems = (currentJobCard.partsRequested || []).filter((p) => !billedPartSet.has(p.id));
+  const hasUnbilledAdditions = unbilledLaborItems.length > 0 || unbilledPartItems.length > 0;
+
+  // Filtered Labor Search Results (shown below Search bar when searched)
+  const laborSearchResults = (() => {
+    if (!hasSearchedLabor) return [];
+    const q = laborSearchTerm.trim().toLowerCase();
+    if (!q) return servicePrices || [];
+    return (servicePrices || []).filter(
+      (s) =>
+        (s.code || '').toLowerCase().includes(q) ||
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.category || '').toLowerCase().includes(q)
+    );
+  })();
+
+  // Filtered Spare Parts Search Results (shown below Search bar when searched)
+  const partSearchResults = (() => {
+    if (!hasSearchedParts) return [];
+    const q = partSearchTerm.trim().toLowerCase();
+    if (!q) return availableParts || [];
+    return (availableParts || []).filter(
+      (p) =>
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.partNumber || '').toLowerCase().includes(q) ||
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.barcode || '').toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q)
+    );
+  })();
+
+  // Automatically sync Workshop Bay status with Job Card lifecycle stage
+  const syncBayForStatus = (jc: JobCard, status: JobCardStatus) => {
+    if (!bays || !onUpdateBay || !jc.bayNumber) return;
+    const targetBay = bays.find(
+      (b) =>
+        b.name === jc.bayNumber ||
+        b.bayNumber === jc.bayNumber ||
+        (b.name && jc.bayNumber.toLowerCase().includes(b.name.toLowerCase()))
+    );
+    if (!targetBay) return;
+
+    if (status === 'Ready for Billing' || status === 'Delivered') {
+      onUpdateBay({
+        ...targetBay,
+        status: 'Available',
+        currentJobCardId: undefined,
+        currentVehicleReg: undefined
+      });
+    } else if (
+      status === 'Bay Assigned (In Progress)' ||
+      status === 'Awaiting Spares' ||
+      status === 'Quality Check'
+    ) {
+      onUpdateBay({
+        ...targetBay,
+        status: 'Occupied',
+        currentJobCardId: jc.id,
+        currentVehicleReg: jc.vehicle.registrationNumber
+      });
+    }
+  };
+
+  const buildReadyPickupSmsText = (jc: JobCard) => {
+    const workshopName = profile?.name || 'Continental Auto Kraft';
+    const workshopPhone = profile?.contactNumber || '+977-1-4378920';
+    return `Vehicle Ready for Pickup: ${jc.vehicle.registrationNumber} (${jc.vehicle.brand || jc.vehicle.make || ''} ${jc.vehicle.model}) [${jc.jobCardNumber}] is Ready for Billing & Pickup at ${workshopName}. Customer: ${jc.customerName}. Contact: ${workshopPhone}.`;
+  };
 
   const handleStageChange = (newStatus: JobCardStatus) => {
     if (isLocked) return;
-    const updated = { ...currentJobCard, status: newStatus };
+    const updated: JobCard = { ...currentJobCard, status: newStatus };
+    setCurrentJobCard(updated);
+    onUpdateJobCard(updated);
+    syncBayForStatus(updated, newStatus);
+    if (newStatus === 'Ready for Billing') {
+      setReadyBannerMsg(
+        `Status updated to Ready for Billing and ${updated.bayNumber || 'assigned bay'} marked Available. Send pickup SMS to owner below.`
+      );
+      onTriggerReadyNotification?.(updated);
+    }
+  };
+
+  const handleToggleServiceBillingType = (newType: 'Paid Service' | 'Free Service') => {
+    if (isLocked) return;
+    setEditServiceBillingType(newType);
+    const updated: JobCard = { ...currentJobCard, serviceBillingType: newType };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
   };
@@ -178,10 +312,22 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
 
   const handleAdminReopenJobCard = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) {
-      alert('Access Denied: Only users with the Administrator (Admin) role can re-open a locked/closed Job Card.');
-      return;
-    }
+    if (!isAdmin) return;
+
+    // Preserve already-billed labor & part IDs so previously Paid invoices stay untouched
+    // and any newly added items after re-opening generate a separate supplementary Tax Invoice
+    const existingBilledLaborIds =
+      currentJobCard.billedLaborIds && currentJobCard.billedLaborIds.length > 0
+        ? currentJobCard.billedLaborIds
+        : jcRegularInvoices.length > 0
+          ? (currentJobCard.laborItems || []).map((l) => l.id)
+          : [];
+    const existingBilledPartIds =
+      currentJobCard.billedPartIds && currentJobCard.billedPartIds.length > 0
+        ? currentJobCard.billedPartIds
+        : jcRegularInvoices.length > 0
+          ? (currentJobCard.partsRequested || []).map((p) => p.id)
+          : [];
 
     const updated: JobCard = {
       ...currentJobCard,
@@ -190,7 +336,9 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
       reopenedBy: currentUser.name,
       reopenedAt: new Date().toISOString(),
       reopenReason: reopenReason.trim() || 'Administrative adjustment authorized',
-      status: currentJobCard.status === 'Delivered' ? 'Ready for Billing' : currentJobCard.status
+      status: currentJobCard.status === 'Delivered' ? 'Ready for Billing' : currentJobCard.status,
+      billedLaborIds: existingBilledLaborIds,
+      billedPartIds: existingBilledPartIds
     };
 
     setCurrentJobCard(updated);
@@ -208,6 +356,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
       customerPhone: editCustomerPhone.trim() || currentJobCard.customerPhone,
       arrivalDate: editArrivalDate,
       entryTime: editEntryTime,
+      serviceBillingType: editServiceBillingType,
       couponNumber: editCouponNumber.trim() || undefined,
       couponNotes: editCouponNotes.trim() || undefined,
       vehicle: {
@@ -234,157 +383,167 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     setIsEditingInspection(false);
   };
 
-  const handleTaskCodeChange = (code: string) => {
-    setLaborTaskCode(code);
-    const clean = code.trim().toUpperCase();
-    if (!clean) {
-      setMatchedLaborService(null);
-      return;
-    }
-    const match = (servicePrices || []).find(s => 
-      s.code.toUpperCase() === clean || 
-      s.code.toUpperCase().replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
-      s.name.toLowerCase().includes(clean.toLowerCase())
-    );
-    if (match) {
-      setMatchedLaborService(match);
-      setNewLaborDesc(match.name);
-      setNewLaborRate(match.fixedPrice ?? match.baseLaborRate);
-    } else {
-      setMatchedLaborService(null);
-    }
+  const handleSearchLabor = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLaborSearchTerm(laborSearchInput.trim());
+    setHasSearchedLabor(true);
   };
 
-  const handleAddLabor = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isLocked || !newLaborDesc) return;
-
-    const tech = technicians.find(t => t.id === newLaborTechId);
+  const handleAddLaborFromResult = (srv: ServicePriceItem) => {
+    if (isLocked) return;
+    const tech = technicians.find((t) => t.id === newLaborTechId);
+    const charge = isFreeService ? 0 : (srv.fixedPrice ?? srv.baseLaborRate);
     const newItem: JobCardLaborItem = {
-      id: `LBR-${Date.now()}`,
-      code: laborTaskCode || matchedLaborService?.code || 'SRV-GEN',
-      description: newLaborDesc,
+      id: `LBR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      code: srv.code,
+      description: srv.name,
       hours: 1,
       hoursEstimated: 1,
-      ratePerHour: newLaborRate,
+      ratePerHour: charge,
       vatRate: 13,
-      totalAmount: newLaborRate, // Fixed price
+      totalAmount: charge,
       technicianId: newLaborTechId,
       technicianName: tech?.name,
       status: 'In Progress'
     };
 
-    const updated = {
+    const nextStatus: JobCardStatus =
+      currentJobCard.status === 'Vehicle Check-in' || currentJobCard.status === 'Appointment / Intake'
+        ? 'Bay Assigned (In Progress)'
+        : currentJobCard.status;
+
+    const updated: JobCard = {
       ...currentJobCard,
-      laborItems: [...currentJobCard.laborItems, newItem]
+      status: nextStatus,
+      laborItems: [...(currentJobCard.laborItems || []), newItem]
     };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
-    setLaborTaskCode('');
-    setNewLaborDesc('');
-    setMatchedLaborService(null);
+    if (nextStatus !== currentJobCard.status) {
+      syncBayForStatus(updated, nextStatus);
+    }
+  };
+
+  const handleAddCustomLabor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLocked || !customLaborDesc.trim()) return;
+    const tech = technicians.find((t) => t.id === newLaborTechId);
+    const charge = isFreeService ? 0 : Math.max(0, Number(customLaborRate) || 0);
+    const newItem: JobCardLaborItem = {
+      id: `LBR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      code: customLaborCode.trim().toUpperCase() || 'SRV-CUS',
+      description: customLaborDesc.trim(),
+      hours: 1,
+      hoursEstimated: 1,
+      ratePerHour: charge,
+      vatRate: 13,
+      totalAmount: charge,
+      technicianId: newLaborTechId,
+      technicianName: tech?.name,
+      status: 'In Progress'
+    };
+
+    const nextStatus: JobCardStatus =
+      currentJobCard.status === 'Vehicle Check-in' || currentJobCard.status === 'Appointment / Intake'
+        ? 'Bay Assigned (In Progress)'
+        : currentJobCard.status;
+
+    const updated: JobCard = {
+      ...currentJobCard,
+      status: nextStatus,
+      laborItems: [...(currentJobCard.laborItems || []), newItem]
+    };
+    setCurrentJobCard(updated);
+    onUpdateJobCard(updated);
+    if (nextStatus !== currentJobCard.status) {
+      syncBayForStatus(updated, nextStatus);
+    }
+    setCustomLaborCode('');
+    setCustomLaborDesc('');
+    setCustomLaborRate(0);
+    setShowCustomLaborForm(false);
   };
 
   const handleRemoveLabor = (id: string) => {
-    if (isLocked) return;
+    if (isLocked || billedLaborSet.has(id)) return;
     const updated = {
       ...currentJobCard,
-      laborItems: currentJobCard.laborItems.filter(l => l.id !== id)
+      laborItems: (currentJobCard.laborItems || []).filter((l) => l.id !== id)
     };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
   };
 
-  const handlePartSearchChange = (query: string) => {
-    setPartSearchQuery(query);
-    const clean = query.trim().toUpperCase();
-    if (!clean) {
-      setMatchedPart(null);
-      return;
-    }
-    const match = (availableParts || []).find(p => 
-      p.sku.toUpperCase() === clean ||
-      p.partNumber.toUpperCase() === clean ||
-      p.sku.toUpperCase().replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
-      p.partNumber.toUpperCase().replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
-      p.barcode?.toUpperCase() === clean ||
-      p.sku.toUpperCase().includes(clean) ||
-      p.partNumber.toUpperCase().includes(clean)
-    );
-    setMatchedPart(match || null);
+  const handleSearchParts = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setPartSearchTerm(partSearchInput.trim());
+    setHasSearchedParts(true);
   };
 
-  const handleAddPart = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isLocked || !matchedPart) return;
+  const handleIssuePartFromResult = (part: SparePart) => {
+    if (isLocked) return;
+    const qty = Math.max(1, partQtyById[part.id] || 1);
+    if (part.currentStock < qty) return;
 
     // 1. Deduct requested quantity from Spare Parts Master
-    const updatedStock = Math.max(0, matchedPart.currentStock - partQty);
+    const updatedStock = Math.max(0, part.currentStock - qty);
     if (onUpdatePart) {
       onUpdatePart({
-        ...matchedPart,
+        ...part,
         currentStock: updatedStock
       });
     }
 
-    // 2. Add part to Job Card parts requested
+    // 2. Add issued part to Job Card
     const newItem: JobCardPartItem = {
-      id: `JCP-${Date.now()}`,
-      partId: matchedPart.id,
-      partNumber: matchedPart.partNumber,
-      name: matchedPart.name,
-      partName: matchedPart.name,
-      quantity: partQty,
-      unitPrice: matchedPart.sellingPrice,
-      totalAmount: matchedPart.sellingPrice * partQty,
+      id: `JCP-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      partId: part.id,
+      partNumber: part.partNumber,
+      name: part.name,
+      partName: part.name,
+      quantity: qty,
+      unitPrice: part.sellingPrice,
+      totalAmount: part.sellingPrice * qty,
       vatRate: 13,
       discount: 0,
-      isCoveredByInsurance,
+      isCoveredByInsurance: false,
       requisitionStatus: 'Issued'
     };
 
-    // 3. Automatically advance Bay & Status lifecycle once parts are issued
-    let newStatus = currentJobCard.status;
-    if (
-      currentJobCard.status === 'Appointment / Intake' ||
-      currentJobCard.status === 'Vehicle Check-in' ||
-      currentJobCard.status === 'Awaiting Spares'
-    ) {
-      newStatus = 'Bay Assigned (In Progress)';
-    }
+    // 3. Automatically update status to Ready for Billing once parts are issued from Parts
+    const nextStatus: JobCardStatus =
+      currentJobCard.status === 'Delivered' ? 'Delivered' : 'Ready for Billing';
 
-    // 4. Update Bay status to Occupied automatically
-    if (bays && onUpdateBay && currentJobCard.bayNumber) {
-      const targetBay = bays.find(b => b.name === currentJobCard.bayNumber || b.bayNumber === currentJobCard.bayNumber);
-      if (targetBay) {
-        onUpdateBay({
-          ...targetBay,
-          status: 'Occupied',
-          currentJobCardId: currentJobCard.id,
-          currentVehicleReg: currentJobCard.vehicle.registrationNumber
-        });
-      }
-    }
-
-    const updated = {
+    const updated: JobCard = {
       ...currentJobCard,
-      status: newStatus,
+      status: nextStatus,
       partsRequested: [...(currentJobCard.partsRequested || []), newItem]
     };
+
+    // 4. Sync Workshop Bay status automatically (Bay cleared/Available once Ready for Billing)
+    syncBayForStatus(updated, nextStatus);
+
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
 
-    // Reset part search fields
-    setPartSearchQuery('');
-    setMatchedPart(null);
-    setPartQty(1);
+    // 5. Trigger Vehicle Ready / Pickup Notification to owner
+    if (nextStatus === 'Ready for Billing') {
+      setReadyBannerMsg(
+        `Part "${part.name}" (x${qty}) issued & stock synced. Job Card automatically updated to Ready for Billing and ${updated.bayNumber || 'bay'} released.`
+      );
+      onTriggerReadyNotification?.(updated);
+    }
+
+    setPartQtyById((prev) => ({ ...prev, [part.id]: 1 }));
   };
 
   const handleRemovePart = (id: string) => {
-    if (isLocked) return;
-    const removedItem = (currentJobCard.partsRequested || []).find(p => p.id === id);
+    if (isLocked || billedPartSet.has(id)) return;
+    const removedItem = (currentJobCard.partsRequested || []).find((p) => p.id === id);
     if (removedItem && onUpdatePart) {
-      const partToRestock = availableParts.find(p => p.id === removedItem.partId || p.partNumber === removedItem.partNumber);
+      const partToRestock = availableParts.find(
+        (p) => p.id === removedItem.partId || p.partNumber === removedItem.partNumber
+      );
       if (partToRestock) {
         onUpdatePart({
           ...partToRestock,
@@ -395,10 +554,28 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
 
     const updated = {
       ...currentJobCard,
-      partsRequested: (currentJobCard.partsRequested || []).filter(p => p.id !== id)
+      partsRequested: (currentJobCard.partsRequested || []).filter((p) => p.id !== id)
     };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
+  };
+
+  const handleOpenCreditNoteModal = (inv: Invoice) => {
+    setCreditNoteTarget(inv);
+    setCnTaxable(Math.abs(Number(inv.taxableAmount ?? inv.subTotal ?? 0)));
+    setCnReason(`Billing adjustment / return against ${inv.invoiceNumber}`);
+    setCnMethod('Cash');
+  };
+
+  const handleSubmitCreditNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!creditNoteTarget || !onCreateCreditNote) return;
+    const maxTaxable = Math.abs(Number(creditNoteTarget.taxableAmount ?? creditNoteTarget.subTotal ?? 0));
+    const clean = round2(Math.min(Math.max(0, cnTaxable), maxTaxable));
+    if (clean <= 0 || !cnReason.trim()) return;
+    onCreateCreditNote(creditNoteTarget, clean, cnReason.trim(), cnMethod);
+    setCnSuccessMsg(`Credit Note issued against Invoice ${creditNoteTarget.invoiceNumber} (Taxable Rs. ${formatAccountingNPR(clean)} + 13% VAT).`);
+    setCreditNoteTarget(null);
   };
 
   const totalLabor = (currentJobCard.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
@@ -417,22 +594,31 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
               <Wrench className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-extrabold tracking-tight">
                   Job Card: {currentJobCard.jobCardNumber}
                 </h3>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                    isFreeService
+                      ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
+                      : 'bg-sky-500/20 text-sky-200 border-sky-400/40'
+                  }`}
+                >
+                  {isFreeService ? 'Free Service' : 'Paid Service'}
+                </span>
                 {isLocked ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center space-x-1">
+                  <span className="px-2.5 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center space-x-1">
                     <Lock className="w-3 h-3 text-rose-400" />
-                    <span>LOCKED & IMMUTABLE</span>
+                    <span>LOCKED &amp; IMMUTABLE</span>
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    Active Editable Card
+                  <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    {currentJobCard.status}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-300 mt-0.5">
                 {currentJobCard.vehicle.registrationNumber} • {currentJobCard.vehicle.brand} {currentJobCard.vehicle.model} • {currentJobCard.customerName}
               </p>
             </div>
@@ -543,6 +729,65 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
 
         {/* Modal Body Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+          {/* Inline Ready-for-Billing / Owner SMS Dispatch Banner */}
+          {readyBannerMsg && (
+            <div className="p-3.5 bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start space-x-2.5 text-[#14532D]">
+                <CheckCircle2 className="w-4 h-4 text-[#16A34A] flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-xs">{readyBannerMsg}</p>
+                  <p className="text-[11px] text-[#166534] mt-0.5">
+                    Pickup notification logged. Send instant SMS or WhatsApp to the vehicle owner or business owner:
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+                <a
+                  href={`sms:${(currentJobCard.customerPhone || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(buildReadyPickupSmsText(currentJobCard))}`}
+                  className="px-2.5 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>SMS Customer</span>
+                </a>
+                {businessOwnerPhone && (
+                  <a
+                    href={`sms:${businessOwnerPhone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(buildReadyPickupSmsText(currentJobCard))}`}
+                    className="px-2.5 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+                  >
+                    <Phone className="w-3 h-3" />
+                    <span>SMS Owner</span>
+                  </a>
+                )}
+                <a
+                  href={`https://wa.me/${(currentJobCard.customerPhone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildReadyPickupSmsText(currentJobCard))}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  <span>WhatsApp</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setReadyBannerMsg(null)}
+                  className="p-1 text-[#166534] hover:text-[#14532D]"
+                  aria-label="Dismiss banner"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {cnSuccessMsg && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-900">
+              <span className="font-semibold">{cnSuccessMsg}</span>
+              <button type="button" onClick={() => setCnSuccessMsg(null)} className="text-rose-600 hover:text-rose-800">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* TAB 1: INSPECTION */}
           {activeTab === 'inspection' && (
             <div className="space-y-4">
@@ -648,15 +893,24 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                           required
                         />
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-700 mb-1">Arrival Date *</label>
-                        <input
-                          type="date"
-                          value={editArrivalDate}
-                          onChange={e => setEditArrivalDate(e.target.value)}
-                          className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
-                          required
+                      <div className="sm:col-span-2">
+                        <DualCalendarPicker
+                          label="Arrival Date (B.S. & A.D. Synced) *"
+                          valueAd={editArrivalDate}
+                          onChangeAd={(ad) => setEditArrivalDate(ad)}
+                          compact
                         />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 mb-1">Service Billing Mode *</label>
+                        <select
+                          value={editServiceBillingType}
+                          onChange={(e) => setEditServiceBillingType(e.target.value as 'Paid Service' | 'Free Service')}
+                          className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-[#0EA5E9]"
+                        >
+                          <option value="Paid Service">Paid Service</option>
+                          <option value="Free Service">Free Service</option>
+                        </select>
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-700 mb-1">Entry Time *</label>
@@ -781,9 +1035,13 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       <span className="text-slate-500 block">Fuel Level: {currentJobCard.inspection?.fuelLevel ?? 50}%</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px] font-bold uppercase">Arrival & Entry</span>
-                      <span className="font-bold text-slate-800">{currentJobCard.arrivalDate || currentJobCard.createdAt.slice(0, 10)}</span>
-                      <span className="text-slate-500 block">{currentJobCard.entryTime || '09:30 AM'}</span>
+                      <span className="text-slate-400 block text-[10px] font-bold uppercase">Arrival &amp; Entry</span>
+                      <span className="font-bold text-slate-800">
+                        {currentJobCard.arrivalDate || currentJobCard.createdAt.slice(0, 10)} (AD)
+                      </span>
+                      <span className="text-[#0284C7] block font-mono text-[10px] font-semibold">
+                        B.S. {adToBs(currentJobCard.arrivalDate || currentJobCard.createdAt.slice(0, 10)).formatted} · {currentJobCard.entryTime || '09:30 AM'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px] font-bold uppercase">VIN / Chassis #</span>
@@ -794,13 +1052,39 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       <span className="font-mono font-bold text-slate-800">{currentJobCard.vehicle.engineNumber || 'N/A'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px] font-bold uppercase">Bay & Tech</span>
-                      <span className="font-bold text-indigo-700">{currentJobCard.bayNumber}</span>
+                      <span className="text-slate-400 block text-[10px] font-bold uppercase">Bay &amp; Tech</span>
+                      <span className="font-bold text-[#0284C7]">{currentJobCard.bayNumber}</span>
                       <span className="text-slate-500 block">{currentJobCard.assignedTechnicianName || 'Unassigned'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px] font-bold uppercase">Service Type</span>
-                      <span className="font-bold text-slate-800">{currentJobCard.serviceType}</span>
+                      <span className="text-slate-400 block text-[10px] font-bold uppercase">Service Type &amp; Mode</span>
+                      <span className="font-bold text-slate-800 block">{currentJobCard.serviceType}</span>
+                      {!isLocked ? (
+                        <div className="mt-1 inline-flex rounded border border-[#E2E8F0] overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleServiceBillingType('Paid Service')}
+                            className={`px-2 py-0.5 text-[10px] font-bold transition ${
+                              !isFreeService ? 'bg-[#0F3D5E] text-white' : 'bg-white text-[#64748B] hover:bg-[#F1F5F9]'
+                            }`}
+                          >
+                            Paid
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleServiceBillingType('Free Service')}
+                            className={`px-2 py-0.5 text-[10px] font-bold transition ${
+                              isFreeService ? 'bg-[#16A34A] text-white' : 'bg-white text-[#64748B] hover:bg-[#F1F5F9]'
+                            }`}
+                          >
+                            Free
+                          </button>
+                        </div>
+                      ) : (
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold ${isFreeService ? 'bg-emerald-50 text-[#16A34A]' : 'bg-sky-50 text-[#0284C7]'}`}>
+                          {currentJobCard.serviceBillingType || 'Paid Service'}
+                        </span>
+                      )}
                     </div>
                     {currentJobCard.couponNumber && (
                       <div className="col-span-2 bg-amber-50 border border-amber-200 rounded-lg p-2">
@@ -882,110 +1166,180 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
           {activeTab === 'labor' && (
             <div className="space-y-4">
               {!isLocked && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                    <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
-                      <Wrench className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Labor Task Entry (Enter Code to Pull Fixed Price)</span>
+                <div className="bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0] space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#E2E8F0]">
+                    <span className="text-xs font-bold text-[#0F172A] flex items-center space-x-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                      <span>Search Labor Tasks &amp; Fixed Price Book</span>
                     </span>
-                    <span className="text-[10px] text-indigo-700 bg-indigo-50 font-bold px-2 py-0.5 rounded border border-indigo-200">
-                      Fixed Price Book
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      {isFreeService && (
+                        <span className="text-[10px] font-bold text-[#16A34A] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                          Free Service Active (Rs. 0 Labor)
+                        </span>
+                      )}
+                      <select
+                        value={newLaborTechId}
+                        onChange={(e) => setNewLaborTechId(e.target.value)}
+                        className="bg-white border border-[#E2E8F0] rounded-lg px-2 py-1 text-[11px] font-medium text-[#0F172A]"
+                        title="Assigned Technician for added labor tasks"
+                      >
+                        {technicians.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            Tech: {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
-                  <form onSubmit={handleAddLabor} className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {/* Task Code Input */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                          Labor Task Code *
-                        </label>
-                        <input
-                          value={laborTaskCode}
-                          onChange={e => handleTaskCodeChange(e.target.value)}
-                          placeholder="e.g. SRV-GEN-01"
-                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 font-mono font-bold uppercase text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                          required
-                        />
-                      </div>
-
-                      {/* Labor Description (Auto-filled by code) */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                          Task Description *
-                        </label>
-                        <input
-                          value={newLaborDesc}
-                          onChange={e => setNewLaborDesc(e.target.value)}
-                          placeholder="Task name will appear automatically"
-                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
-                          required
-                        />
-                      </div>
-
-                      {/* Fixed Labor Charge */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                          Fixed Charge (NPR, excl. VAT)
-                        </label>
-                        <div className="flex space-x-1.5">
-                          <input
-                            type="number"
-                            min="0"
-                            step="50"
-                            value={newLaborRate}
-                            onChange={e => setNewLaborRate(parseFloat(e.target.value) || 0)}
-                            className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-2 font-mono font-bold text-xs text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none"
-                            required
-                          />
-                          <button
-                            type="submit"
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm flex items-center space-x-1 transition"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Add</span>
-                          </button>
-                        </div>
-                      </div>
+                  {/* Search Input + Explicit Search Button */}
+                  <form onSubmit={handleSearchLabor} className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={laborSearchInput}
+                        onChange={(e) => setLaborSearchInput(e.target.value)}
+                        placeholder="Enter Labor Task Code, Service Name, or Category (e.g. SRV-GEN-01, Brake, AC)..."
+                        className="w-full bg-white border border-[#E2E8F0] rounded-lg pl-9 pr-3 py-2 text-xs font-medium text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9] outline-none"
+                      />
                     </div>
-
-                    {/* Matched Service Banner */}
-                    {matchedLaborService && (
-                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-2 text-emerald-900 font-medium">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                          <span>Matched Task: <strong>{matchedLaborService.name}</strong> ({matchedLaborService.category})</span>
-                        </div>
-                        <span className="font-mono font-bold text-emerald-800">
-                          Fixed Charge: Rs. {(matchedLaborService.fixedPrice ?? matchedLaborService.baseLaborRate).toLocaleString()} (+13% VAT)
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Quick Pick Task Code Chips */}
-                    {servicePrices.length > 0 && (
-                      <div className="flex items-center space-x-1.5 overflow-x-auto py-1">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase flex-shrink-0">Quick Code:</span>
-                        {servicePrices.slice(0, 6).map(srv => (
-                          <button
-                            key={srv.id}
-                            type="button"
-                            onClick={() => handleTaskCodeChange(srv.code)}
-                            className="px-2 py-0.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded text-[10px] font-mono font-bold text-slate-700 hover:text-indigo-700 transition flex-shrink-0"
-                          >
-                            {srv.code} (Rs. {(srv.fixedPrice ?? srv.baseLaborRate).toLocaleString()})
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-bold text-xs flex items-center justify-center space-x-1.5 transition"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Search</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLaborSearchInput('');
+                        setLaborSearchTerm('');
+                        setHasSearchedLabor(true);
+                      }}
+                      className="px-3 py-2 bg-white hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] rounded-lg font-semibold text-xs transition"
+                    >
+                      Show All ({servicePrices.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomLaborForm(!showCustomLaborForm)}
+                      className="px-3 py-2 bg-white hover:bg-[#F1F5F9] text-[#0F3D5E] border border-[#E2E8F0] rounded-lg font-semibold text-xs transition"
+                    >
+                      {showCustomLaborForm ? 'Close Custom' : '+ Custom Task'}
+                    </button>
                   </form>
+
+                  {/* Optional Custom Labor Task Form */}
+                  {showCustomLaborForm && (
+                    <form onSubmit={handleAddCustomLabor} className="p-3 bg-white rounded-lg border border-[#E2E8F0] grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <input
+                        type="text"
+                        value={customLaborCode}
+                        onChange={(e) => setCustomLaborCode(e.target.value.toUpperCase())}
+                        placeholder="Task Code (e.g. SRV-99)"
+                        className="border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 font-mono text-xs uppercase outline-none focus:ring-1 focus:ring-[#0EA5E9]"
+                      />
+                      <input
+                        type="text"
+                        value={customLaborDesc}
+                        onChange={(e) => setCustomLaborDesc(e.target.value)}
+                        placeholder="Custom Labor Description *"
+                        className="sm:col-span-2 border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[#0EA5E9]"
+                        required
+                      />
+                      <div className="flex gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          value={isFreeService ? 0 : customLaborRate}
+                          onChange={(e) => setCustomLaborRate(parseFloat(e.target.value) || 0)}
+                          disabled={isFreeService}
+                          placeholder="NPR"
+                          className="w-24 border border-[#E2E8F0] rounded-lg px-2 py-1.5 font-mono font-bold text-xs outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="flex-1 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg font-bold text-xs px-2.5 py-1.5"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Search Results Displayed Below with Add Button */}
+                  {hasSearchedLabor && (
+                    <div className="bg-white rounded-lg border border-[#E2E8F0] overflow-hidden">
+                      <div className="px-3 py-2 bg-[#F1F5F9] border-b border-[#E2E8F0] flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-[#0F172A]">
+                          Search Results ({laborSearchResults.length} labor tasks)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setHasSearchedLabor(false)}
+                          className="text-[#64748B] hover:text-[#0F172A] font-semibold"
+                        >
+                          Clear Results
+                        </button>
+                      </div>
+                      {laborSearchResults.length === 0 ? (
+                        <div className="p-4 text-center text-[#64748B] text-xs">
+                          No labor tasks found matching "{laborSearchTerm}". Try another code/name or click "+ Custom Task".
+                        </div>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto divide-y divide-[#E2E8F0]">
+                          {laborSearchResults.map((srv) => {
+                            const effectivePrice = isFreeService ? 0 : (srv.fixedPrice ?? srv.baseLaborRate);
+                            return (
+                              <div
+                                key={srv.id}
+                                className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-[#F8FAFC] transition"
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-sky-50 text-[#0284C7] border border-sky-200">
+                                      {srv.code}
+                                    </span>
+                                    <span className="font-bold text-[#0F172A] text-xs">{srv.name}</span>
+                                  </div>
+                                  <span className="text-[10px] text-[#64748B]">{srv.category}</span>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                  <div className="text-right">
+                                    <span className="font-mono font-bold text-[#0F172A] block">
+                                      Rs. {effectivePrice.toLocaleString()}
+                                    </span>
+                                    {isFreeService && (
+                                      <span className="text-[9px] text-[#16A34A] font-semibold">Free Service</span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddLaborFromResult(srv)}
+                                    className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-bold text-xs flex items-center space-x-1 transition"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Add</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              {/* Assigned Labor Table */}
+              <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 font-bold text-slate-700 border-b border-slate-200">
+                    <tr className="bg-[#F8FAFC] font-bold text-[#0F172A] border-b border-[#E2E8F0]">
                       <th className="p-3">Task Code</th>
                       <th className="p-3">Labor Task Name</th>
                       <th className="p-3">Assigned Tech</th>
@@ -993,25 +1347,50 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       {!isLocked && <th className="p-3 text-center">Action</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(currentJobCard.laborItems || []).map(l => (
-                      <tr key={l.id}>
-                        <td className="p-3 font-mono font-bold text-indigo-700">{l.code || 'SRV'}</td>
-                        <td className="p-3 font-semibold text-slate-900">{l.description}</td>
-                        <td className="p-3 text-slate-600">{l.technicianName || 'Workshop Tech'}</td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900">Rs. {(l.totalAmount || l.ratePerHour).toLocaleString()}</td>
-                        {!isLocked && (
-                          <td className="p-3 text-center">
-                            <button
-                              onClick={() => handleRemoveLabor(l.id)}
-                              className="text-slate-400 hover:text-rose-600 p-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        )}
+                  <tbody className="divide-y divide-[#E2E8F0]">
+                    {(currentJobCard.laborItems || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={isLocked ? 4 : 5} className="p-6 text-center text-[#64748B]">
+                          No labor tasks added yet. Search and add labor tasks from the price book above.
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      (currentJobCard.laborItems || []).map((l) => {
+                        const isItemBilled = billedLaborSet.has(l.id);
+                        return (
+                          <tr key={l.id}>
+                            <td className="p-3 font-mono font-bold text-[#0284C7]">{l.code || 'SRV'}</td>
+                            <td className="p-3 font-semibold text-[#0F172A]">
+                              <span>{l.description}</span>
+                              {isItemBilled && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-[#16A34A] border border-emerald-200">
+                                  Already Billed
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-[#64748B]">{l.technicianName || 'Workshop Tech'}</td>
+                            <td className="p-3 text-right font-mono font-bold text-[#0F172A]">
+                              Rs. {(l.totalAmount ?? l.ratePerHour ?? 0).toLocaleString()}
+                            </td>
+                            {!isLocked && (
+                              <td className="p-3 text-center">
+                                {isItemBilled ? (
+                                  <span className="text-[10px] text-[#64748B] font-semibold">Locked</span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleRemoveLabor(l.id)}
+                                    className="text-[#64748B] hover:text-[#DC2626] p-1"
+                                    title="Remove unbilled labor task"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1022,121 +1401,144 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
           {activeTab === 'parts' && (
             <div className="space-y-4">
               {!isLocked && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                    <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
-                      <Package className="w-3.5 h-3.5 text-teal-600" />
-                      <span>Search & Requisition Part by SKU or Part Number</span>
+                <div className="bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0] space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#E2E8F0]">
+                    <span className="text-xs font-bold text-[#0F172A] flex items-center space-x-1.5">
+                      <Package className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                      <span>Search Spare Parts by SKU, Part Number, or Name</span>
                     </span>
-                    <span className="text-[10px] text-teal-800 bg-teal-50 font-bold px-2 py-0.5 rounded border border-teal-200">
-                      Live Stock Sync & Auto-Bay Advance
+                    <span className="text-[10px] text-[#16A34A] bg-emerald-50 font-bold px-2 py-0.5 rounded border border-emerald-200">
+                      Issuing Parts Auto-Updates Stock &amp; Status → Ready for Billing
                     </span>
                   </div>
 
-                  <form onSubmit={handleAddPart} className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {/* SKU / Part Code Search Input */}
-                      <div className="sm:col-span-2">
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                          Enter SKU or Part Number / Code *
-                        </label>
-                        <div className="relative">
-                          <input
-                            value={partSearchQuery}
-                            onChange={e => handlePartSearchChange(e.target.value)}
-                            placeholder="Type SKU or Part # (e.g., HYU-FLT-01, 26300-35505, BRK-01)"
-                            className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-2 font-mono font-bold text-xs uppercase focus:ring-2 focus:ring-teal-500 outline-none"
-                            required
-                          />
-                          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
-                        </div>
-                      </div>
-
-                      {/* Quantity & Submit */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                          Requisition Qty *
-                        </label>
-                        <div className="flex space-x-1.5">
-                          <input
-                            type="number"
-                            min="1"
-                            max={matchedPart ? matchedPart.currentStock : 999}
-                            value={partQty}
-                            onChange={e => setPartQty(parseInt(e.target.value) || 1)}
-                            className="w-20 bg-white border border-slate-300 rounded-lg px-2.5 py-2 font-mono font-bold text-xs text-center focus:ring-2 focus:ring-teal-500 outline-none"
-                            required
-                          />
-                          <button
-                            type="submit"
-                            disabled={!matchedPart || matchedPart.currentStock < partQty}
-                            className="flex-1 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg font-bold text-xs shadow-sm flex items-center justify-center space-x-1 transition"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Request & Issue</span>
-                          </button>
-                        </div>
-                      </div>
+                  {/* Search Area + Explicit Search Button */}
+                  <form onSubmit={handleSearchParts} className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={partSearchInput}
+                        onChange={(e) => setPartSearchInput(e.target.value)}
+                        placeholder="Enter SKU, OEM Part Number, Barcode, or Part Name (e.g. HYU-FLT-01, Brake Pad)..."
+                        className="w-full bg-white border border-[#E2E8F0] rounded-lg pl-9 pr-3 py-2 text-xs font-medium text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9] outline-none"
+                      />
                     </div>
-
-                    {/* Matched Part Display Card */}
-                    {matchedPart ? (
-                      <div className="p-3 bg-white border-2 border-teal-500/70 rounded-xl space-y-1.5 shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-100 text-teal-900">
-                              SKU: {matchedPart.sku}
-                            </span>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700">
-                              Part #: {matchedPart.partNumber}
-                            </span>
-                            <span className="text-[11px] font-semibold text-slate-500">
-                              Rack: {matchedPart.rackLocation}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Unit Selling Price</span>
-                            <span className="font-mono font-black text-sm text-slate-900">
-                              Rs. {matchedPart.sellingPrice.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                          <div>
-                            <span className="font-bold text-slate-900 text-xs">{matchedPart.name}</span>
-                            <span className="text-slate-400 text-[11px] ml-2">({matchedPart.category})</span>
-                          </div>
-                          <div>
-                            {matchedPart.currentStock > 0 ? (
-                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                ✓ Available in Stock: {matchedPart.currentStock} {matchedPart.unit}
-                              </span>
-                            ) : (
-                              <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                                ⚠ Out of Stock (0 available)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : partSearchQuery.trim() ? (
-                      <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center space-x-1.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                        <span>No spare part found with SKU or Part Number matching "{partSearchQuery}". Please check code or stock master.</span>
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-slate-400">
-                        Enter the part SKU code or OEM part number above. Once identified, available inventory and unit price appear for confirmation.
-                      </p>
-                    )}
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-bold text-xs flex items-center justify-center space-x-1.5 transition"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Search</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPartSearchInput('');
+                        setPartSearchTerm('');
+                        setHasSearchedParts(true);
+                      }}
+                      className="px-3 py-2 bg-white hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] rounded-lg font-semibold text-xs transition"
+                    >
+                      Show All ({availableParts.length})
+                    </button>
                   </form>
+
+                  {/* Search Results Displayed Below with Qty & Add Button */}
+                  {hasSearchedParts && (
+                    <div className="bg-white rounded-lg border border-[#E2E8F0] overflow-hidden">
+                      <div className="px-3 py-2 bg-[#F1F5F9] border-b border-[#E2E8F0] flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-[#0F172A]">
+                          Search Results ({partSearchResults.length} spare parts)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setHasSearchedParts(false)}
+                          className="text-[#64748B] hover:text-[#0F172A] font-semibold"
+                        >
+                          Clear Results
+                        </button>
+                      </div>
+                      {partSearchResults.length === 0 ? (
+                        <div className="p-4 text-center text-[#64748B] text-xs">
+                          No spare parts found matching "{partSearchTerm}". Check SKU or Part Number in Spare Parts Master.
+                        </div>
+                      ) : (
+                        <div className="max-h-64 overflow-y-auto divide-y divide-[#E2E8F0]">
+                          {partSearchResults.map((part) => {
+                            const rowQty = partQtyById[part.id] || 1;
+                            const outOfStock = part.currentStock <= 0 || part.currentStock < rowQty;
+                            return (
+                              <div
+                                key={part.id}
+                                className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-[#F8FAFC] transition"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-[#0284C7] border border-sky-200">
+                                      SKU: {part.sku}
+                                    </span>
+                                    <span className="font-mono font-semibold text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#0F172A]">
+                                      #{part.partNumber}
+                                    </span>
+                                    <span className="font-bold text-[#0F172A] text-xs">{part.name}</span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-[#64748B]">
+                                    <span>Rack: {part.rackLocation}</span>
+                                    <span>·</span>
+                                    <span
+                                      className={`font-bold ${
+                                        part.currentStock > 0 ? 'text-[#16A34A]' : 'text-[#DC2626]'
+                                      }`}
+                                    >
+                                      Stock: {part.currentStock} {part.unit}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-mono font-bold text-[#0F172A] text-xs">
+                                    Rs. {part.sellingPrice.toLocaleString()}
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={Math.max(1, part.currentStock)}
+                                    value={rowQty}
+                                    onChange={(e) =>
+                                      setPartQtyById((prev) => ({
+                                        ...prev,
+                                        [part.id]: Math.max(1, parseInt(e.target.value) || 1)
+                                      }))
+                                    }
+                                    className="w-14 bg-white border border-[#E2E8F0] rounded-lg px-2 py-1.5 font-mono font-bold text-xs text-center"
+                                    title="Quantity to issue"
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={outOfStock}
+                                    onClick={() => handleIssuePartFromResult(part)}
+                                    className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg font-bold text-xs flex items-center space-x-1 transition"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Add</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              {/* Issued Parts Table */}
+              <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 font-bold text-slate-700 border-b border-slate-200">
+                    <tr className="bg-[#F8FAFC] font-bold text-[#0F172A] border-b border-[#E2E8F0]">
                       <th className="p-3">SKU / Code</th>
                       <th className="p-3">Part Name</th>
                       <th className="p-3 text-center">Qty</th>
@@ -1145,43 +1547,68 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       {!isLocked && <th className="p-3 text-center">Action</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(currentJobCard.partsRequested || []).map(p => (
-                      <tr key={p.id}>
-                        <td className="p-3 font-mono font-bold text-teal-700">{p.partNumber}</td>
-                        <td className="p-3 font-semibold text-slate-900">{p.partName}</td>
-                        <td className="p-3 text-center font-mono">{p.quantity}</td>
-                        <td className="p-3 text-right font-mono">Rs. {p.unitPrice.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900">Rs. {p.totalAmount.toLocaleString()}</td>
-                        {!isLocked && (
-                          <td className="p-3 text-center">
-                            <button
-                              onClick={() => handleRemovePart(p.id)}
-                              className="text-slate-400 hover:text-rose-600 p-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        )}
+                  <tbody className="divide-y divide-[#E2E8F0]">
+                    {(currentJobCard.partsRequested || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={isLocked ? 5 : 6} className="p-6 text-center text-[#64748B]">
+                          No spare parts issued yet. Search above and click Add to issue parts &amp; update status to Ready for Billing.
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      (currentJobCard.partsRequested || []).map((p) => {
+                        const isItemBilled = billedPartSet.has(p.id);
+                        return (
+                          <tr key={p.id}>
+                            <td className="p-3 font-mono font-bold text-[#0284C7]">{p.partNumber}</td>
+                            <td className="p-3 font-semibold text-[#0F172A]">
+                              <span>{p.partName}</span>
+                              {isItemBilled && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-[#16A34A] border border-emerald-200">
+                                  Already Billed
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center font-mono">{p.quantity}</td>
+                            <td className="p-3 text-right font-mono">Rs. {p.unitPrice.toLocaleString()}</td>
+                            <td className="p-3 text-right font-mono font-bold text-[#0F172A]">
+                              Rs. {p.totalAmount.toLocaleString()}
+                            </td>
+                            {!isLocked && (
+                              <td className="p-3 text-center">
+                                {isItemBilled ? (
+                                  <span className="text-[10px] text-[#64748B] font-semibold">Locked</span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleRemovePart(p.id)}
+                                    className="text-[#64748B] hover:text-[#DC2626] p-1"
+                                    title="Remove unbilled part & restore stock"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* TAB 4: BAY & STATUS LIFECYCLE */}
+          {/* TAB 4: BAY & STATUS LIFECYCLE + OWNER READY SMS NOTIFICATION */}
           {activeTab === 'status' && (
             <div className="space-y-4">
               <div>
-                <h4 className="font-bold text-slate-900 mb-1">Workflow Stage Advancement:</h4>
-                <p className="text-slate-500 text-xs mb-3">
-                  Progress vehicle through intake, repair execution, inspection, and readiness for billing.
+                <h4 className="font-bold text-[#0F172A] mb-1">Automatic Bay &amp; Workflow Stage Lifecycle</h4>
+                <p className="text-[#64748B] text-xs mb-3">
+                  Stages and workshop bay occupancy update automatically as labor and parts are issued. Issuing parts advances the job card to Ready for Billing and releases the bay.
                 </p>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {STAGES.map(st => {
+                  {STAGES.map((st) => {
                     const isCurrent = currentJobCard.status === st;
                     return (
                       <button
@@ -1190,97 +1617,321 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                         onClick={() => handleStageChange(st)}
                         className={`p-3 rounded-xl border text-left font-bold transition flex items-center justify-between ${
                           isCurrent
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                            ? 'bg-[#0F3D5E] text-white border-[#0F3D5E]'
+                            : 'bg-white text-[#0F172A] border-[#E2E8F0] hover:bg-[#F1F5F9]'
                         } ${isLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         <span>{st}</span>
-                        {isCurrent && <CheckCircle2 className="w-4 h-4 text-white" />}
+                        {isCurrent && <CheckCircle2 className="w-4 h-4 text-[#0EA5E9]" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <span className="font-bold text-slate-800">Current Bay Allocation:</span>
-                <p className="text-slate-600">{currentJobCard.bayNumber}</p>
-                <p className="text-slate-400 text-[11px]">Assigned to: {currentJobCard.assignedTechnicianName || 'Lead Tech'}</p>
+              <div className="p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <span className="font-bold text-[#0F172A] block">Current Bay Allocation</span>
+                  <p className="text-[#0284C7] font-semibold mt-0.5">{currentJobCard.bayNumber || 'Unassigned'}</p>
+                  <p className="text-[#64748B] text-[11px]">
+                    Lead Technician: {currentJobCard.assignedTechnicianName || 'Workshop Lead'}
+                  </p>
+                </div>
+                <span
+                  className={`px-2.5 py-1 rounded text-[11px] font-bold border ${
+                    currentJobCard.status === 'Ready for Billing' || currentJobCard.status === 'Delivered'
+                      ? 'bg-emerald-50 text-[#16A34A] border-emerald-200'
+                      : 'bg-sky-50 text-[#0284C7] border-sky-200'
+                  }`}
+                >
+                  Bay Status:{' '}
+                  {currentJobCard.status === 'Ready for Billing' || currentJobCard.status === 'Delivered'
+                    ? 'Available (Released)'
+                    : 'Occupied (Active Service)'}
+                </span>
+              </div>
+
+              {/* Vehicle Ready & Pickup SMS / Message Dispatch Panel */}
+              <div className="p-4 bg-white border border-[#E2E8F0] rounded-xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#E2E8F0]">
+                  <div className="flex items-center space-x-2">
+                    <Send className="w-4 h-4 text-[#0EA5E9]" />
+                    <h5 className="font-bold text-[#0F172A]">Vehicle Ready &amp; Pickup SMS Notification</h5>
+                  </div>
+                  {currentJobCard.readyNotificationSentAt && (
+                    <span className="text-[10px] font-semibold text-[#16A34A] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                      Last Notified: {new Date(currentJobCard.readyNotificationSentAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-1">
+                      Vehicle Owner / Customer Phone
+                    </label>
+                    <input
+                      type="text"
+                      value={currentJobCard.customerPhone}
+                      readOnly
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 font-mono text-xs text-[#0F172A]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#64748B] uppercase mb-1">
+                      Business Owner Number (SMS Alert)
+                    </label>
+                    <input
+                      type="text"
+                      value={businessOwnerPhone}
+                      onChange={(e) => setBusinessOwnerPhone(e.target.value)}
+                      placeholder="+977-98..."
+                      className="w-full bg-white border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 font-mono text-xs text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9] outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg text-[11px] text-[#0F172A]">
+                  <span className="block text-[10px] font-bold text-[#64748B] uppercase mb-1">SMS Message Preview</span>
+                  {buildReadyPickupSmsText(currentJobCard)}
+                </div>
+
+                {smsSentConfirmation && (
+                  <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] font-semibold text-[#16A34A]">
+                    {smsSentConfirmation}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTriggerReadyNotification?.(currentJobCard);
+                      setSmsSentConfirmation(
+                        `Ready-for-pickup notification logged for ${currentJobCard.customerPhone} and Business Owner (${businessOwnerPhone || 'Workshop Main'}).`
+                      );
+                    }}
+                    className="px-3.5 py-2 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-xs font-bold inline-flex items-center space-x-1.5 transition"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Ready Notification</span>
+                  </button>
+                  <a
+                    href={`sms:${(currentJobCard.customerPhone || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(buildReadyPickupSmsText(currentJobCard))}`}
+                    className="px-3 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-bold inline-flex items-center space-x-1.5 transition"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>Open SMS (Customer)</span>
+                  </a>
+                  {businessOwnerPhone && (
+                    <a
+                      href={`sms:${businessOwnerPhone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(buildReadyPickupSmsText(currentJobCard))}`}
+                      className="px-3 py-2 bg-white hover:bg-[#F1F5F9] text-[#0F172A] border border-[#E2E8F0] rounded-lg text-xs font-bold inline-flex items-center space-x-1.5 transition"
+                    >
+                      <Phone className="w-3.5 h-3.5 text-[#0284C7]" />
+                      <span>Open SMS (Business Owner)</span>
+                    </a>
+                  )}
+                  <a
+                    href={`https://wa.me/${(currentJobCard.customerPhone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildReadyPickupSmsText(currentJobCard))}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-xs font-bold inline-flex items-center space-x-1.5 transition"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>WhatsApp Owner</span>
+                  </a>
+                </div>
               </div>
             </div>
           )}
         </div>
 
         {/* Bottom Financial & Action Bar */}
-        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center space-x-6">
+        <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-5">
             <div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">Labor Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">Rs. {totalLabor.toLocaleString()}</span>
+              <span className="text-[10px] text-[#64748B] font-bold uppercase block">Labor Subtotal</span>
+              <span className="font-mono font-bold text-[#0F172A]">Rs. {totalLabor.toLocaleString()}</span>
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">Spares Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">Rs. {totalParts.toLocaleString()}</span>
+              <span className="text-[10px] text-[#64748B] font-bold uppercase block">Spares Subtotal</span>
+              <span className="font-mono font-bold text-[#0F172A]">Rs. {totalParts.toLocaleString()}</span>
             </div>
             <div>
-              <span className="text-[10px] text-indigo-500 font-bold uppercase block">Nepal 13% VAT</span>
-              <span className="font-mono font-bold text-indigo-700">Rs. {Math.round(estimatedVat).toLocaleString()}</span>
+              <span className="text-[10px] text-[#0284C7] font-bold uppercase block">Nepal 13% VAT</span>
+              <span className="font-mono font-bold text-[#0284C7]">Rs. {Math.round(estimatedVat).toLocaleString()}</span>
             </div>
-            <div className="pl-4 border-l border-slate-300">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Estimated Gross Bill</span>
-              <span className="font-mono font-black text-base text-slate-900">
+            <div className="pl-4 border-l border-[#CBD5E1]">
+              <span className="text-[10px] text-[#64748B] font-bold uppercase block">Estimated Gross Bill</span>
+              <span className="font-mono font-black text-base text-[#0F172A]">
                 Rs. {Math.round(grandTotal).toLocaleString()}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            {(() => {
-              const existingInvoice = (invoices || []).find(
-                inv => (inv.jobCardId && inv.jobCardId === currentJobCard.id) ||
-                       (inv.jobCardNumber && inv.jobCardNumber === currentJobCard.jobCardNumber) ||
-                       (currentJobCard.invoiceId && inv.id === currentJobCard.invoiceId) ||
-                       (currentJobCard.invoiceNumber && inv.invoiceNumber === currentJobCard.invoiceNumber)
-              );
+          <div className="flex flex-wrap items-center gap-2">
+            {latestInvoice ? (
+              <>
+                <div className="text-right hidden sm:block mr-1">
+                  <span
+                    className={`text-[10px] font-bold uppercase block ${
+                      latestInvoice.status === 'Paid' ? 'text-[#16A34A]' : 'text-[#F59E0B]'
+                    }`}
+                  >
+                    {latestInvoice.status === 'Paid' ? 'Paid & Settled Invoice' : `Invoice ${latestInvoice.status}`}
+                    {jcRegularInvoices.length > 1 ? ` (${jcRegularInvoices.length} Bills)` : ''}
+                  </span>
+                  <span className="text-[11px] text-[#64748B] font-mono">
+                    #{latestInvoice.invoiceNumber}
+                  </span>
+                </div>
 
-              if (existingInvoice) {
-                return (
-                  <div className="flex items-center space-x-2">
-                    <div className="text-right hidden sm:block">
-                      <span className="text-[10px] text-emerald-700 font-bold uppercase block">1 JC = 1 Bill Enforced</span>
-                      <span className="text-[11px] text-slate-500 font-mono">Invoice #{existingInvoice.invoiceNumber}</span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (onViewInvoice) {
-                          onViewInvoice(existingInvoice);
-                        } else {
-                          onConvertToInvoice(currentJobCard);
-                        }
-                      }}
-                      className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-900 transition flex items-center space-x-1.5"
-                      title="Tax Invoice already generated for this Job Card. View and print the official bill."
-                    >
-                      <FileText className="w-4 h-4" />
-                      <span>View IRD Tax Invoice ({existingInvoice.invoiceNumber})</span>
-                    </button>
-                  </div>
-                );
-              }
-
-              return (
                 <button
-                  onClick={() => setIsGenerateInvoiceOpen(true)}
-                  className="px-5 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5"
+                  type="button"
+                  onClick={() => {
+                    if (onViewInvoice) {
+                      onViewInvoice(latestInvoice);
+                    }
+                  }}
+                  className="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Proceed to IRD Tax Invoice</span>
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>View Invoice ({latestInvoice.invoiceNumber})</span>
                 </button>
-              );
-            })()}
+
+                {onCreateCreditNote && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenCreditNoteModal(latestInvoice)}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-[#DC2626] border border-rose-200 rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
+                    title="Issue a Sales Invoice Credit Note (separate from Purchase Orders)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Add Credit Note</span>
+                  </button>
+                )}
+
+                {hasPaidInvoice && !isLocked && hasUnbilledAdditions && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInvoiceOnlyUnbilled(true);
+                      setIsGenerateInvoiceOpen(true);
+                    }}
+                    className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
+                    title="Previous paid invoice stays Paid; generates a separate new invoice for newly added items only"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>
+                      Separate Invoice ({unbilledLaborItems.length + unbilledPartItems.length} New Items)
+                    </span>
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setInvoiceOnlyUnbilled(false);
+                  setIsGenerateInvoiceOpen(true);
+                }}
+                className="px-5 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Proceed to IRD Tax Invoice</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* DIRECT SALES INVOICE CREDIT NOTE MODAL (DISTINCT FROM PURCHASE ORDERS) */}
+      {creditNoteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-[#E2E8F0] overflow-hidden">
+            <div className="bg-[#0F3D5E] text-white px-5 py-3.5 flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold">Add Credit Note on Invoice</h4>
+                <p className="text-[11px] text-sky-200">
+                  Sales Invoice Credit Note (Distinct from Purchase Orders) · Ref #{creditNoteTarget.invoiceNumber}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreditNoteTarget(null)}
+                className="text-slate-300 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmitCreditNote} className="p-5 space-y-3 text-xs">
+              <div className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg flex items-center justify-between">
+                <span className="text-[#64748B]">Original Taxable Value</span>
+                <span className="font-mono font-bold text-[#0F172A]">
+                  NPR {formatAccountingNPR(Math.abs(Number(creditNoteTarget.taxableAmount ?? creditNoteTarget.subTotal ?? 0)))}
+                </span>
+              </div>
+              <div>
+                <label className="block font-bold text-[#0F172A] mb-1">Credit Note Taxable Amount (NPR) *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={Math.abs(Number(creditNoteTarget.taxableAmount ?? creditNoteTarget.subTotal ?? 0))}
+                  step="0.01"
+                  value={cnTaxable}
+                  onChange={(e) => setCnTaxable(parseFloat(e.target.value) || 0)}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 font-mono font-bold focus:ring-2 focus:ring-[#0EA5E9] outline-none"
+                  required
+                />
+                <p className="text-[10px] text-[#64748B] mt-1">
+                  13% VAT Reversal: NPR {formatAccountingNPR(round2(cnTaxable * 0.13))} · Gross Credit: NPR {formatAccountingNPR(round2(cnTaxable * 1.13))}
+                </p>
+              </div>
+              <div>
+                <label className="block font-bold text-[#0F172A] mb-1">Refund / Adjustment Mode</label>
+                <select
+                  value={cnMethod}
+                  onChange={(e) => setCnMethod(e.target.value as NepalPaymentMethod)}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-white outline-none"
+                >
+                  <option value="Cash">Cash Refund</option>
+                  <option value="Fonepay">Fonepay</option>
+                  <option value="ConnectIPS">ConnectIPS</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="eSewa">eSewa</option>
+                  <option value="Khalti">Khalti</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold text-[#0F172A] mb-1">Reason for Credit Note *</label>
+                <textarea
+                  rows={2}
+                  value={cnReason}
+                  onChange={(e) => setCnReason(e.target.value)}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  required
+                />
+              </div>
+              <div className="flex justify-end space-x-2 pt-2 border-t border-[#E2E8F0]">
+                <button
+                  type="button"
+                  onClick={() => setCreditNoteTarget(null)}
+                  className="px-3.5 py-2 border border-[#E2E8F0] rounded-lg font-semibold text-[#64748B] hover:bg-[#F1F5F9]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#DC2626] hover:bg-red-700 text-white rounded-lg font-bold"
+                >
+                  Issue Sales Credit Note
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ADMIN RE-OPEN MODAL */}
       {isReopenModalOpen && (
@@ -1408,10 +2059,16 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
             (currentJobCard.customerId && c.id === currentJobCard.customerId) ||
             c.name.trim().toLowerCase() === (currentJobCard.customerName || '').trim().toLowerCase()
         )}
-        onClose={() => setIsGenerateInvoiceOpen(false)}
+        onlyUnbilledItems={invoiceOnlyUnbilled}
+        previousPaidInvoiceNumber={latestInvoice?.status === 'Paid' ? latestInvoice.invoiceNumber : undefined}
+        onClose={() => {
+          setIsGenerateInvoiceOpen(false);
+          setInvoiceOnlyUnbilled(false);
+        }}
         onConfirm={(jc, options) => {
           setIsGenerateInvoiceOpen(false);
-          onConvertToInvoice(jc, options);
+          setInvoiceOnlyUnbilled(false);
+          onConvertToInvoice(jc, { ...options, onlyUnbilledItems: invoiceOnlyUnbilled });
         }}
       />
     </div>

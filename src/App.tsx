@@ -44,7 +44,8 @@ import {
   GatePass,
   GLAccount,
   GLJournalEntry,
-  CashierVoucher
+  CashierVoucher,
+  ReadyNotificationLog
 } from './types';
 import { TaxInvoiceGenerationOptions } from './components/billing/GenerateTaxInvoiceModal';
 import {
@@ -54,10 +55,13 @@ import {
   buildInvoiceJournalEntry,
   buildPaymentJournalEntry,
   buildPurchaseReceiptJournalEntry,
+  getNepalFiscalYear,
   isCreditNoteInvoice,
   round2,
   toNepalBsDate,
 } from './utils/accountingEngine';
+import { adToBs } from './utils/nepaliDate';
+import { Bell, MessageSquare, Phone, Send, X } from 'lucide-react';
 
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
@@ -68,6 +72,7 @@ export default function App() {
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [printGatePass, setPrintGatePass] = useState<GatePass | null>(null);
+  const [activeReadyToast, setActiveReadyToast] = useState<ReadyNotificationLog | null>(null);
 
   // Sync state changes with persistence
   const updateDb = (partial: Partial<AppDatabase>) => {
@@ -129,26 +134,115 @@ export default function App() {
     updateDb({ appointments: updatedApts });
   };
 
-  // Convert Job Card to Nepal IRD Tax Invoice (13% VAT) — supports Individual or Company VAT Billing
+  // --- VEHICLE READY / PICKUP SMS & MESSAGE NOTIFICATION HANDLER ---
+  const handleTriggerReadyNotification = (jc: JobCard) => {
+    const nowIso = new Date().toISOString();
+    const todayDate = nowIso.slice(0, 10);
+    const workshopName = db.profile?.name || 'Continental Auto Kraft';
+    const businessOwnerPhone = db.profile?.contactNumber || '+977-1-4378920';
+    const message = `Vehicle Ready for Pickup: ${jc.vehicle?.registrationNumber || ''} (${jc.vehicle?.brand || jc.vehicle?.make || ''} ${jc.vehicle?.model || ''}) under ${jc.jobCardNumber} is Ready for Billing & Pickup at ${workshopName}. Customer: ${jc.customerName}. Contact: ${businessOwnerPhone}.`;
+
+    const newLog: ReadyNotificationLog = {
+      id: `NTF-${Date.now().toString().slice(-6)}`,
+      jobCardId: jc.id,
+      jobCardNumber: jc.jobCardNumber,
+      vehicleReg: jc.vehicle?.registrationNumber || '',
+      vehicleLabel: `${jc.vehicle?.brand || jc.vehicle?.make || ''} ${jc.vehicle?.model || ''}`.trim() || 'Vehicle',
+      customerName: jc.customerName,
+      recipientPhone: jc.customerPhone,
+      businessOwnerPhone,
+      channel: 'SMS & Message',
+      message,
+      sentAt: nowIso,
+      bsDate: adToBs(todayDate).formatted,
+      isRead: false,
+    };
+
+    const updatedCards = (db.jobCards || []).map((card) =>
+      card.id === jc.id ? { ...card, readyNotificationSentAt: nowIso } : card
+    );
+
+    updateDb({
+      jobCards: updatedCards,
+      readyNotifications: [newLog, ...(db.readyNotifications || [])],
+    });
+    setActiveReadyToast(newLog);
+  };
+
+  const handleMarkNotificationsRead = () => {
+    const updated = (db.readyNotifications || []).map((n) => ({ ...n, isRead: true }));
+    updateDb({ readyNotifications: updated });
+  };
+
+  // Convert Job Card to Nepal IRD Tax Invoice (13% VAT) — supports Individual/Company Billing & Separate Supplementary Invoices for Re-Opened Paid Job Cards
   const handleConvertJobCardToInvoice = (jc: JobCard, options?: TaxInvoiceGenerationOptions) => {
-    const rawParts = jc.partsRequested || jc.partsItems || [];
-    const rawLabor = jc.laborItems || [];
-    const partsSubtotal = rawParts.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
-    const laborSubtotal = rawLabor.reduce((acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000))), 0);
-    const taxableAmount = partsSubtotal + laborSubtotal;
-    const vatRate = 13;
-    const vatAmount = Math.round(taxableAmount * 0.13);
-    const grandTotal = taxableAmount + vatAmount;
+    // Check existing regular (non-credit-note) invoices for this Job Card
+    const existingRegularInvoices = (db.invoices || []).filter(
+      (inv) =>
+        !isCreditNoteInvoice(inv) &&
+        (inv.jobCardId === jc.id ||
+          inv.jobCardNumber === jc.jobCardNumber ||
+          (jc.invoiceId && inv.id === jc.invoiceId) ||
+          (jc.invoiceNumber && inv.invoiceNumber === jc.invoiceNumber))
+    );
+
+    const hasExistingInvoice = existingRegularInvoices.length > 0;
+    const allExistingPaid =
+      hasExistingInvoice && existingRegularInvoices.every((inv) => inv.status === 'Paid');
+
+    const billedLaborSet = new Set(jc.billedLaborIds || []);
+    const billedPartSet = new Set(jc.billedPartIds || []);
+    const allParts = jc.partsRequested || jc.partsItems || [];
+    const allLabor = jc.laborItems || [];
+
+    const isSupplementary =
+      hasExistingInvoice && (Boolean(options?.onlyUnbilledItems) || allExistingPaid);
+
+    // If an UNPAID invoice already exists for this job card, open it instead of duplicating
+    if (hasExistingInvoice && !isSupplementary) {
+      setActiveTab('billing');
+      setPrintInvoice(existingRegularInvoices[0]);
+      return;
+    }
+
+    // For a re-opened Paid Job Card, bill ONLY newly added unbilled items under a separate new Tax Invoice
+    // while keeping the earlier Paid invoice permanently Paid and untouched
+    const rawParts = isSupplementary
+      ? allParts.filter((p) => !billedPartSet.has(p.id))
+      : allParts;
+    const rawLabor = isSupplementary
+      ? allLabor.filter((l) => !billedLaborSet.has(l.id))
+      : allLabor;
+
+    if (isSupplementary && rawParts.length === 0 && rawLabor.length === 0) {
+      setActiveTab('billing');
+      setPrintInvoice(existingRegularInvoices[0]);
+      return;
+    }
+
+    const partsSubtotal = rawParts.reduce(
+      (acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))),
+      0
+    );
+    const laborSubtotal = rawLabor.reduce(
+      (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000))),
+      0
+    );
+    const taxableAmount = round2(partsSubtotal + laborSubtotal);
+    const vatAmount = round2(taxableAmount * 0.13);
+    const grandTotal = round2(taxableAmount + vatAmount);
 
     const cb = options?.companyBilling;
     const isCompanyBill = Boolean(cb?.isCompanyBill && cb.companyName?.trim());
     const todayIso = new Date().toISOString();
     const todayDate = todayIso.slice(0, 10);
+    const fiscalYear = getNepalFiscalYear(todayDate) || db.profile.fiscalYear || '2083/84';
+    const fyPrefix = fiscalYear.slice(2, 4);
 
     const newInvoice: Invoice = {
-      id: `INV-${Date.now().toString().slice(-5)}`,
-      invoiceNumber: `TAX-81-${Math.floor(100 + Math.random() * 900)}`,
-      fiscalYear: db.profile.fiscalYear || '2081/82',
+      id: `INV-${Date.now().toString().slice(-6)}`,
+      invoiceNumber: `TAX-${fyPrefix}-${Math.floor(1000 + Math.random() * 9000)}`,
+      fiscalYear,
       date: todayDate,
       bsDate: toNepalBsDate(todayDate),
       jobCardId: jc.id,
@@ -184,23 +278,23 @@ export default function App() {
         isSynced: true,
         syncedAt: todayIso,
         cbmsAckNumber: `CBMS-${Date.now().toString().slice(-6)}`,
-        fiscalYear: db.profile.fiscalYear
+        fiscalYear
       },
       items: [
         ...rawLabor.map((l, idx) => ({
-          id: `ITEM-L-${idx}`,
+          id: `ITEM-L-${idx}-${Date.now()}`,
           itemType: 'Labor' as const,
           description: l.description,
           hsnSacCode: '998714',
           quantity: l.hours || l.hoursEstimated || 1,
-          unitPrice: l.ratePerHour || 1000,
-          taxableAmount: l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000)),
+          unitPrice: l.ratePerHour ?? l.totalAmount ?? 0,
+          taxableAmount: l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 0)),
           vatRate: 13,
-          vatAmount: Math.round((l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000))) * 0.13),
-          totalAmount: Math.round((l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000))) * 1.13)
+          vatAmount: round2((l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 0))) * 0.13),
+          totalAmount: round2((l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 0))) * 1.13)
         })),
         ...rawParts.map((p, idx) => ({
-          id: `ITEM-P-${idx}`,
+          id: `ITEM-P-${idx}-${Date.now()}`,
           itemType: 'Part' as const,
           description: `${p.partName || p.name || 'Spare Part'} (${p.partNumber || 'GEN'})`,
           hsnSacCode: '87082900',
@@ -208,37 +302,55 @@ export default function App() {
           unitPrice: p.unitPrice || 0,
           taxableAmount: p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0)),
           vatRate: 13,
-          vatAmount: Math.round((p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0))) * 0.13),
-          totalAmount: Math.round((p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0))) * 1.13)
+          vatAmount: round2((p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0))) * 0.13),
+          totalAmount: round2((p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0))) * 1.13)
         }))
       ]
     };
 
-    // Prevent generating multiple bills for the same job card
-    const existingInvoice = db.invoices.find(inv => 
-      inv.jobCardId === jc.id || 
-      inv.jobCardNumber === jc.jobCardNumber ||
-      (jc.invoiceId && inv.id === jc.invoiceId) ||
-      (jc.invoiceNumber && inv.invoiceNumber === jc.invoiceNumber)
+    const mergedBilledLaborIds = Array.from(
+      new Set([...(jc.billedLaborIds || []), ...rawLabor.map((l) => l.id)])
+    );
+    const mergedBilledPartIds = Array.from(
+      new Set([...(jc.billedPartIds || []), ...rawParts.map((p) => p.id)])
     );
 
-    if (existingInvoice) {
-      alert(`An IRD Tax Invoice (#${existingInvoice.invoiceNumber}) already exists for this Job Card. Multiple invoices for the same Job Card are prohibited to avoid daily ledger discrepancies.`);
-      setActiveTab('billing');
-      setPrintInvoice(existingInvoice);
-      return;
-    }
+    const existingHistory = jc.invoiceHistory || existingRegularInvoices.map((inv) => ({
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      date: inv.date || inv.createdAt?.slice(0, 10) || todayDate,
+      amount: inv.grandTotal,
+      status: inv.status,
+    }));
 
-    // User requirement: "When the job card is ready for billing and process to ird tax invoice, complete and delivered the job card automatically when the invoice is generated."
     const updatedJc: JobCard = { 
       ...jc, 
       status: 'Delivered',
       isLocked: true,
       invoiceId: newInvoice.id,
-      invoiceNumber: newInvoice.invoiceNumber
+      invoiceNumber: newInvoice.invoiceNumber,
+      billedLaborIds: mergedBilledLaborIds,
+      billedPartIds: mergedBilledPartIds,
+      invoiceHistory: [
+        ...existingHistory,
+        {
+          invoiceId: newInvoice.id,
+          invoiceNumber: newInvoice.invoiceNumber,
+          date: todayDate,
+          amount: newInvoice.grandTotal,
+          status: newInvoice.status,
+        },
+      ],
     };
     const updatedCards = db.jobCards.map(c => c.id === jc.id ? updatedJc : c);
     const updatedInvoices = [newInvoice, ...db.invoices];
+
+    // Release the assigned workshop bay automatically upon invoicing/delivery
+    const updatedBays = (db.bays || []).map((b) =>
+      b.currentJobCardId === jc.id || b.name === jc.bayNumber || b.bayNumber === jc.bayNumber
+        ? { ...b, status: 'Available' as const, currentJobCardId: undefined, currentVehicleReg: undefined }
+        : b
+    );
 
     // User requirement: "once the invoice is generated, create a gate pass of individual vehicle with information."
     const now = new Date();
@@ -311,6 +423,7 @@ export default function App() {
 
     updateDb({ 
       jobCards: updatedCards, 
+      bays: updatedBays,
       invoices: updatedInvoices, 
       gatePasses: updatedGatePasses,
       customers: updatedCustomers,
@@ -509,8 +622,23 @@ export default function App() {
       return c;
     });
 
+    // Keep Job Card invoiceHistory status synchronized when invoice is paid
+    const updatedJobCards = (db.jobCards || []).map((jc) => {
+      if (jc.id !== updatedInv.jobCardId && jc.jobCardNumber !== updatedInv.jobCardNumber) return jc;
+      if (!jc.invoiceHistory || jc.invoiceHistory.length === 0) return jc;
+      return {
+        ...jc,
+        invoiceHistory: jc.invoiceHistory.map((h) =>
+          h.invoiceId === updatedInv.id || h.invoiceNumber === updatedInv.invoiceNumber
+            ? { ...h, status: newStatus }
+            : h
+        ),
+      };
+    });
+
     updateDb({
       invoices: updatedInvoices,
+      jobCards: updatedJobCards,
       gatePasses: updatedGatePasses,
       customers: updatedCustomers,
       journalEntries: updatedJournalEntries,
@@ -532,7 +660,8 @@ export default function App() {
     const grandTotal = round2(cleanTaxable + vatAmount);
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
-    const cnNumber = `CN-81/82-${Math.floor(1000 + Math.random() * 9000)}`;
+    const fy = getNepalFiscalYear(todayStr) || db.profile.fiscalYear || '2083/84';
+    const cnNumber = `CN-${fy.slice(2)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     // If original invoice had paid amount, treat refund as settled via selected payment mode; otherwise adjust AR
     const refundViaCash = (originalInv.paidAmount ?? 0) > 0;
@@ -540,13 +669,22 @@ export default function App() {
     const creditNote: Invoice = {
       id: `CN-${Date.now().toString().slice(-6)}`,
       invoiceNumber: cnNumber,
-      fiscalYear: db.profile.fiscalYear || '2081/82',
+      fiscalYear: fy,
       jobCardId: originalInv.jobCardId || 'JC-CN',
       jobCardNumber: originalInv.jobCardNumber || 'TAX-ADJ',
+      originalInvoiceId: originalInv.id,
+      originalInvoiceNumber: originalInv.invoiceNumber,
+      creditNoteReason: reason,
       customerId: originalInv.customerId,
       customerName: originalInv.customerName,
       customerPhone: originalInv.customerPhone,
       customerPan: originalInv.customerPan,
+      customerPanVat: originalInv.customerPanVat || originalInv.customerPan,
+      customerAddress: originalInv.customerAddress,
+      billedToType: originalInv.billedToType,
+      companyName: originalInv.companyName,
+      companyAddress: originalInv.companyAddress,
+      companyPhone: originalInv.companyPhone,
       vehicleReg: originalInv.vehicleReg,
       vehicleBrand: originalInv.vehicleBrand,
       vehicleModel: `Credit Note vs ${originalInv.invoiceNumber}`,
@@ -573,7 +711,7 @@ export default function App() {
         isSynced: true,
         syncedAt: now.toISOString(),
         cbmsAckNumber: `CBMS-CN-${Date.now().toString().slice(-6)}`,
-        fiscalYear: db.profile.fiscalYear || '2081/82'
+        fiscalYear: fy
       },
       items: [
         {
@@ -622,6 +760,7 @@ export default function App() {
       journalEntries: updatedJournalEntries,
       glAccounts: updatedGlAccounts
     });
+    setPrintInvoice(creditNote);
   };
 
   const handleCreateSplitInvoices = (customerInv: Invoice, insurerInv: Invoice) => {
@@ -1214,6 +1353,8 @@ export default function App() {
           profile={db.profile}
           currentUser={currentUser}
           users={db.users}
+          readyNotifications={db.readyNotifications || []}
+          onMarkNotificationsRead={handleMarkNotificationsRead}
           onSwitchUser={handleSwitchUser}
           onLogout={handleLogout}
           onOpenNewAccountModal={handleOpenNewAccountModal}
@@ -1296,6 +1437,8 @@ export default function App() {
                 setPrintInvoice(invoice);
               }}
               onCreateQuotation={handleCreateQuotation}
+              onCreateCreditNote={handleCreateCreditNote}
+              onTriggerReadyNotification={handleTriggerReadyNotification}
             />
           )}
 
@@ -1441,6 +1584,7 @@ export default function App() {
           )}
           profile={db.profile}
           onClose={() => setPrintInvoice(null)}
+          onCreateCreditNote={handleCreateCreditNote}
           onOpenGatePass={(inv) => {
             const now = new Date();
             const pass = (db.gatePasses || []).find(gp => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id) || {
@@ -1481,6 +1625,64 @@ export default function App() {
             setPrintGatePass(prev => prev && prev.id === gatePassId ? { ...prev, status: 'Exited', exitTimestamp: new Date().toISOString() } : prev);
           }}
         />
+      )}
+
+      {/* Non-Blocking Vehicle Ready & Pickup SMS Notification Banner */}
+      {activeReadyToast && (
+        <div className="fixed bottom-4 right-4 z-[60] max-w-md w-[calc(100%-2rem)] bg-white border border-[#16A34A] rounded-xl shadow-xl overflow-hidden">
+          <div className="bg-[#0F3D5E] text-white px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Bell className="w-4 h-4 text-[#0EA5E9]" />
+              <span className="text-xs font-bold">Vehicle Ready for Pickup — SMS Alert</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveReadyToast(null)}
+              className="text-slate-300 hover:text-white p-0.5"
+              aria-label="Close notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-3.5 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-mono font-bold text-[#0F172A]">
+                {activeReadyToast.vehicleReg} · {activeReadyToast.jobCardNumber}
+              </span>
+              <span className="text-[10px] font-mono text-[#0284C7] font-semibold">
+                B.S. {activeReadyToast.bsDate}
+              </span>
+            </div>
+            <p className="text-[11px] text-[#64748B] leading-relaxed">{activeReadyToast.message}</p>
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <a
+                href={`sms:${(activeReadyToast.recipientPhone || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(activeReadyToast.message)}`}
+                className="px-2.5 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+              >
+                <Send className="w-3 h-3" />
+                <span>SMS Customer ({activeReadyToast.recipientPhone})</span>
+              </a>
+              {activeReadyToast.businessOwnerPhone && (
+                <a
+                  href={`sms:${activeReadyToast.businessOwnerPhone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(activeReadyToast.message)}`}
+                  className="px-2.5 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+                >
+                  <Phone className="w-3 h-3" />
+                  <span>SMS Owner</span>
+                </a>
+              )}
+              <a
+                href={`https://wa.me/${(activeReadyToast.recipientPhone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(activeReadyToast.message)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+              >
+                <MessageSquare className="w-3 h-3" />
+                <span>WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Quick Add User Account Modal (with Role Options) */}

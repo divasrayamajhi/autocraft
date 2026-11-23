@@ -11,7 +11,8 @@ import {
   Invoice,
   GatePass,
   PartsQuotation,
-  WorkshopProfile
+  WorkshopProfile,
+  NepalPaymentMethod
 } from '../../types';
 import { 
   Wrench, 
@@ -47,6 +48,8 @@ import {
 } from 'lucide-react';
 import { JobCardDetailModal } from './JobCardDetailModal';
 import { ServicePriceItem, WorkshopBay } from '../../types';
+import { DualCalendarPicker } from '../common/DualCalendarPicker';
+import { adToBs } from '../../utils/nepaliDate';
 
 interface JobCardManagementProps {
   jobCards: JobCard[];
@@ -70,6 +73,13 @@ interface JobCardManagementProps {
   onUpdateCustomer?: (customer: Customer) => void;
   onViewInvoice?: (invoice: Invoice) => void;
   onCreateQuotation?: (quotation: PartsQuotation) => void;
+  onCreateCreditNote?: (
+    originalInv: Invoice,
+    refundTaxable: number,
+    reason: string,
+    refundMethod: NepalPaymentMethod
+  ) => void;
+  onTriggerReadyNotification?: (jc: JobCard) => void;
 }
 
 const KANBAN_COLUMNS: { id: JobCardStatus; title: string; accent: string; badgeBg: string }[] = [
@@ -102,7 +112,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   onAddCustomer,
   onUpdateCustomer,
   onViewInvoice,
-  onCreateQuotation
+  onCreateQuotation,
+  onCreateCreditNote,
+  onTriggerReadyNotification
 }) => {
   const safeJobCards = jobCards || [];
   const safeAppointments = appointments || [];
@@ -135,6 +147,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [intakeCustName, setIntakeCustName] = useState('');
   const [intakeCustPhone, setIntakeCustPhone] = useState('');
   const [intakeServiceType, setIntakeServiceType] = useState<JobCard['serviceType']>('Periodic Maintenance Service');
+  const [intakeServiceBillingType, setIntakeServiceBillingType] = useState<'Paid Service' | 'Free Service'>('Paid Service');
   const [intakeOdo, setIntakeOdo] = useState<number>(0);
   const [intakeFuel, setIntakeFuel] = useState<number>(50);
   const [intakeComplaints, setIntakeComplaints] = useState('');
@@ -791,6 +804,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
         color: 'Pearl White'
       },
       serviceType: intakeServiceType,
+      serviceBillingType: intakeServiceBillingType,
       assignedTechnicianId: intakeTechId,
       assignedTechnicianName: tech?.name,
       bayNumber: intakeBay,
@@ -815,24 +829,13 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
         customerVoiceComplaints: intakeComplaints.split('.').filter(s => s.trim().length > 0),
         advisorsObservations: ['Vehicle admitted via express check-in. Standard safety checks initiated.', intakeComplaints]
       },
-      laborItems: [
-        {
-          id: `LBR-${Date.now().toString().slice(-4)}`,
-          description: `${intakeServiceType} Standard Labor Check`,
-          hours: 2.0,
-          hoursEstimated: 2.0,
-          ratePerHour: 1000,
-          vatRate: 13,
-          totalAmount: 2000,
-          technicianId: intakeTechId,
-          technicianName: tech?.name,
-          status: 'In Progress'
-        }
-      ],
+      // Do NOT add any labor charges automatically on check-in
+      laborItems: [],
       partsRequested: []
     };
 
     onCreateJobCard(newJc);
+    syncBayForStage(newJc, newJc.status);
     setIsIntakeModalOpen(false);
     setIntakeCouponNumber('');
   };
@@ -848,11 +851,44 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     setIntakeOdo(0);
     setIntakeFuel(50);
     setIntakeServiceType('Periodic Maintenance Service');
+    setIntakeServiceBillingType('Paid Service');
     setIntakeComplaints('');
     setIntakeCouponNumber('');
     setIntakeArrivalDate(new Date().toISOString().slice(0, 10));
     setIntakeEntryTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
     setRegSearchResult(null);
+  };
+
+  // Automatically sync Workshop Bay status with Job Card lifecycle stage
+  const syncBayForStage = (jc: JobCard, stage: JobCardStatus) => {
+    if (!bays || !onUpdateBay || !jc.bayNumber) return;
+    const targetBay = bays.find(
+      (b: any) =>
+        b.name === jc.bayNumber ||
+        b.bayNumber === jc.bayNumber ||
+        (b.name && jc.bayNumber.toLowerCase().includes(b.name.toLowerCase()))
+    );
+    if (!targetBay) return;
+
+    if (stage === 'Ready for Billing' || stage === 'Delivered') {
+      onUpdateBay({
+        ...targetBay,
+        status: 'Available',
+        currentJobCardId: undefined,
+        currentVehicleReg: undefined
+      });
+    } else if (
+      stage === 'Bay Assigned (In Progress)' ||
+      stage === 'Awaiting Spares' ||
+      stage === 'Quality Check'
+    ) {
+      onUpdateBay({
+        ...targetBay,
+        status: 'Occupied',
+        currentJobCardId: jc.id,
+        currentVehicleReg: jc.vehicle?.registrationNumber
+      });
+    }
   };
 
   // Convert Appointment to Job Card
@@ -871,7 +907,12 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const handleMoveToStage = (jc: JobCard, targetStage: JobCardStatus, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (jc.isLocked || jc.status === targetStage) return;
-    onUpdateJobCard({ ...jc, status: targetStage });
+    const updatedJc: JobCard = { ...jc, status: targetStage };
+    onUpdateJobCard(updatedJc);
+    syncBayForStage(updatedJc, targetStage);
+    if (targetStage === 'Ready for Billing' && onTriggerReadyNotification) {
+      onTriggerReadyNotification(updatedJc);
+    }
   };
 
   // Advance Stage in Kanban
@@ -882,7 +923,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const stages = KANBAN_COLUMNS.map(c => c.id);
     const currentIdx = stages.indexOf(jc.status);
     if (currentIdx < stages.length - 1) {
-      onUpdateJobCard({ ...jc, status: stages[currentIdx + 1] });
+      handleMoveToStage(jc, stages[currentIdx + 1]);
     }
   };
 
@@ -893,7 +934,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const stages = KANBAN_COLUMNS.map(c => c.id);
     const currentIdx = stages.indexOf(jc.status);
     if (currentIdx > 0) {
-      onUpdateJobCard({ ...jc, status: stages[currentIdx - 1] });
+      handleMoveToStage(jc, stages[currentIdx - 1]);
     }
   };
 
@@ -1301,16 +1342,23 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                                 </span>
                               </div>
 
-                              {jc.isLocked ? (
-                                <span className="text-[10px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1 flex-shrink-0">
-                                  <Lock className="w-2.5 h-2.5" />
-                                  <span>Invoiced</span>
+                              <div className="flex items-center space-x-1 flex-shrink-0">
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                    jc.serviceBillingType === 'Free Service'
+                                      ? 'bg-emerald-50 text-[#16A34A] border-emerald-200'
+                                      : 'bg-sky-50 text-[#0284C7] border-sky-200'
+                                  }`}
+                                >
+                                  {jc.serviceBillingType === 'Free Service' ? 'FREE' : 'PAID'}
                                 </span>
-                              ) : (
-                                <span className="text-[10px] font-medium text-[#64748B] truncate max-w-[95px]">
-                                  {jc.serviceType.split(' ')[0]}
-                                </span>
-                              )}
+                                {jc.isLocked && (
+                                  <span className="text-[10px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1">
+                                    <Lock className="w-2.5 h-2.5" />
+                                    <span>Invoiced</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* Row 2: Vehicle Reg + Make/Model */}
@@ -1410,8 +1458,17 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
                 return (
                   <tr key={jc.id} className="hover:bg-slate-50/80 transition">
-                    <td className="p-3.5 font-mono font-bold text-indigo-700">
-                      {jc.jobCardNumber}
+                    <td className="p-3.5 font-mono font-bold text-[#0F3D5E]">
+                      <div>{jc.jobCardNumber}</div>
+                      <span
+                        className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                          jc.serviceBillingType === 'Free Service'
+                            ? 'bg-emerald-50 text-[#16A34A] border-emerald-200'
+                            : 'bg-sky-50 text-[#0284C7] border-sky-200'
+                        }`}
+                      >
+                        {jc.serviceBillingType || 'Paid Service'}
+                      </span>
                     </td>
                     <td className="p-3.5">
                       <div className="font-mono font-bold text-slate-900">{jc.vehicle.registrationNumber}</div>
@@ -1560,6 +1617,8 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           }}
           onViewInvoice={onViewInvoice}
           onCreateQuotation={onCreateQuotation}
+          onCreateCreditNote={onCreateCreditNote}
+          onTriggerReadyNotification={onTriggerReadyNotification}
         />
       )}
 
@@ -1590,36 +1649,66 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             </div>
 
             <form onSubmit={handleCreateJobCardSubmit} className="mt-4 space-y-3 text-xs">
-              {/* Check-in Arrival Date & Entry Time */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold text-slate-600 uppercase">Check-in Timing & Timestamps (Mandatory)</span>
-                  <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    All fields editable
+              {/* Check-in Arrival Date (B.S. & A.D. Synced) & Entry Time */}
+              <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#64748B] uppercase">Check-in Date (B.S. &amp; A.D. Synced) &amp; Entry Time *</span>
+                  <span className="text-[10px] text-[#0284C7] font-semibold bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                    B.S. {adToBs(intakeArrivalDate).formatted}
+                  </span>
+                </div>
+                <DualCalendarPicker
+                  label="Arrival Date *"
+                  valueAd={intakeArrivalDate}
+                  onChangeAd={(ad) => setIntakeArrivalDate(ad)}
+                  compact
+                />
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Arrival / Entry Time *</label>
+                  <input
+                    type="text"
+                    value={intakeEntryTime}
+                    onChange={e => setIntakeEntryTime(e.target.value)}
+                    placeholder="e.g. 09:30 AM"
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none bg-white font-medium font-mono focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Free Service / Paid Service Selection */}
+              <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-[#0F172A] uppercase tracking-wide">
+                    Service Billing Mode *
+                  </label>
+                  <span className="text-[10px] text-[#64748B]">
+                    No labor charges are added automatically
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Arrival Date *</label>
-                    <input
-                      type="date"
-                      value={intakeArrivalDate}
-                      onChange={e => setIntakeArrivalDate(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Arrival / Entry Time *</label>
-                    <input
-                      type="text"
-                      value={intakeEntryTime}
-                      onChange={e => setIntakeEntryTime(e.target.value)}
-                      placeholder="e.g. 09:30 AM"
-                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 outline-none bg-white font-medium font-mono"
-                      required
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIntakeServiceBillingType('Paid Service')}
+                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition text-center ${
+                      intakeServiceBillingType === 'Paid Service'
+                        ? 'bg-[#0F3D5E] text-white border-[#0F3D5E]'
+                        : 'bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F1F5F9]'
+                    }`}
+                  >
+                    Paid Service (Standard Billing)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIntakeServiceBillingType('Free Service')}
+                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition text-center ${
+                      intakeServiceBillingType === 'Free Service'
+                        ? 'bg-[#16A34A] text-white border-[#16A34A]'
+                        : 'bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F1F5F9]'
+                    }`}
+                  >
+                    Free Service (Warranty / Coupon)
+                  </button>
                 </div>
               </div>
 

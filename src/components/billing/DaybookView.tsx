@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
   Search,
   Banknote,
   QrCode,
@@ -29,10 +28,11 @@ import {
   CASHBOOK_ACCOUNT_HEADS,
   formatAccountingNPR,
   isCreditNoteInvoice,
-  isInvoiceSyncedToCbms,
   round2,
   toNepalBsDate,
 } from '../../utils/accountingEngine';
+import { DualCalendarPicker } from '../common/DualCalendarPicker';
+import { adToBs, bsToAd, BS_MONTH_NAMES, BS_YEAR_START, BS_YEAR_END, getBsMonthDays } from '../../utils/nepaliDate';
 
 interface DaybookViewProps {
   invoices: Invoice[];
@@ -73,7 +73,6 @@ interface DaybookEntry {
   grossTotal: number;
   cashFlowToday: number; // positive = inflow today; negative = outflow today
   balanceDue: number;
-  irdCbmsStatus: 'Synced' | 'Pending' | 'N/A';
   rawInvoice?: Invoice;
   rawVoucher?: CashierVoucher;
 }
@@ -281,7 +280,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
     invoices.forEach((inv) => {
       const invDate = (inv.date || inv.createdAt || '').slice(0, 10);
       const isCN = isCreditNoteInvoice(inv);
-      const synced = isInvoiceSyncedToCbms(inv);
 
       const paymentsOnDate = (inv.payments || []).filter(
         (p) => (p.date || '').slice(0, 10) === selectedDate
@@ -316,7 +314,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           id: `INV-${inv.id}`,
           time: createdTime,
           date: invDate,
-          bsDate: inv.bsDate || toNepalBsDate(invDate),
+          bsDate: toNepalBsDate(invDate),
           entryKind: isCN ? 'Credit Note' : 'Sales Invoice',
           voucherOrDocNumber: inv.invoiceNumber,
           accountHead: isCN ? 'Sales Return / Credit Note' : 'Sales / Service Revenue',
@@ -336,7 +334,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           grossTotal: grand,
           cashFlowToday: flowToday,
           balanceDue: isCN ? 0 : Math.max(0, Number(inv.balanceDue ?? 0)),
-          irdCbmsStatus: synced ? 'Synced' : 'Pending',
           rawInvoice: inv,
         });
       } else if (paymentsOnDate.length > 0) {
@@ -365,7 +362,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             grossTotal: 0,
             cashFlowToday: round2(Number(pay.amount) || 0),
             balanceDue: Math.max(0, Number(inv.balanceDue ?? 0)),
-            irdCbmsStatus: synced ? 'Synced' : 'Pending',
             rawInvoice: inv,
           });
         });
@@ -402,7 +398,6 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           grossTotal: 0,
           cashFlowToday: signedFlow,
           balanceDue: 0,
-          irdCbmsStatus: 'N/A',
           rawVoucher: v,
         });
       });
@@ -577,9 +572,48 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
             </button>
           </div>
 
-          <span className="px-2.5 py-1.5 bg-sky-50 text-[#0284C7] border border-sky-200 rounded-lg text-[11px] font-semibold">
-            {selectedBsDateLabel}
-          </span>
+          {/* Synchronized Nepali B.S. Calendar Selector */}
+          {(() => {
+            const bs = adToBs(selectedDate);
+            const maxDay = getBsMonthDays(bs.year, bs.month);
+            const bsYears: number[] = [];
+            for (let y = BS_YEAR_START; y <= BS_YEAR_END; y++) bsYears.push(y);
+            return (
+              <div className="flex items-center space-x-1 bg-sky-50 border border-sky-200 rounded-lg px-2 py-1 text-[11px]">
+                <span className="font-bold text-[#0F3D5E] uppercase mr-1">B.S.</span>
+                <select
+                  aria-label="Daybook B.S. Year"
+                  value={bs.year}
+                  onChange={(e) => setSelectedDate(bsToAd(Number(e.target.value), bs.month, bs.day))}
+                  className="bg-transparent font-mono font-bold text-[#0F3D5E] outline-none"
+                >
+                  {bsYears.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Daybook B.S. Month"
+                  value={bs.month}
+                  onChange={(e) => setSelectedDate(bsToAd(bs.year, Number(e.target.value), bs.day))}
+                  className="bg-transparent font-semibold text-[#0284C7] outline-none"
+                >
+                  {BS_MONTH_NAMES.map((m, idx) => (
+                    <option key={m} value={idx + 1}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Daybook B.S. Day"
+                  value={bs.day}
+                  onChange={(e) => setSelectedDate(bsToAd(bs.year, bs.month, Number(e.target.value)))}
+                  className="bg-transparent font-mono font-bold text-[#0F3D5E] outline-none"
+                >
+                  {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{String(d).padStart(2, '0')}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
 
           <select
             value={selectedDate}
@@ -588,7 +622,7 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
           >
             {availableDates.map((d) => (
               <option key={d} value={d}>
-                {d} ({toNepalBsDate(d)} BS)
+                {d} AD ({toNepalBsDate(d)} BS)
               </option>
             ))}
           </select>
@@ -964,17 +998,8 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                       <div className="font-medium text-[#0F172A]">{tx.createdBy || cashierLabel}</div>
                       {tx.approvedBy ? (
                         <div className="text-[#16A34A]">Appr: {tx.approvedBy}</div>
-                      ) : tx.irdCbmsStatus !== 'N/A' ? (
-                        <span
-                          className={`inline-flex items-center space-x-0.5 ${
-                            tx.irdCbmsStatus === 'Synced' ? 'text-[#16A34A]' : 'text-[#F59E0B]'
-                          }`}
-                        >
-                          <ShieldCheck className="w-2.5 h-2.5" />
-                          <span>CBMS {tx.irdCbmsStatus}</span>
-                        </span>
                       ) : (
-                        <span>—</span>
+                        <span>Cashier Desk</span>
                       )}
                     </td>
                     <td className="p-3 text-center">
@@ -1112,22 +1137,15 @@ export const DaybookView: React.FC<DaybookViewProps> = ({
                 </div>
               )}
 
-              {/* Row 1: Transaction Date + Voucher Number */}
+              {/* Row 1: Dual BS/AD Transaction Date + Voucher Number */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-[#0F172A] mb-1">
-                    Transaction Date <span className="text-[#DC2626]">*</span>
-                  </label>
-                  <input
-                    type="date"
+                  <DualCalendarPicker
+                    label="Transaction Date (B.S. / A.D.)"
                     value={vDate}
-                    onChange={(e) => setVDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    onChange={(nextAd) => setVDate(nextAd)}
                     required
                   />
-                  <span className="text-[10px] text-[#64748B] mt-0.5 block">
-                    Nepal B.S.: {toNepalBsDate(vDate, true)}
-                  </span>
                 </div>
 
                 <div>

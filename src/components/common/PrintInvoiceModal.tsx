@@ -1,7 +1,9 @@
-import React, { useRef } from 'react';
-import { Invoice, JobCard, WorkshopProfile } from '../../types';
-import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Lock } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Invoice, JobCard, NepalPaymentMethod, WorkshopProfile } from '../../types';
+import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Lock, RotateCcw } from 'lucide-react';
 import { printElement, numberToWordsNPR, formatNPR } from '../../utils/printDocument';
+import { adToBs } from '../../utils/nepaliDate';
+import { formatAccountingNPR, round2 } from '../../utils/accountingEngine';
 
 interface PrintInvoiceModalProps {
   invoice: Invoice;
@@ -10,6 +12,12 @@ interface PrintInvoiceModalProps {
   onClose: () => void;
   onWhatsAppShare?: (invoice: Invoice) => void;
   onOpenGatePass?: (invoice: Invoice) => void;
+  onCreateCreditNote?: (
+    originalInv: Invoice,
+    refundTaxable: number,
+    reason: string,
+    refundMethod: NepalPaymentMethod
+  ) => void;
 }
 
 export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
@@ -18,9 +26,15 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   profile,
   onClose,
   onWhatsAppShare,
-  onOpenGatePass
+  onOpenGatePass,
+  onCreateCreditNote
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
+  const [isCnOpen, setIsCnOpen] = useState(false);
+  const [cnTaxable, setCnTaxable] = useState<number>(Math.abs(Number(invoice.taxableAmount ?? invoice.subTotal ?? 0)));
+  const [cnReason, setCnReason] = useState('Customer billing adjustment / service or part return');
+  const [cnMethod, setCnMethod] = useState<NepalPaymentMethod>('Cash');
+  const [cnSubmittedMsg, setCnSubmittedMsg] = useState<string | null>(null);
 
   const workshopName = profile?.name || 'CONTINENTAL AUTO KRAFT';
   const legalEntity = profile?.legalEntityName || workshopName;
@@ -55,7 +69,8 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   })();
 
-  const isoDate = (invoice.createdAt || invoice.date || new Date().toISOString()).slice(0, 10);
+  const isoDate = (invoice.date || invoice.createdAt || new Date().toISOString()).slice(0, 10);
+  const bsDateObj = adToBs(isoDate);
   const odometer = jobCard?.vehicle?.odometerReading;
   const vinNumber = jobCard?.vehicle?.vinNumber || jobCard?.vehicle?.chassisNumber;
   const isCreditNote = invoice.type === 'Credit Note' || grandTotal < 0;
@@ -97,7 +112,22 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
             </h2>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {!isCreditNote && onCreateCreditNote && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCnTaxable(Math.abs(taxableAmount));
+                  setCnReason('Customer billing adjustment / service or part return');
+                  setIsCnOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-[#DC2626] border border-red-200 text-xs font-semibold rounded-lg transition"
+                title="Add Sales Invoice Credit Note (separate from Purchase Orders)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Add Credit Note</span>
+              </button>
+            )}
             {onOpenGatePass && (
               <button
                 type="button"
@@ -135,6 +165,15 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
             </button>
           </div>
         </div>
+
+        {cnSubmittedMsg && (
+          <div className="print:hidden px-5 py-2.5 bg-emerald-50 border-b border-emerald-200 text-[#16A34A] text-xs font-semibold flex items-center justify-between">
+            <span>{cnSubmittedMsg}</span>
+            <button type="button" onClick={() => setCnSubmittedMsg(null)} className="text-[#16A34A] hover:underline text-[11px]">
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Scrollable Preview Wrapper */}
         <div className="overflow-y-auto flex-1 bg-[#F1F5F9] p-4 sm:p-6">
@@ -182,8 +221,18 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       <span className="text-[#64748B]">Invoice No.: </span>
                       <span className="font-mono font-bold text-[#0F172A]">{invoice.invoiceNumber}</span>
                     </div>
+                    {isCreditNote && invoice.originalInvoiceNumber && (
+                      <div>
+                        <span className="text-[#64748B]">Against Invoice: </span>
+                        <span className="font-mono font-bold text-[#DC2626]">{invoice.originalInvoiceNumber}</span>
+                      </div>
+                    )}
                     <div>
-                      <span className="text-[#64748B]">Date: </span>
+                      <span className="text-[#64748B]">Date (B.S.): </span>
+                      <span className="font-mono font-bold text-[#0F3D5E]">{bsDateObj.fullLabel}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#64748B]">Date (A.D.): </span>
                       <span className="font-semibold text-[#0F172A]">{formattedDate}</span>
                       <span className="text-[#64748B] font-mono ml-1">({isoDate})</span>
                     </div>
@@ -468,6 +517,101 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Inline Sales Invoice Credit Note Modal */}
+      {isCnOpen && onCreateCreditNote && (
+        <div className="print:hidden fixed inset-0 z-[70] flex items-center justify-center bg-[#0F172A]/65 backdrop-blur-xs p-4">
+          <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-md w-full border border-[#E2E8F0] overflow-hidden">
+            <div className="p-4 bg-[#DC2626] text-white flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm">Add Credit Note on Invoice {invoice.invoiceNumber}</h4>
+                <p className="text-[11px] text-red-100">
+                  Sales Invoice Credit Note (separate from Purchase Orders)
+                </p>
+              </div>
+              <button type="button" onClick={() => setIsCnOpen(false)} className="text-red-100 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const maxVal = Math.abs(taxableAmount);
+                const applied = round2(Math.min(Math.max(0, cnTaxable), maxVal));
+                if (applied <= 0) return;
+                onCreateCreditNote(invoice, applied, cnReason.trim() || 'Invoice adjustment / return', cnMethod);
+                setIsCnOpen(false);
+                setCnSubmittedMsg(
+                  `Credit Note issued against ${invoice.invoiceNumber} for ${formatAccountingNPR(round2(applied * 1.13))} (incl. 13% VAT).`
+                );
+              }}
+              className="p-5 space-y-3.5 text-xs"
+            >
+              <div>
+                <label className="block font-semibold text-[#0F172A] mb-1">
+                  Credit Note Taxable Amount (Excl. 13% VAT) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={1}
+                  max={Math.abs(taxableAmount)}
+                  value={cnTaxable}
+                  onChange={(e) => setCnTaxable(parseFloat(e.target.value) || 0)}
+                  className="w-full font-mono font-bold border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  required
+                />
+                <div className="mt-1.5 flex justify-between text-[11px] text-[#64748B] font-mono bg-[#F8FAFC] p-2 rounded border border-[#E2E8F0]">
+                  <span>13% VAT Reversal: {formatAccountingNPR(round2(cnTaxable * 0.13))}</span>
+                  <span className="font-bold text-[#DC2626]">
+                    Total Credit: {formatAccountingNPR(round2(cnTaxable * 1.13))}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#0F172A] mb-1">Refund / Adjustment Mode</label>
+                <select
+                  value={cnMethod}
+                  onChange={(e) => setCnMethod(e.target.value as NepalPaymentMethod)}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF]"
+                >
+                  <option value="Cash">Cash Refund (GL 1010)</option>
+                  <option value="Bank Transfer">Bank Transfer Refund (GL 1020)</option>
+                  <option value="Fonepay">Fonepay Refund (GL 1030)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#0F172A] mb-1">Reason for Credit Note *</label>
+                <textarea
+                  rows={2}
+                  value={cnReason}
+                  onChange={(e) => setCnReason(e.target.value)}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  required
+                />
+              </div>
+
+              <div className="pt-3 border-t border-[#E2E8F0] flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCnOpen(false)}
+                  className="px-4 py-2 border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] hover:bg-[#F1F5F9]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#DC2626] hover:bg-red-700 text-white rounded-lg font-semibold"
+                >
+                  Issue Invoice Credit Note
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

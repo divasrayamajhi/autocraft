@@ -7,6 +7,7 @@ import {
   NepalPaymentMethod,
   PurchaseOrder,
 } from '../types';
+import { adToBs, getNepalFiscalYearFromAd } from './nepaliDate';
 
 export const round2 = (value: number): number =>
   Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
@@ -21,60 +22,16 @@ export const formatAccountingNPR = (amount: number, showDecimals = false): strin
   return num < 0 ? `-Rs. ${formatted}` : `Rs. ${formatted}`;
 };
 
-/**
- * Standard Nepal Bikram Sambat (B.S.) calendar approximation from Gregorian A.D. YYYY-MM-DD.
- * Uses accurate B.S. New Year anchor (April 14 = Baisakh 1, +56/57 years) with standard B.S. month lengths.
- */
-const BS_MONTH_DAYS = [31, 31, 32, 31, 31, 30, 30, 29, 30, 29, 30, 30]; // Baisakh..Chaitra (~365 days)
-const BS_MONTH_NAMES = [
-  'Baisakh', 'Jestha', 'Ashadh', 'Shrawan', 'Bhadra', 'Ashwin',
-  'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra',
-];
-
 export const toNepalBsDate = (adDateStr?: string, includeLabel = false): string => {
-  const clean = (adDateStr || new Date().toISOString().slice(0, 10)).slice(0, 10);
-  const parts = clean.split('-').map(Number);
-  if (parts.length !== 3 || parts.some(isNaN)) return '2082-01-01';
-
-  const [adYear, adMonth, adDay] = parts;
-  const inputUtc = Date.UTC(adYear, adMonth - 1, adDay);
-
-  // Baisakh 1 falls on April 14 in standard years
-  let bsYear = adYear + 57;
-  let newYearUtc = Date.UTC(adYear, 3, 14); // April 14
-  if (inputUtc < newYearUtc) {
-    bsYear = adYear + 56;
-    newYearUtc = Date.UTC(adYear - 1, 3, 14);
-  }
-
-  let dayOffset = Math.floor((inputUtc - newYearUtc) / 86400000);
-  let bsMonthIdx = 0;
-  while (bsMonthIdx < 11 && dayOffset >= BS_MONTH_DAYS[bsMonthIdx]) {
-    dayOffset -= BS_MONTH_DAYS[bsMonthIdx];
-    bsMonthIdx += 1;
-  }
-  const bsDay = Math.max(1, Math.min(32, dayOffset + 1));
-  const mm = String(bsMonthIdx + 1).padStart(2, '0');
-  const dd = String(bsDay).padStart(2, '0');
-
-  if (includeLabel) {
-    return `${BS_MONTH_NAMES[bsMonthIdx]} ${dd}, ${bsYear} B.S.`;
-  }
-  return `${bsYear}-${mm}-${dd}`;
+  const bs = adToBs(adDateStr);
+  return includeLabel ? bs.fullLabel : bs.formatted;
 };
 
 /**
  * Computes Nepal Fiscal Year (Shrawan 1 to Ashadh End) from an AD date string.
  */
 export const getNepalFiscalYear = (adDateStr?: string): string => {
-  const bs = toNepalBsDate(adDateStr);
-  const [y, m] = bs.split('-').map(Number);
-  if (!y || !m) return '2081/82';
-  // Nepal Fiscal Year begins Shrawan 1 (Month 04)
-  if (m >= 4) {
-    return `${y}/${String((y + 1) % 100).padStart(2, '0')}`;
-  }
-  return `${y - 1}/${String(y % 100).padStart(2, '0')}`;
+  return getNepalFiscalYearFromAd(adDateStr);
 };
 
 /**
