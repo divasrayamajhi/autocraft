@@ -10,14 +10,27 @@ import {
   Building2,
   PackageCheck
 } from 'lucide-react';
-import { SparePart, Customer, PartsSalesOrder, PartsQuotationItem } from '../../types';
+import {
+  SparePart,
+  Customer,
+  PartsSalesOrder,
+  PartsQuotationItem,
+  NepalPaymentMethod
+} from '../../types';
 import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
+import {
+  generateUniqueId,
+  getNepalFiscalYear,
+  getNextSequentialDocNumber,
+  round2
+} from '../../utils/accountingEngine';
 
 interface OtcOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   parts: SparePart[];
   customers: Customer[];
+  existingOrderNumbers?: string[];
   onCreateSalesOrder?: (order: PartsSalesOrder) => void;
   onNotify: (msg: string) => void;
 }
@@ -27,6 +40,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   onClose,
   parts,
   customers,
+  existingOrderNumbers = [],
   onCreateSalesOrder,
   onNotify
 }) => {
@@ -34,6 +48,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   const [walkinName, setWalkinName] = useState<string>('Walk-in Customer (Kathmandu)');
   const [walkinPhone, setWalkinPhone] = useState<string>('+977-98');
   const [pricingTier, setPricingTier] = useState<'Retail' | 'Fleet' | 'Wholesale'>('Retail');
+  const [paymentMethod, setPaymentMethod] = useState<NepalPaymentMethod | 'Credit'>('Cash');
 
   // Optional Corporate / Company Tax Invoice Billing
   const [billToCompany, setBillToCompany] = useState<boolean>(false);
@@ -175,9 +190,9 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   };
 
   // Calculations
-  const subtotal = cartItems.reduce((acc, item) => acc + item.total, 0);
-  const vatAmount = Math.round(subtotal * 0.13 * 100) / 100;
-  const grandTotal = subtotal + vatAmount;
+  const subtotal = round2(cartItems.reduce((acc, item) => acc + item.total, 0));
+  const vatAmount = round2(subtotal * 0.13);
+  const grandTotal = round2(subtotal + vatAmount);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,14 +223,25 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
       selectedCustomerId === 'walkin'
         ? walkinName.trim() || 'Walk-in Retail Customer'
         : selectedCustomer?.name || 'Walk-in Customer';
+    const customerPhone =
+      selectedCustomerId === 'walkin'
+        ? walkinPhone.trim()
+        : selectedCustomer?.phone || walkinPhone.trim();
 
     const todayStr = new Date().toISOString().slice(0, 10);
+    const fy = getNepalFiscalYear(todayStr);
+    const orderNumber = getNextSequentialDocNumber(existingOrderNumbers, 'PSO', fy, 5);
+    const isCreditSale = paymentMethod === 'Credit';
 
     const salesOrder: PartsSalesOrder = {
-      id: `PSO-${Date.now().toString().slice(-4)}`,
-      orderNumber: `PSO-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: generateUniqueId('PSO'),
+      orderNumber,
       customerId: selectedCustomerId,
       customerName: billToCompany ? companyName.trim() : customerName,
+      customerPhone: billToCompany ? companyPhone.trim() : customerPhone,
+      pricingTier,
+      paymentMethod: isCreditSale ? 'Cash' : paymentMethod,
+      paymentStatus: isCreditSale ? 'Unpaid' : 'Paid',
       date: todayStr,
       items: cartItems,
       subtotal,
@@ -237,7 +263,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     if (onCreateSalesOrder) {
       onCreateSalesOrder(salesOrder);
     }
-    onNotify(`OTC Sales Order ${salesOrder.orderNumber} dispatched! Warehouse stock updated.`);
+    onNotify(`OTC Order ${salesOrder.orderNumber} dispatched & IRD Tax Invoice generated.`);
     setCartItems([]);
     setQuantity(1);
     setFormError(null);
@@ -336,6 +362,25 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                 </div>
               </>
             )}
+
+            <div className="md:col-span-2">
+              <label className="block font-semibold text-[#0F172A] mb-1">
+                Tax Invoice Settlement / Payment Mode
+              </label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as NepalPaymentMethod | 'Credit')}
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-semibold text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9]"
+              >
+                <option value="Cash">Cash at Counter (Paid Immediately)</option>
+                <option value="Fonepay">Fonepay Dynamic QR (Paid Immediately)</option>
+                <option value="NepalPay">NepalPay QR / Card (Paid Immediately)</option>
+                <option value="eSewa">eSewa Wallet (Paid Immediately)</option>
+                <option value="Khalti">Khalti Wallet (Paid Immediately)</option>
+                <option value="ConnectIPS">ConnectIPS / Bank Transfer (Paid Immediately)</option>
+                <option value="Credit">Corporate / Customer Credit (Invoice as Unpaid)</option>
+              </select>
+            </div>
 
             <div className="md:col-span-2 pt-2 border-t border-[#E2E8F0] space-y-2.5">
               <label className="flex items-center space-x-2 cursor-pointer select-none">
@@ -625,7 +670,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Confirm OTC Dispatch (NPR {grandTotal.toLocaleString()})</span>
+            <span>Dispatch &amp; Generate Tax Invoice (NPR {grandTotal.toLocaleString()})</span>
           </button>
         </div>
       </div>

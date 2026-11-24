@@ -12,6 +12,61 @@ import { adToBs, getNepalFiscalYearFromAd } from './nepaliDate';
 export const round2 = (value: number): number =>
   Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
 
+let _idCounter = 0;
+
+/**
+ * Collision-proof unique identifier generator for high-volume concurrent / batch transactions.
+ * Eliminates `Date.now().slice(-6)` collisions when multiple records are created within the same millisecond.
+ */
+export const generateUniqueId = (prefix: string): string => {
+  _idCounter = (_idCounter + 1) % 1000000;
+  const ts = Date.now().toString(36).toUpperCase();
+  const seq = String(_idCounter).padStart(4, '0');
+  const rnd = Math.floor(Math.random() * 1296)
+    .toString(36)
+    .toUpperCase()
+    .padStart(2, '0');
+  return `${prefix}-${ts}-${seq}${rnd}`;
+};
+
+/**
+ * Generates strictly sequential, globally unique IRD-compliant document numbers
+ * (e.g. TAX-83-00001, OTC-83-00001, CN-83-00001, GP-83-00001).
+ * Eliminates 4-digit Math.random() invoice number collisions under high annual volume.
+ */
+export const getNextSequentialDocNumber = (
+  existingNumbers: Iterable<string | undefined>,
+  prefix: string,
+  fiscalYear: string,
+  padLength = 5
+): string => {
+  const fyShort = (fiscalYear || '2083/84').replace(/[^0-9]/g, '').slice(2, 4) || '83';
+  const base = `${prefix}-${fyShort}-`;
+  let maxSeq = 0;
+  const existingSet = new Set<string>();
+
+  for (const raw of existingNumbers) {
+    if (!raw) continue;
+    const upper = raw.toUpperCase();
+    existingSet.add(upper);
+    if (upper.startsWith(base.toUpperCase())) {
+      const tail = upper.slice(base.length);
+      if (/^\d+$/.test(tail)) {
+        const parsed = parseInt(tail, 10);
+        if (parsed > maxSeq) maxSeq = parsed;
+      }
+    }
+  }
+
+  let next = maxSeq + 1;
+  let candidate = `${base}${String(next).padStart(padLength, '0')}`;
+  while (existingSet.has(candidate.toUpperCase())) {
+    next += 1;
+    candidate = `${base}${String(next).padStart(padLength, '0')}`;
+  }
+  return candidate;
+};
+
 /**
  * Free Car Service waives labor charges ONLY for Periodic Maintenance Service (PMS) - 45-Point Checkup.
  * All other labor tasks (brake overhaul, clutch, AC, alignment, dent/paint, custom jobs) remain billable.
@@ -164,25 +219,23 @@ export const recomputeGlBalancesFromJournal = (
 };
 
 /**
- * Applies a single new balanced journal entry onto existing GL accounts.
+ * Applies a single new balanced journal entry onto existing GL accounts in O(A + L).
  */
 export const applyJournalEntryToAccounts = (
   glAccounts: GLAccount[],
   entry: GLJournalEntry
 ): GLAccount[] => {
-  const map = new Map<string, GLAccount>();
+  const existingMap = new Map<string, GLAccount>();
+  glAccounts.forEach((acc) => existingMap.set(acc.accountCode, { ...acc }));
+
   STANDARD_GL_ACCOUNT_TEMPLATES.forEach((tpl) => {
-    const existing = glAccounts.find((a) => a.accountCode === tpl.accountCode);
-    map.set(tpl.accountCode, existing ? { ...existing } : { ...tpl, currentBalance: 0 });
-  });
-  glAccounts.forEach((acc) => {
-    if (!map.has(acc.accountCode)) {
-      map.set(acc.accountCode, { ...acc });
+    if (!existingMap.has(tpl.accountCode)) {
+      existingMap.set(tpl.accountCode, { ...tpl, currentBalance: 0 });
     }
   });
 
   (entry.lines || []).forEach((line) => {
-    let acc = map.get(line.accountCode);
+    let acc = existingMap.get(line.accountCode);
     if (!acc) {
       const inferredCat: GLAccount['category'] =
         line.accountCode.startsWith('1') ? 'Asset' :
@@ -196,7 +249,7 @@ export const applyJournalEntryToAccounts = (
         subCategory: 'General',
         currentBalance: 0,
       };
-      map.set(line.accountCode, acc);
+      existingMap.set(line.accountCode, acc);
     }
 
     const debit = Number(line.debit) || 0;
@@ -208,12 +261,13 @@ export const applyJournalEntryToAccounts = (
     }
   });
 
-  return Array.from(map.values()).sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+  return Array.from(existingMap.values()).sort((a, b) => a.accountCode.localeCompare(b.accountCode));
 };
 
-const makeVoucherNumber = (existingCount: number, prefix = 'JV'): string => {
-  const seq = String(existingCount + 1).padStart(3, '0');
-  return `${prefix}-2081-${seq}`;
+const makeVoucherNumber = (existingCount: number, prefix = 'JV', adDateStr?: string): string => {
+  const fyYear = getNepalFiscalYear(adDateStr).slice(0, 4) || '2083';
+  const seq = String(existingCount + 1).padStart(5, '0');
+  return `${prefix}-${fyYear}-${seq}`;
 };
 
 /**
@@ -321,10 +375,12 @@ export const buildInvoiceJournalEntry = (
 
   const balancedTotal = round2(lines.reduce((s, l) => s + l.debit, 0));
 
+  const entryDate = (inv.date || inv.createdAt || new Date().toISOString()).slice(0, 10);
+
   return {
-    id: `JV-INV-${Date.now().toString().slice(-6)}`,
-    entryNumber: makeVoucherNumber(existingEntriesCount, 'JV'),
-    date: (inv.date || inv.createdAt || new Date().toISOString()).slice(0, 10),
+    id: generateUniqueId('JV-INV'),
+    entryNumber: makeVoucherNumber(existingEntriesCount, 'JV', entryDate),
+    date: entryDate,
     sourceDocument: inv.invoiceNumber,
     narration: `Sales Invoice ${inv.invoiceNumber} — ${inv.customerName} (${inv.vehicleReg || 'Workshop'}) [Taxable + 13% IRD VAT]`,
     totalAmount: balancedTotal,
@@ -349,10 +405,11 @@ export const buildPaymentJournalEntry = (
   if (amt <= 0) return null;
 
   const cashAcc = getCashBankAccountForMethod(method);
+  const entryDate = dateStr.slice(0, 10);
   return {
-    id: `JV-PAY-${Date.now().toString().slice(-6)}`,
-    entryNumber: makeVoucherNumber(existingEntriesCount, 'RV'),
-    date: dateStr.slice(0, 10),
+    id: generateUniqueId('JV-PAY'),
+    entryNumber: makeVoucherNumber(existingEntriesCount, 'RV', entryDate),
+    date: entryDate,
     sourceDocument: reference || inv.invoiceNumber,
     narration: `Payment receipt via ${method} against ${inv.invoiceNumber} from ${inv.customerName}`,
     totalAmount: amt,
@@ -431,10 +488,11 @@ export const buildCreditNoteJournalEntry = (
   }
 
   const balancedTotal = round2(lines.reduce((s, l) => s + l.debit, 0));
+  const entryDate = (creditNote.date || creditNote.createdAt || new Date().toISOString()).slice(0, 10);
   return {
-    id: `JV-CN-${Date.now().toString().slice(-6)}`,
-    entryNumber: makeVoucherNumber(existingEntriesCount, 'CN'),
-    date: (creditNote.date || creditNote.createdAt || new Date().toISOString()).slice(0, 10),
+    id: generateUniqueId('JV-CN'),
+    entryNumber: makeVoucherNumber(existingEntriesCount, 'CN', entryDate),
+    date: entryDate,
     sourceDocument: creditNote.invoiceNumber,
     narration: `IRD Credit Note ${creditNote.invoiceNumber} issued to ${creditNote.customerName} (${creditNote.vehicleModel || 'Sales Return'})`,
     totalAmount: balancedTotal,
@@ -492,10 +550,11 @@ export const buildPurchaseReceiptJournalEntry = (
     });
   }
 
+  const poDate = (po.date || new Date().toISOString()).slice(0, 10);
   return {
-    id: `JV-PO-${Date.now().toString().slice(-6)}`,
-    entryNumber: makeVoucherNumber(existingEntriesCount, 'PV'),
-    date: new Date().toISOString().slice(0, 10),
+    id: generateUniqueId('JV-PO'),
+    entryNumber: makeVoucherNumber(existingEntriesCount, 'PV', poDate),
+    date: poDate,
     sourceDocument: po.poNumber,
     narration: `Goods Received Note (GRN) for ${po.poNumber} from ${po.supplierName} (PAN: ${po.supplierPanVat || 'N/A'})`,
     totalAmount: round2(lines.reduce((s, l) => s + l.debit, 0)),
@@ -593,10 +652,11 @@ export const buildCashierVoucherJournalEntry = (
       ];
 
   const partyPrefix = isCashIn ? 'Received from' : 'Paid to';
+  const entryDate = (voucher.transactionDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
   return {
-    id: `JV-CB-${Date.now().toString().slice(-6)}`,
-    entryNumber: makeVoucherNumber(existingEntriesCount, isCashIn ? 'CRV' : 'CPV'),
-    date: (voucher.transactionDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
+    id: generateUniqueId('JV-CB'),
+    entryNumber: makeVoucherNumber(existingEntriesCount, isCashIn ? 'CRV' : 'CPV', entryDate),
+    date: entryDate,
     sourceDocument: voucher.voucherNumber,
     narration: `${voucher.transactionType} (${voucher.accountHead}) — ${partyPrefix} ${voucher.partyName}: ${voucher.particulars}${
       voucher.referenceNumber ? ` [Ref: ${voucher.referenceNumber}]` : ''

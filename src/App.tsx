@@ -59,7 +59,9 @@ import {
   buildInvoiceJournalEntry,
   buildPaymentJournalEntry,
   buildPurchaseReceiptJournalEntry,
+  generateUniqueId,
   getNepalFiscalYear,
+  getNextSequentialDocNumber,
   isCreditNoteInvoice,
   round2,
   toNepalBsDate,
@@ -84,6 +86,18 @@ export default function App() {
   useEscapeKey(isMobileNavOpen, () => setIsMobileNavOpen(false));
   useEscapeKey(isNewAccountModalOpen, () => setIsNewAccountModalOpen(false));
   useEscapeKey(Boolean(printGatePass), () => setPrintGatePass(null));
+
+  useEffect(() => {
+    let mounted = true;
+    void storage.hydrateFromIndexedDb().then((hydrated) => {
+      if (mounted && hydrated) {
+        setDb(hydrated);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     ensureGlobalEscapeListener();
@@ -238,7 +252,7 @@ export default function App() {
     const message = `Vehicle Ready for Pickup: ${jc.vehicle?.registrationNumber || ''} (${jc.vehicle?.brand || jc.vehicle?.make || ''} ${jc.vehicle?.model || ''}) under ${jc.jobCardNumber} is Ready for Billing & Pickup at ${workshopName}. Customer: ${jc.customerName}. Workshop Helpline: ${workshopPhone}.`;
 
     const newLog: ReadyNotificationLog = {
-      id: `NTF-${Date.now().toString().slice(-6)}`,
+      id: generateUniqueId('NTF'),
       jobCardId: jc.id,
       jobCardNumber: jc.jobCardNumber,
       vehicleReg: jc.vehicle?.registrationNumber || '',
@@ -332,11 +346,15 @@ export default function App() {
     const todayIso = new Date().toISOString();
     const todayDate = todayIso.slice(0, 10);
     const fiscalYear = getNepalFiscalYear(todayDate) || db.profile.fiscalYear || '2083/84';
-    const fyPrefix = fiscalYear.slice(2, 4);
+    const nextInvoiceNumber = getNextSequentialDocNumber(
+      (db.invoices || []).map((i) => i.invoiceNumber),
+      'TAX',
+      fiscalYear
+    );
 
     const newInvoice: Invoice = {
-      id: `INV-${Date.now().toString().slice(-6)}`,
-      invoiceNumber: `TAX-${fyPrefix}-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: generateUniqueId('INV'),
+      invoiceNumber: nextInvoiceNumber,
       fiscalYear,
       date: todayDate,
       bsDate: toNepalBsDate(todayDate),
@@ -374,12 +392,12 @@ export default function App() {
       irdSyncDetails: {
         isSynced: true,
         syncedAt: todayIso,
-        cbmsAckNumber: `CBMS-${Date.now().toString().slice(-6)}`,
+        cbmsAckNumber: generateUniqueId('CBMS'),
         fiscalYear
       },
       items: [
         ...rawLabor.map((l, idx) => ({
-          id: `ITEM-L-${idx}-${Date.now()}`,
+          id: generateUniqueId(`ITEM-L${idx}`),
           itemType: 'Labor' as const,
           description: l.description,
           hsnSacCode: '998714',
@@ -391,7 +409,7 @@ export default function App() {
           totalAmount: round2((l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 0))) * 1.13)
         })),
         ...rawParts.map((p, idx) => ({
-          id: `ITEM-P-${idx}-${Date.now()}`,
+          id: generateUniqueId(`ITEM-P${idx}`),
           itemType: 'Part' as const,
           description: `${p.partName || p.name || 'Spare Part'} (${p.partNumber || 'GEN'})`,
           hsnSacCode: '87082900',
@@ -452,8 +470,12 @@ export default function App() {
     // User requirement: "once the invoice is generated, create a gate pass of individual vehicle with information."
     const now = new Date();
     const vehicleGatePass: GatePass = {
-      id: `GP-${Date.now().toString().slice(-6)}`,
-      passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: generateUniqueId('GP'),
+      passNumber: getNextSequentialDocNumber(
+        (db.gatePasses || []).map((g) => g.passNumber),
+        'GP',
+        fiscalYear
+      ),
       invoiceId: newInvoice.id,
       invoiceNumber: newInvoice.invoiceNumber,
       jobCardId: jc.id,
@@ -542,7 +564,6 @@ export default function App() {
         (newInv.jobCardNumber && inv.jobCardNumber === newInv.jobCardNumber)
       );
       if (duplicate) {
-        alert(`An IRD Tax Invoice (#${duplicate.invoiceNumber}) already exists for this Job Card. Multiple invoices under the same Job Card are prohibited.`);
         setActiveTab('billing');
         setPrintInvoice(duplicate);
         return;
@@ -551,11 +572,16 @@ export default function App() {
 
     const updated = [newInv, ...db.invoices];
     const now = new Date();
+    const invFy = newInv.fiscalYear || getNepalFiscalYear(newInv.date);
     // Automatically create vehicle gate pass upon invoice generation
     const correspondingJc = db.jobCards.find(jc => jc.id === newInv.jobCardId || jc.jobCardNumber === newInv.jobCardNumber);
     const vehicleGatePass: GatePass = {
-      id: `GP-${Date.now().toString().slice(-6)}`,
-      passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: generateUniqueId('GP'),
+      passNumber: getNextSequentialDocNumber(
+        (db.gatePasses || []).map((g) => g.passNumber),
+        'GP',
+        invFy
+      ),
       invoiceId: newInv.id,
       invoiceNumber: newInv.invoiceNumber,
       jobCardId: newInv.jobCardId,
@@ -674,10 +700,10 @@ export default function App() {
 
     const newPaymentRecord = appliedAmount > 0
       ? {
-          id: `PAY-${Date.now().toString().slice(-6)}`,
+          id: generateUniqueId('PAY'),
           method: method as any,
           amount: appliedAmount,
-          referenceNumber: ref || `RCPT-${Date.now().toString().slice(-5)}`,
+          referenceNumber: ref || generateUniqueId('RCPT'),
           date: nowIso
         }
       : null;
@@ -767,13 +793,17 @@ export default function App() {
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const fy = getNepalFiscalYear(todayStr) || db.profile.fiscalYear || '2083/84';
-    const cnNumber = `CN-${fy.slice(2)}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const cnNumber = getNextSequentialDocNumber(
+      (db.invoices || []).map((i) => i.invoiceNumber),
+      'CN',
+      fy
+    );
 
     // If original invoice had paid amount, treat refund as settled via selected payment mode; otherwise adjust AR
     const refundViaCash = (originalInv.paidAmount ?? 0) > 0;
 
     const creditNote: Invoice = {
-      id: `CN-${Date.now().toString().slice(-6)}`,
+      id: generateUniqueId('CN'),
       invoiceNumber: cnNumber,
       fiscalYear: fy,
       jobCardId: originalInv.jobCardId || 'JC-CN',
@@ -816,12 +846,12 @@ export default function App() {
       irdSyncDetails: {
         isSynced: true,
         syncedAt: now.toISOString(),
-        cbmsAckNumber: `CBMS-CN-${Date.now().toString().slice(-6)}`,
+        cbmsAckNumber: generateUniqueId('CBMS-CN'),
         fiscalYear: fy
       },
       items: [
         {
-          id: `CN-ITEM-${Date.now()}`,
+          id: generateUniqueId('CN-ITEM'),
           itemType: 'Part',
           description: `Credit Note Adjustment (${originalInv.invoiceNumber}): ${reason}`,
           hsnSacCode: '998714',
@@ -836,7 +866,7 @@ export default function App() {
       payments: refundViaCash
         ? [
             {
-              id: `PAY-CN-${Date.now().toString().slice(-5)}`,
+              id: generateUniqueId('PAY-CN'),
               method: refundMethod as any,
               amount: -grandTotal,
               referenceNumber: cnNumber,
@@ -1023,18 +1053,192 @@ export default function App() {
     updateDb({ partsQuotations: updated });
   };
 
+  const buildOtcTaxInvoiceAndRecords = (order: PartsSalesOrder, existingInvoices: Invoice[], existingGatePasses: GatePass[]) => {
+    const otcDate = order.date || new Date().toISOString().slice(0, 10);
+    const otcFy = getNepalFiscalYear(otcDate) || db.profile.fiscalYear || '2083/84';
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    const otcCb = order.companyBilling;
+    const isOtcCompany = Boolean(otcCb?.isCompanyBill && otcCb.companyName?.trim());
+    const otcInvoiceNumber = getNextSequentialDocNumber(
+      existingInvoices.map((i) => i.invoiceNumber),
+      'OTC',
+      otcFy
+    );
+    const isOtcPaid = order.paymentStatus !== 'Unpaid' && order.dispatchStatus === 'Fully Dispatched';
+    const resolvedMethod: NepalPaymentMethod = order.paymentMethod || 'Cash';
+    const matchedCustomer = (db.customers || []).find((c) => c.id === order.customerId);
+    const resolvedPhone = isOtcCompany
+      ? otcCb!.phone.trim()
+      : order.customerPhone?.trim() || matchedCustomer?.phone || 'N/A';
+
+    const otcInvoice: Invoice = {
+      id: generateUniqueId('INV-OTC'),
+      invoiceNumber: otcInvoiceNumber,
+      fiscalYear: otcFy,
+      jobCardId: 'JC-OTC',
+      jobCardNumber: order.orderNumber,
+      salesOrderId: order.id,
+      salesOrderNumber: order.orderNumber,
+      pricingTier: order.pricingTier || 'Retail',
+      customerId: order.customerId !== 'walkin' ? order.customerId : undefined,
+      customerName: isOtcCompany ? otcCb!.companyName.trim() : order.customerName,
+      customerPhone: resolvedPhone,
+      customerAddress: isOtcCompany ? otcCb!.address.trim() : matchedCustomer?.address,
+      customerPan: isOtcCompany ? otcCb!.panVatNumber.trim() : matchedCustomer?.panVatNumber || matchedCustomer?.panNumber,
+      customerPanVat: isOtcCompany ? otcCb!.panVatNumber.trim() : matchedCustomer?.panVatNumber || matchedCustomer?.panNumber,
+      billedToType: isOtcCompany ? 'Company' : 'Individual',
+      companyName: isOtcCompany ? otcCb!.companyName.trim() : undefined,
+      companyAddress: isOtcCompany ? otcCb!.address.trim() : undefined,
+      companyPhone: isOtcCompany ? otcCb!.phone.trim() : undefined,
+      buyerContactPerson: order.customerName,
+      vehicleReg: 'OTC-WALKIN',
+      vehicleModel: 'Over-the-Counter Spares Sale',
+      type: 'Tax Invoice',
+      date: otcDate,
+      createdAt: nowIso,
+      bsDate: toNepalBsDate(otcDate),
+      isLocked: true,
+      items: order.items.map((item, idx) => {
+        const lineTaxable = round2(item.total ?? (item.quantity * item.unitPrice - (item.discount || 0)));
+        const lineVat = round2(lineTaxable * 0.13);
+        const catalogPart = (db.parts || []).find((p) => p.id === item.partId || p.sku === item.sku);
+        return {
+          id: generateUniqueId(`OTC-ITEM-${idx}`),
+          itemType: 'Part' as const,
+          type: 'Part' as const,
+          description: `${item.partName}${item.sku ? ` [${item.sku}]` : ''}`,
+          hsnSacCode: catalogPart?.hsnSacCode || '87082900',
+          quantity: item.quantity,
+          unitPrice: round2(item.unitPrice),
+          taxableAmount: lineTaxable,
+          vatRate: 13,
+          vatAmount: lineVat,
+          totalAmount: round2(lineTaxable + lineVat)
+        };
+      }),
+      subTotal: round2(order.subtotal),
+      taxableAmount: round2(order.subtotal),
+      totalTaxableAmount: round2(order.subtotal),
+      partsTaxableAmount: round2(order.subtotal),
+      partsVatAmount: round2(order.vatAmount),
+      laborTaxableAmount: 0,
+      laborVatAmount: 0,
+      vatRate: 13,
+      vatAmount: round2(order.vatAmount),
+      totalVatAmount: round2(order.vatAmount),
+      grandTotal: round2(order.grandTotal),
+      paidAmount: isOtcPaid ? round2(order.grandTotal) : 0,
+      amountPaid: isOtcPaid ? round2(order.grandTotal) : 0,
+      balanceDue: isOtcPaid ? 0 : round2(order.grandTotal),
+      status: isOtcPaid ? 'Paid' : 'Unpaid',
+      paymentStatus: isOtcPaid ? 'Paid' : 'Unpaid',
+      paymentMethod: resolvedMethod,
+      paymentReference: order.orderNumber,
+      payments: isOtcPaid
+        ? [
+            {
+              id: generateUniqueId('PAY-OTC'),
+              method: resolvedMethod as any,
+              amount: round2(order.grandTotal),
+              referenceNumber: order.orderNumber,
+              date: nowIso
+            }
+          ]
+        : [],
+      irdSyncDetails: {
+        isSynced: true,
+        syncedAt: nowIso,
+        cbmsAckNumber: generateUniqueId('CBMS-OTC'),
+        fiscalYear: otcFy
+      }
+    };
+
+    const otcGatePass: GatePass = {
+      id: generateUniqueId('GP'),
+      passNumber: getNextSequentialDocNumber(
+        existingGatePasses.map((g) => g.passNumber),
+        'GP',
+        otcFy
+      ),
+      invoiceId: otcInvoice.id,
+      invoiceNumber: otcInvoice.invoiceNumber,
+      jobCardNumber: order.orderNumber,
+      vehicleReg: 'OTC-WALKIN',
+      vehicleMake: 'Over-The-Counter',
+      vehicleModel: 'Direct Spares Sale',
+      odometerReading: 0,
+      customerName: otcInvoice.customerName,
+      customerPhone: otcInvoice.customerPhone,
+      issueDate: otcDate,
+      issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      authorizedBy: currentUser?.name || 'Store Incharge',
+      securityOfficerName: 'Main Store Gate',
+      status: 'Cleared for Exit',
+      totalInvoiceAmount: otcInvoice.grandTotal,
+      paymentStatus: otcInvoice.status
+    };
+
+    const linkedOrder: PartsSalesOrder = {
+      ...order,
+      invoiceId: otcInvoice.id,
+      invoiceNumber: otcInvoice.invoiceNumber,
+      invoiceStatus: 'Invoiced'
+    };
+
+    // Double-entry GL: Post Sales Revenue + 13% Output VAT JV, and if paid immediately, post Cash/Bank Settlement JV
+    let nextEntries = [...(db.journalEntries || [])];
+    let nextAccounts = [...(db.glAccounts || [])];
+
+    const salesJv = buildInvoiceJournalEntry(otcInvoice, nextEntries.length);
+    if (salesJv) {
+      nextEntries = [salesJv, ...nextEntries];
+      nextAccounts = applyJournalEntryToAccounts(nextAccounts, salesJv);
+    }
+
+    if (isOtcPaid && otcInvoice.grandTotal > 0) {
+      const payJv = buildPaymentJournalEntry(
+        otcInvoice,
+        otcInvoice.grandTotal,
+        resolvedMethod,
+        order.orderNumber,
+        otcDate,
+        nextEntries.length
+      );
+      if (payJv) {
+        nextEntries = [payJv, ...nextEntries];
+        nextAccounts = applyJournalEntryToAccounts(nextAccounts, payJv);
+      }
+    }
+
+    return { linkedOrder, otcInvoice, otcGatePass, nextEntries, nextAccounts };
+  };
+
   const handleCreateSalesOrder = (order: PartsSalesOrder, deductStock: boolean = true) => {
-    const updatedOrders = [order, ...(db.partsSalesOrders || [])];
-    
-    // Deduct stock for immediate dispatch
+    const otcDate = order.date || new Date().toISOString().slice(0, 10);
+
+    // Deduct stock for immediate dispatch and append stock movement audit trail
     let updatedParts = db.parts || [];
     if (deductStock || order.dispatchStatus === 'Fully Dispatched') {
       updatedParts = (db.parts || []).map(p => {
         const orderItem = order.items.find(item => item.partId === p.id || item.sku === p.sku);
         if (orderItem) {
+          const nextStock = Math.max(0, p.currentStock - orderItem.quantity);
           return {
             ...p,
-            currentStock: Math.max(0, p.currentStock - orderItem.quantity)
+            currentStock: nextStock,
+            stockMovements: [
+              ...(p.stockMovements || []),
+              {
+                id: generateUniqueId('SM'),
+                date: otcDate,
+                type: 'OUT' as const,
+                quantity: orderItem.quantity,
+                reference: `OTC Sale: ${order.orderNumber}`,
+                currentStockAfter: nextStock
+              }
+            ]
           };
         }
         return p;
@@ -1044,92 +1248,15 @@ export default function App() {
     // If converted from quotation, update quotation status
     let updatedQuotations = db.partsQuotations || [];
     if (order.quotationId) {
-      updatedQuotations = (db.partsQuotations || []).map(q => 
+      updatedQuotations = (db.partsQuotations || []).map(q =>
         q.id === order.quotationId ? { ...q, status: 'Converted to Order' as const } : q
       );
     }
 
-    // Automatically generate OTC Invoice in billing (supports Company VAT Billing)
-    const otcCb = order.companyBilling;
-    const isOtcCompany = Boolean(otcCb?.isCompanyBill && otcCb.companyName?.trim());
-    const otcDate = order.date || new Date().toISOString().slice(0, 10);
+    const { linkedOrder, otcInvoice, otcGatePass, nextEntries, nextAccounts } =
+      buildOtcTaxInvoiceAndRecords(order, db.invoices || [], db.gatePasses || []);
 
-    const otcInvoice: Invoice = {
-      id: `INV-OTC-${order.id}`,
-      invoiceNumber: `INV-81-OTC-${Math.floor(1000 + Math.random() * 9000)}`,
-      fiscalYear: db.profile.fiscalYear || '2081/82',
-      jobCardId: 'JC-OTC',
-      jobCardNumber: 'OTC-SALES',
-      customerName: isOtcCompany ? otcCb!.companyName.trim() : order.customerName,
-      customerPhone: isOtcCompany ? otcCb!.phone.trim() : '+977-9800000000',
-      customerAddress: isOtcCompany ? otcCb!.address.trim() : undefined,
-      customerPan: isOtcCompany ? otcCb!.panVatNumber.trim() : undefined,
-      customerPanVat: isOtcCompany ? otcCb!.panVatNumber.trim() : undefined,
-      billedToType: isOtcCompany ? 'Company' : 'Individual',
-      companyName: isOtcCompany ? otcCb!.companyName.trim() : undefined,
-      companyAddress: isOtcCompany ? otcCb!.address.trim() : undefined,
-      companyPhone: isOtcCompany ? otcCb!.phone.trim() : undefined,
-      buyerContactPerson: order.customerName,
-      vehicleReg: 'OTC-WALKIN',
-      vehicleModel: 'Direct Spares Sale',
-      type: 'Tax Invoice',
-      date: otcDate,
-      bsDate: toNepalBsDate(otcDate),
-      isLocked: false,
-      items: order.items.map((item, idx) => ({
-        id: `OTC-ITEM-${idx}`,
-        itemType: 'Part' as const,
-        description: item.partName,
-        hsnSacCode: '87082900',
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        taxableAmount: item.quantity * item.unitPrice,
-        vatRate: 13,
-        vatAmount: Math.round(item.quantity * item.unitPrice * 0.13),
-        totalAmount: Math.round(item.quantity * item.unitPrice * 1.13)
-      })),
-      subTotal: order.subtotal,
-      taxableAmount: order.subtotal,
-      vatRate: 13,
-      vatAmount: order.vatAmount,
-      grandTotal: order.grandTotal,
-      paidAmount: order.dispatchStatus === 'Fully Dispatched' ? order.grandTotal : 0,
-      balanceDue: order.dispatchStatus === 'Fully Dispatched' ? 0 : order.grandTotal,
-      status: order.dispatchStatus === 'Fully Dispatched' ? 'Paid' : 'Unpaid',
-      paymentMethod: 'Cash',
-      irdSyncDetails: {
-        isSynced: true,
-        syncedAt: new Date().toISOString(),
-        cbmsAckNumber: `CBMS-OTC-${Date.now().toString().slice(-6)}`,
-        fiscalYear: db.profile.fiscalYear
-      }
-    };
-
-    const now = new Date();
-    const otcGatePass: GatePass = {
-      id: `GP-${Date.now().toString().slice(-6)}`,
-      passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
-      invoiceId: otcInvoice.id,
-      invoiceNumber: otcInvoice.invoiceNumber,
-      jobCardNumber: otcInvoice.jobCardNumber,
-      vehicleReg: 'OTC-WALKIN',
-      vehicleMake: 'Over-The-Counter',
-      vehicleModel: 'Direct Spares Sale',
-      odometerReading: 0,
-      customerName: otcInvoice.customerName,
-      customerPhone: otcInvoice.customerPhone,
-      issueDate: now.toISOString().slice(0, 10),
-      issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      authorizedBy: currentUser?.name || 'Store Incharge',
-      securityOfficerName: 'Main Store Gate',
-      status: 'Cleared for Exit',
-      totalInvoiceAmount: otcInvoice.grandTotal,
-      paymentStatus: otcInvoice.status
-    };
-
-    const otcJv = buildInvoiceJournalEntry(otcInvoice, (db.journalEntries || []).length);
-    const updatedJournalEntries = otcJv ? [otcJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
-    const updatedGlAccounts = otcJv ? applyJournalEntryToAccounts(db.glAccounts || [], otcJv) : (db.glAccounts || []);
+    const updatedOrders = [linkedOrder, ...(db.partsSalesOrders || [])];
 
     updateDb({
       partsSalesOrders: updatedOrders,
@@ -1137,21 +1264,72 @@ export default function App() {
       partsQuotations: updatedQuotations,
       invoices: [otcInvoice, ...(db.invoices || [])],
       gatePasses: [otcGatePass, ...(db.gatePasses || [])],
-      journalEntries: updatedJournalEntries,
-      glAccounts: updatedGlAccounts
+      journalEntries: nextEntries,
+      glAccounts: nextAccounts
     });
+
+    // Open printable A4 IRD Tax Invoice immediately for counter printing / PDF
+    setPrintInvoice(otcInvoice);
+  };
+
+  const handleGenerateOtcInvoice = (order: PartsSalesOrder) => {
+    // Check if an IRD Tax Invoice is already linked to this OTC sales order
+    const existing = (db.invoices || []).find(
+      (inv) =>
+        (order.invoiceId && inv.id === order.invoiceId) ||
+        (order.invoiceNumber && inv.invoiceNumber === order.invoiceNumber) ||
+        inv.salesOrderId === order.id ||
+        inv.salesOrderNumber === order.orderNumber ||
+        inv.jobCardNumber === order.orderNumber ||
+        inv.paymentReference === order.orderNumber
+    );
+
+    if (existing) {
+      setPrintInvoice(existing);
+      return;
+    }
+
+    const { linkedOrder, otcInvoice, otcGatePass, nextEntries, nextAccounts } =
+      buildOtcTaxInvoiceAndRecords(order, db.invoices || [], db.gatePasses || []);
+
+    const updatedOrders = (db.partsSalesOrders || []).map((o) =>
+      o.id === order.id ? linkedOrder : o
+    );
+
+    updateDb({
+      partsSalesOrders: updatedOrders,
+      invoices: [otcInvoice, ...(db.invoices || [])],
+      gatePasses: [otcGatePass, ...(db.gatePasses || [])],
+      journalEntries: nextEntries,
+      glAccounts: nextAccounts
+    });
+
+    setPrintInvoice(otcInvoice);
   };
 
   const handleDispatchOrder = (orderId: string, isPartial: boolean) => {
     const targetOrder = (db.partsSalesOrders || []).find(o => o.id === orderId);
     if (!targetOrder) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
     
     const updatedParts = (db.parts || []).map(p => {
       const orderItem = targetOrder.items.find(item => item.partId === p.id || item.sku === p.sku);
       if (orderItem) {
+        const nextStock = Math.max(0, p.currentStock - orderItem.quantity);
         return {
           ...p,
-          currentStock: Math.max(0, p.currentStock - orderItem.quantity)
+          currentStock: nextStock,
+          stockMovements: [
+            ...(p.stockMovements || []),
+            {
+              id: generateUniqueId('SM'),
+              date: todayStr,
+              type: 'OUT' as const,
+              quantity: orderItem.quantity,
+              reference: `OTC Dispatch: ${targetOrder.orderNumber}`,
+              currentStockAfter: nextStock
+            }
+          ]
         };
       }
       return p;
@@ -1175,26 +1353,7 @@ export default function App() {
 
   const handleAddJournalEntry = (newEntry: GLJournalEntry) => {
     const updatedEntries = [newEntry, ...(db.journalEntries || [])];
-    
-    // Auto-update GLAccount balances based on the double-entry debits and credits
-    const accountBalances: Record<string, { debit: number; credit: number }> = {};
-    newEntry.lines.forEach(line => {
-      if (!accountBalances[line.accountCode]) {
-        accountBalances[line.accountCode] = { debit: 0, credit: 0 };
-      }
-      accountBalances[line.accountCode].debit += line.debit;
-      accountBalances[line.accountCode].credit += line.credit;
-    });
-
-    const updatedAccounts = (db.glAccounts || []).map(acc => {
-      const change = accountBalances[acc.accountCode];
-      if (!change) return acc;
-      if (['Asset', 'Expense'].includes(acc.category)) {
-        return { ...acc, currentBalance: acc.currentBalance + (change.debit - change.credit) };
-      } else {
-        return { ...acc, currentBalance: acc.currentBalance + (change.credit - change.debit) };
-      }
-    });
+    const updatedAccounts = applyJournalEntryToAccounts(db.glAccounts || [], newEntry);
 
     updateDb({
       journalEntries: updatedEntries,
@@ -1486,6 +1645,8 @@ export default function App() {
               onDispatchOrder={handleDispatchOrder}
               onCreateSalesReturn={handleCreateSalesReturn}
               onViewJobCard={() => setActiveTab('jobcards')}
+              onViewInvoice={(inv) => setPrintInvoice(inv)}
+              onGenerateOtcInvoice={handleGenerateOtcInvoice}
             />
           )}
 

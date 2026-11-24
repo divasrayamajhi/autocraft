@@ -28,10 +28,12 @@ import {
   Plus,
 } from 'lucide-react';
 import { PrintInvoiceModal } from '../common/PrintInvoiceModal';
+import { PaginationBar } from '../common/PaginationBar';
 import { DaybookView } from './DaybookView';
 import { GenerateTaxInvoiceModal, TaxInvoiceGenerationOptions } from './GenerateTaxInvoiceModal';
 import {
   formatAccountingNPR,
+  generateUniqueId,
   isCreditNoteInvoice,
   isInvoiceSyncedToCbms,
   round2,
@@ -84,6 +86,8 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Partially Paid' | 'Unpaid' | 'Credit Note'>('All');
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<Invoice | null>(null);
   const [billingSubTab, setBillingSubTab] = useState<'invoices' | 'daybook'>('invoices');
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [invoicePageSize, setInvoicePageSize] = useState(50);
 
   // Generate Tax Invoice from Job Card (supports Bill in Company Name)
   const [isJobCardPickerOpen, setIsJobCardPickerOpen] = useState(false);
@@ -120,18 +124,43 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
     ? invoices.find((i) => i.id === selectedInvoiceForPrint.id) || selectedInvoiceForPrint
     : null;
 
+  // O(N) Map-indexed lookup — prevents O(N^2) browser freeze at 10,000+ Job Cards x Invoices
   const unbilledJobCards = useMemo(() => {
+    const byJcId = new Map<string, Invoice[]>();
+    const byJcNum = new Map<string, Invoice[]>();
+    const byInvId = new Map<string, Invoice>();
+
+    for (let i = 0; i < invoices.length; i++) {
+      const inv = invoices[i];
+      if (isCreditNoteInvoice(inv)) continue;
+      if (inv.id) byInvId.set(inv.id, inv);
+      if (inv.jobCardId) {
+        const arr = byJcId.get(inv.jobCardId);
+        if (arr) arr.push(inv);
+        else byJcId.set(inv.jobCardId, [inv]);
+      }
+      if (inv.jobCardNumber) {
+        const arr = byJcNum.get(inv.jobCardNumber);
+        if (arr) arr.push(inv);
+        else byJcNum.set(inv.jobCardNumber, [inv]);
+      }
+    }
+
     return (jobCards || []).filter((jc) => {
-      const existingRegular = invoices.filter(
-        (inv) =>
-          !isCreditNoteInvoice(inv) &&
-          ((inv.jobCardId && inv.jobCardId === jc.id) ||
-            (inv.jobCardNumber && inv.jobCardNumber === jc.jobCardNumber) ||
-            (jc.invoiceId && inv.id === jc.invoiceId))
-      );
-      if (existingRegular.length === 0) return true;
+      const matchedSet = new Set<Invoice>();
+      if (jc.id) byJcId.get(jc.id)?.forEach((inv) => matchedSet.add(inv));
+      if (jc.jobCardNumber) byJcNum.get(jc.jobCardNumber)?.forEach((inv) => matchedSet.add(inv));
+      if (jc.invoiceId) {
+        const direct = byInvId.get(jc.invoiceId);
+        if (direct) matchedSet.add(direct);
+      }
+
+      if (matchedSet.size === 0) return true;
       // Allow re-opened Paid Job Cards that have newly added unbilled labor/parts to issue a separate invoice
-      const allPaid = existingRegular.every((inv) => inv.status === 'Paid');
+      let allPaid = true;
+      matchedSet.forEach((inv) => {
+        if (inv.status !== 'Paid') allPaid = false;
+      });
       if (!allPaid || jc.isLocked) return false;
       const billedLabor = new Set(jc.billedLaborIds || []);
       const billedParts = new Set(jc.billedPartIds || []);
@@ -167,6 +196,13 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
       return matchesSearch && matchesStatus;
     });
   }, [invoices, searchQuery, statusFilter]);
+
+  const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / invoicePageSize));
+  const safeInvoicePage = Math.min(invoicePage, totalInvoicePages);
+  const paginatedInvoices = useMemo(() => {
+    const start = (safeInvoicePage - 1) * invoicePageSize;
+    return filteredInvoices.slice(start, start + invoicePageSize);
+  }, [filteredInvoices, safeInvoicePage, invoicePageSize]);
 
   // Chartered Accountant Reconciled KPIs (Net of Credit Notes)
   const metrics = useMemo(() => {
@@ -220,7 +256,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
 
   const handleConfirmQrPayment = () => {
     if (!qrModalInvoice) return;
-    const txRef = `${qrGateway.toUpperCase()}-TXN-${Date.now().toString().slice(-6)}`;
+    const txRef = generateUniqueId(`${qrGateway.toUpperCase()}-TXN`);
     onRecordPayment(qrModalInvoice.id, qrModalInvoice.balanceDue, qrGateway as NepalPaymentMethod, txRef);
     setQrPaymentSimulated(true);
     notify(`Payment of ${formatAccountingNPR(qrModalInvoice.balanceDue)} settled via ${qrGateway} QR & posted to GL.`);
@@ -235,24 +271,29 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
     const msg = encodeURIComponent(
       `Namaste ${inv.customerName},\nYour IRD Tax Invoice ${inv.invoiceNumber} from ${workshopName} (PAN: ${workshopPan}) for vehicle ${inv.vehicleReg} is ready.\n\nTaxable: ${formatAccountingNPR(inv.taxableAmount)}\nVAT (13%): ${formatAccountingNPR(inv.vatAmount)}\nGrand Total: ${formatAccountingNPR(inv.grandTotal)}\nBalance Due: ${formatAccountingNPR(inv.balanceDue)}\n\nThank you for choosing ${workshopName}.`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
+    const link = document.createElement('a');
+    link.href = `https://wa.me/${cleanPhone}?text=${msg}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
   };
 
   const handleLockAndSyncIrd = (inv: Invoice) => {
+    const cbmsAck = generateUniqueId('CBMS-NPL');
     const syncedInv: Invoice = {
       ...inv,
       isLocked: true,
       irdSyncDetails: {
         isSynced: true,
         syncedAt: new Date().toISOString(),
-        cbmsAckNumber: `CBMS-NPL-${Math.floor(100000 + Math.random() * 900000)}`,
-        fiscalYear: inv.fiscalYear || profile?.fiscalYear || '2081/82',
+        cbmsAckNumber: cbmsAck,
+        fiscalYear: inv.fiscalYear || profile?.fiscalYear || '2083/84',
       },
       irdCompliance: {
         isTransmittedToCbms: true,
         cbmsSyncTimestamp: new Date().toISOString(),
-        irdAcknowledgementCode: `CBMS-NPL-${Math.floor(100000 + Math.random() * 900000)}`,
-        fiscalYearTag: inv.fiscalYear || profile?.fiscalYear || '2081/82',
+        irdAcknowledgementCode: cbmsAck,
+        fiscalYearTag: inv.fiscalYear || profile?.fiscalYear || '2083/84',
         sellerPan: workshopPan,
       },
     };
@@ -463,7 +504,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                 No invoices or credit notes match your filter criteria.
               </div>
             ) : (
-              filteredInvoices.map((inv) => {
+              paginatedInvoices.map((inv) => {
                 const isCN = isCreditNoteInvoice(inv);
                 const synced = isInvoiceSyncedToCbms(inv);
                 const dateStr = (inv.date || inv.createdAt || '').slice(0, 10);
@@ -613,6 +654,16 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                 );
               })
             )}
+            <div className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] overflow-hidden">
+              <PaginationBar
+                totalItems={filteredInvoices.length}
+                currentPage={safeInvoicePage}
+                pageSize={invoicePageSize}
+                onPageChange={setInvoicePage}
+                onPageSizeChange={setInvoicePageSize}
+                itemLabel="invoices"
+              />
+            </div>
           </div>
 
           {/* Desktop Invoices & Credit Notes Table (>= lg) */}
@@ -639,7 +690,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredInvoices.map((inv) => {
+                    paginatedInvoices.map((inv) => {
                       const isCN = isCreditNoteInvoice(inv);
                       const synced = isInvoiceSyncedToCbms(inv);
                       const dateStr = (inv.date || inv.createdAt || '').slice(0, 10);
@@ -821,6 +872,14 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              totalItems={filteredInvoices.length}
+              currentPage={safeInvoicePage}
+              pageSize={invoicePageSize}
+              onPageChange={setInvoicePage}
+              onPageSizeChange={setInvoicePageSize}
+              itemLabel="invoices"
+            />
           </div>
         </>
       )}

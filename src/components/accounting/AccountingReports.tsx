@@ -28,6 +28,7 @@ import { PrintIrdVatRegisterModal } from './PrintIrdVatRegisterModal';
 import { CreateJournalVoucherModal } from './CreateJournalVoucherModal';
 import { CreateGLAccountModal } from './CreateGLAccountModal';
 import { DraggableTabBar } from '../common/DraggableTabBar';
+import { PaginationBar } from '../common/PaginationBar';
 import {
   formatAccountingNPR,
   isCreditNoteInvoice,
@@ -84,6 +85,14 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
   const [printModalType, setPrintModalType] = useState<'sales' | 'purchase' | 'vat_return'>('sales');
   const [isNewVoucherModalOpen, setIsNewVoucherModalOpen] = useState(false);
   const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
+
+  // Pagination states (supports 10,000+ invoices & 22,000+ journal vouchers smoothly)
+  const [pageSize, setPageSize] = useState(50);
+  const [salesPage, setSalesPage] = useState(1);
+  const [purchasePage, setPurchasePage] = useState(1);
+  const [journalPage, setJournalPage] = useState(1);
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [arPage, setArPage] = useState(1);
 
   // Dynamic YYYY-MM month list derived from actual invoices & POs
   const availableMonths = useMemo(() => {
@@ -486,6 +495,39 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
   const glOutputVatControl = glAccounts.find((a) => a.accountCode === '2020')?.currentBalance || 0;
   const glInputVatControl = glAccounts.find((a) => a.accountCode === '1250')?.currentBalance || 0;
 
+  // Paginated slices for high-volume ledgers & registers (totals & CSVs still use full filtered datasets)
+  const paginatedInvoices = useMemo(
+    () => filteredInvoices.slice((salesPage - 1) * pageSize, salesPage * pageSize),
+    [filteredInvoices, salesPage, pageSize]
+  );
+  const paginatedPurchases = useMemo(
+    () => filteredPurchases.slice((purchasePage - 1) * pageSize, purchasePage * pageSize),
+    [filteredPurchases, purchasePage, pageSize]
+  );
+  const paginatedJournalEntries = useMemo(
+    () => filteredJournalEntries.slice((journalPage - 1) * pageSize, journalPage * pageSize),
+    [filteredJournalEntries, journalPage, pageSize]
+  );
+  const paginatedLedgerTransactions = useMemo(
+    () => ledgerTransactions.slice((ledgerPage - 1) * pageSize, ledgerPage * pageSize),
+    [ledgerTransactions, ledgerPage, pageSize]
+  );
+  const paginatedArItems = useMemo(
+    () => agingData.arItems.slice((arPage - 1) * pageSize, arPage * pageSize),
+    [agingData.arItems, arPage, pageSize]
+  );
+  const ledgerTotals = useMemo(
+    () =>
+      ledgerTransactions.reduce(
+        (acc, t) => ({
+          debit: round2(acc.debit + t.debit),
+          credit: round2(acc.credit + t.credit),
+        }),
+        { debit: 0, credit: 0 }
+      ),
+    [ledgerTransactions]
+  );
+
   // CSV Exports
   const exportSalesBookCsv = () => {
     const headers = ['Date', 'Document #', 'Type', 'Buyer Name', 'Buyer PAN', 'Total Sales (NPR)', 'Exempt', 'Taxable Sales', '13% Output VAT', 'CBMS Ack'];
@@ -736,11 +778,14 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 type="text"
                 placeholder="Search invoice #, credit note, buyer name, PAN, or vehicle reg..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSalesPage(1);
+                }}
                 className="w-full pl-9 pr-8 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg text-xs focus:bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B]">
+                <button onClick={() => { setSearchQuery(''); setSalesPage(1); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B]">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -748,7 +793,11 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
             <div className="flex items-center space-x-2">
               <select
                 value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
+                onChange={(e) => {
+                  setFilterMonth(e.target.value);
+                  setSalesPage(1);
+                  setPurchasePage(1);
+                }}
                 className="px-3 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg text-xs font-medium text-[#0F172A] outline-none"
               >
                 <option value="All">All Periods (FY {profile.fiscalYear})</option>
@@ -791,7 +840,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredInvoices.map((inv) => {
+                  paginatedInvoices.map((inv) => {
                     const isCN = isCreditNoteInvoice(inv);
                     const taxable = Number(inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0);
                     const vat = Number(inv.vatAmount ?? inv.totalVatAmount ?? 0);
@@ -861,6 +910,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 </tr>
               </tfoot>
             </table>
+            <PaginationBar
+              totalItems={filteredInvoices.length}
+              currentPage={salesPage}
+              pageSize={pageSize}
+              onPageChange={setSalesPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setSalesPage(1);
+              }}
+              itemLabel="sales invoices"
+            />
           </div>
         </div>
       )}
@@ -889,14 +949,21 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 type="text"
                 placeholder="Search PO / Bill #, supplier name, or supplier PAN..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPurchasePage(1);
+                }}
                 className="w-full pl-9 pr-8 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg text-xs focus:bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
               />
             </div>
             <div className="flex items-center space-x-2">
               <select
                 value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
+                onChange={(e) => {
+                  setFilterMonth(e.target.value);
+                  setPurchasePage(1);
+                  setSalesPage(1);
+                }}
                 className="px-3 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg text-xs font-medium text-[#0F172A] outline-none"
               >
                 <option value="All">All Periods (FY {profile.fiscalYear})</option>
@@ -938,7 +1005,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredPurchases.map((po) => {
+                  paginatedPurchases.map((po) => {
                     const eligible = isPurchaseOrderItcEligible(po);
                     const taxable = Number(po.taxableAmount ?? po.subtotal ?? 0);
                     const vat = Number(po.vatTotal ?? 0);
@@ -993,6 +1060,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 </tr>
               </tfoot>
             </table>
+            <PaginationBar
+              totalItems={filteredPurchases.length}
+              currentPage={purchasePage}
+              pageSize={pageSize}
+              onPageChange={setPurchasePage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPurchasePage(1);
+              }}
+              itemLabel="purchase orders"
+            />
           </div>
         </div>
       )}
@@ -1211,7 +1289,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 type="text"
                 placeholder="Search journal vouchers by voucher #, narration, account, or ref..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setJournalPage(1);
+                }}
                 className="w-full pl-9 pr-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
               />
             </div>
@@ -1227,7 +1308,7 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
           </div>
 
           <div className="space-y-3">
-            {filteredJournalEntries.map((entry) => {
+            {paginatedJournalEntries.map((entry) => {
               const sumDr = round2(entry.lines.reduce((s, l) => s + (Number(l.debit) || 0), 0));
               const sumCr = round2(entry.lines.reduce((s, l) => s + (Number(l.credit) || 0), 0));
               const isEntryBalanced = Math.abs(sumDr - sumCr) < 0.05;
@@ -1293,6 +1374,19 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               );
             })}
           </div>
+          <div className="bg-[#FFFFFF] rounded-xl border border-[#E2E8F0] overflow-hidden">
+            <PaginationBar
+              totalItems={filteredJournalEntries.length}
+              currentPage={journalPage}
+              pageSize={pageSize}
+              onPageChange={setJournalPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setJournalPage(1);
+              }}
+              itemLabel="journal vouchers"
+            />
+          </div>
         </div>
       )}
 
@@ -1304,7 +1398,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
               <label className="text-xs font-bold text-[#0F172A] uppercase">GL Account:</label>
               <select
                 value={selectedLedgerAccountCode}
-                onChange={(e) => setSelectedLedgerAccountCode(e.target.value)}
+                onChange={(e) => {
+                  setSelectedLedgerAccountCode(e.target.value);
+                  setLedgerPage(1);
+                }}
                 className="px-3 py-2 bg-[#F1F5F9] border border-[#E2E8F0] rounded-lg text-xs font-semibold text-[#0F172A]"
               >
                 {glAccounts.map((acc) => (
@@ -1348,8 +1445,8 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  ledgerTransactions.map((tx, idx) => (
-                    <tr key={idx} className="hover:bg-[#F8FAFC]">
+                  paginatedLedgerTransactions.map((tx, idx) => (
+                    <tr key={`${tx.entryNumber}-${idx}`} className="hover:bg-[#F8FAFC]">
                       <td className="p-3 font-mono text-[#64748B] whitespace-nowrap">{tx.date}</td>
                       <td className="p-3 font-mono font-bold text-[#0284C7] whitespace-nowrap">{tx.entryNumber}</td>
                       <td className="p-3 font-mono text-[#64748B] whitespace-nowrap">{tx.sourceDocument}</td>
@@ -1373,10 +1470,10 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                     Account Totals:
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums">
-                    {formatAccountingNPR(ledgerTransactions.reduce((s, t) => s + t.debit, 0))}
+                    {formatAccountingNPR(ledgerTotals.debit)}
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums">
-                    {formatAccountingNPR(ledgerTransactions.reduce((s, t) => s + t.credit, 0))}
+                    {formatAccountingNPR(ledgerTotals.credit)}
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums text-[#0F3D5E]">
                     {selectedAccount ? formatAccountingNPR(selectedAccount.currentBalance) : '—'}
@@ -1384,6 +1481,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                 </tr>
               </tfoot>
             </table>
+            <PaginationBar
+              totalItems={ledgerTransactions.length}
+              currentPage={ledgerPage}
+              pageSize={pageSize}
+              onPageChange={setLedgerPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setLedgerPage(1);
+              }}
+              itemLabel="ledger entries"
+            />
           </div>
         </div>
       )}
@@ -1734,8 +1842,8 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E2E8F0]">
-                    {agingData.arItems.map((item, idx) => (
-                      <tr key={idx}>
+                    {paginatedArItems.map((item, idx) => (
+                      <tr key={`${item.ref}-${idx}`}>
                         <td className="p-2.5 font-mono font-bold text-[#0284C7]">{item.ref}</td>
                         <td className="p-2.5 font-medium text-[#0F172A]">{item.party}</td>
                         <td className="p-2.5 font-mono text-[#64748B]">{item.date}</td>
@@ -1747,6 +1855,17 @@ export const AccountingReports: React.FC<AccountingReportsProps> = ({
                     ))}
                   </tbody>
                 </table>
+                <PaginationBar
+                  totalItems={agingData.arItems.length}
+                  currentPage={arPage}
+                  pageSize={pageSize}
+                  onPageChange={setArPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setArPage(1);
+                  }}
+                  itemLabel="open receivables"
+                />
               </div>
             )}
           </div>

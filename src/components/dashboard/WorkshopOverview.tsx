@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   Wrench, 
   Clock, 
@@ -28,6 +28,7 @@ import {
   WorkshopProfile,
   WarrantyClaim 
 } from '../../types';
+import { round2 } from '../../utils/accountingEngine';
 
 interface WorkshopOverviewProps {
   jobCards: JobCard[];
@@ -61,16 +62,55 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
   const safeWarrantyClaims = Array.isArray(warrantyClaims) ? warrantyClaims.filter(Boolean) : [];
   const safeTechnicians = Array.isArray(technicians) ? technicians.filter(Boolean) : [];
 
-  const activeJobCards = safeJobCards.filter(j => j && j.status !== 'Delivered');
-  const deliveredCards = safeJobCards.filter(j => j && j.status === 'Delivered');
-  const lowStockParts = safeParts.filter(p => p && p.currentStock <= p.minReorderLevel);
-  const pendingWarranty = safeWarrantyClaims.filter(w => w && (w.status === 'Submitted to OEM' || w.status === 'OEM Inspection / Under Review'));
+  const {
+    activeJobCards,
+    deliveredCards,
+    lowStockParts,
+    pendingWarranty,
+    collectedRevenue,
+    totalVat13Collected,
+    bayOccupantMap,
+  } = useMemo(() => {
+    const active: JobCard[] = [];
+    const delivered: JobCard[] = [];
+    const bMap = new Map<number, JobCard>();
 
-  // Revenue aggregates in NPR
-  const totalGrossRevenue = safeInvoices.reduce((acc, inv) => acc + (inv.grandTotal || 0), 0);
-  const collectedRevenue = safeInvoices.reduce((acc, inv) => acc + (inv.paidAmount ?? 0), 0);
-  const pendingReceivables = safeInvoices.reduce((acc, inv) => acc + (inv.balanceDue ?? 0), 0);
-  const totalVat13Collected = safeInvoices.reduce((acc, inv) => acc + (inv.vatAmount ?? 0), 0);
+    for (const j of safeJobCards) {
+      if (!j) continue;
+      if (j.status === 'Delivered') {
+        delivered.push(j);
+      } else {
+        active.push(j);
+        const match = (j.bayNumber || '').match(/bay\s*(\d+)/i);
+        if (match) {
+          const idx = Number(match[1]);
+          if (!bMap.has(idx)) bMap.set(idx, j);
+        }
+      }
+    }
+
+    const lowStock = safeParts.filter((p) => p && p.currentStock <= p.minReorderLevel);
+    const pendingW = safeWarrantyClaims.filter(
+      (w) => w && (w.status === 'Submitted to OEM' || w.status === 'OEM Inspection / Under Review')
+    );
+
+    let collected = 0;
+    let vat13 = 0;
+    for (const inv of safeInvoices) {
+      collected = round2(collected + (inv.paidAmount ?? 0));
+      vat13 = round2(vat13 + (inv.vatAmount ?? 0));
+    }
+
+    return {
+      activeJobCards: active,
+      deliveredCards: delivered,
+      lowStockParts: lowStock,
+      pendingWarranty: pendingW,
+      collectedRevenue: collected,
+      totalVat13Collected: vat13,
+      bayOccupantMap: bMap,
+    };
+  }, [safeJobCards, safeParts, safeWarrantyClaims, safeInvoices]);
 
   // Workshop Bay Occupancy Map
   const BAYS = [
@@ -199,7 +239,7 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {BAYS.map((b, i) => {
-              const occupyingJc = activeJobCards.find(j => (j.bayNumber || '').toLowerCase().includes(`bay ${i + 1}`));
+              const occupyingJc = bayOccupantMap.get(i + 1);
               const isOccupied = !!occupyingJc;
 
               return (

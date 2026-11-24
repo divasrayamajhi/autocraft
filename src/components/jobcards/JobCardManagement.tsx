@@ -49,8 +49,14 @@ import {
 import { JobCardDetailModal } from './JobCardDetailModal';
 import { ServicePriceItem, WorkshopBay } from '../../types';
 import { DualCalendarPicker } from '../common/DualCalendarPicker';
+import { PaginationBar } from '../common/PaginationBar';
 import { adToBs } from '../../utils/nepaliDate';
 import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
+import {
+  generateUniqueId,
+  getNepalFiscalYear,
+  getNextSequentialDocNumber,
+} from '../../utils/accountingEngine';
 
 interface JobCardManagementProps {
   jobCards: JobCard[];
@@ -131,6 +137,10 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<JobCardStatus | null>(null);
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(50);
+  const [intakeError, setIntakeError] = useState<string | null>(null);
 
   // Enhanced Filter States for Job Cards & Appointments
   const [showFilters, setShowFilters] = useState(false);
@@ -560,6 +570,36 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     });
   }, [safeJobCards, searchQuery, filterStatus, filterServiceType, filterTech, filterDate, filterStartDate, filterEndDate]);
 
+  useEffect(() => {
+    setListPage(1);
+  }, [searchQuery, filterStatus, filterServiceType, filterTech, filterDate, filterStartDate, filterEndDate]);
+
+  // Single O(N) pass to group filtered job cards into Kanban columns & compute stage value totals
+  const kanbanColumnData = useMemo(() => {
+    const map = new Map<JobCardStatus, { cards: JobCard[]; total: number }>();
+    for (const col of KANBAN_COLUMNS) {
+      map.set(col.id, { cards: [], total: 0 });
+    }
+    for (const jc of filteredCards) {
+      const bucket = map.get(jc.status);
+      if (!bucket) continue;
+      bucket.cards.push(jc);
+      const lSum = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
+      const pList = jc.partsRequested || jc.partsItems || [];
+      const pSum = pList.reduce(
+        (acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))),
+        0
+      );
+      bucket.total += lSum + pSum;
+    }
+    return map;
+  }, [filteredCards]);
+
+  const paginatedListCards = useMemo(() => {
+    const start = (listPage - 1) * listPageSize;
+    return filteredCards.slice(start, start + listPageSize);
+  }, [filteredCards, listPage, listPageSize]);
+
   // Filter appointments
   const filteredAppointments = useMemo(() => {
     return safeAppointments.filter((apt) => {
@@ -612,45 +652,46 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const handleCreateJobCardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. Mandatory Fields Validation
+    // 1. Mandatory Fields Validation (inline error banner — no browser alert)
+    setIntakeError(null);
     if (!intakeArrivalDate?.trim()) {
-      alert('Arrival Date is mandatory for vehicle check-in.');
+      setIntakeError('Arrival Date is mandatory for vehicle check-in.');
       return;
     }
     if (!intakeEntryTime?.trim()) {
-      alert('Entry / Arrival Time is mandatory for vehicle check-in.');
+      setIntakeError('Entry / Arrival Time is mandatory for vehicle check-in.');
       return;
     }
     if (!intakeReg?.trim()) {
-      alert('Vehicle Registration Number is mandatory.');
+      setIntakeError('Vehicle Registration Number is mandatory.');
       return;
     }
     if (!intakeBrand?.trim()) {
-      alert('Vehicle Make is mandatory.');
+      setIntakeError('Vehicle Make is mandatory.');
       return;
     }
     if (!intakeModel?.trim()) {
-      alert('Vehicle Model is mandatory.');
+      setIntakeError('Vehicle Model is mandatory.');
       return;
     }
     if (!intakeVin?.trim()) {
-      alert('VIN / Chassis Number is mandatory.');
+      setIntakeError('VIN / Chassis Number is mandatory.');
       return;
     }
     if (!intakeEngineNo?.trim()) {
-      alert('Engine Number is mandatory.');
+      setIntakeError('Engine Number is mandatory.');
       return;
     }
     if (!intakeOdo || Number(intakeOdo) <= 0) {
-      alert('A valid Odometer Reading (KM) is mandatory.');
+      setIntakeError('A valid Odometer Reading (KM) is mandatory.');
       return;
     }
     if (!intakeCustName?.trim()) {
-      alert('Customer Full Name is mandatory.');
+      setIntakeError('Customer Full Name is mandatory.');
       return;
     }
     if (!intakeCustPhone?.trim() || intakeCustPhone.trim() === '+977-98') {
-      alert('Customer Phone Number is mandatory.');
+      setIntakeError('Customer Phone Number is mandatory.');
       return;
     }
 
@@ -676,7 +717,14 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       return matchesPhone || matchesName || matchesVehicle;
     });
 
-    const newJcNumber = `JC-81-${Math.floor(100 + Math.random() * 900)}`;
+    const serviceBaseDate = intakeArrivalDate || new Date().toISOString().slice(0, 10);
+    const jcFy = getNepalFiscalYear(serviceBaseDate).replace('/', '-');
+    const newJcNumber = getNextSequentialDocNumber(
+      safeJobCards.map((jc) => jc.jobCardNumber),
+      'JC',
+      jcFy,
+      5
+    );
 
     // Query all past workshop service history / job cards for this vehicle
     const vehiclePastJobCards = safeJobCards.filter(jc => {
@@ -699,7 +747,6 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const vehicleTotalServiceCount = vehiclePastJobCards.length + 1; // including this intake
 
     const cleanCustPhone = intakeCustPhone.trim();
-    const serviceBaseDate = intakeArrivalDate || new Date().toISOString().slice(0, 10);
     const serviceBaseTime = new Date(serviceBaseDate).getTime();
     const computedNextDueDate = new Date(
       (isNaN(serviceBaseTime) ? Date.now() : serviceBaseTime) + 120 * 24 * 60 * 60 * 1000
@@ -707,8 +754,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const computedNextDueKm = Number(intakeOdo) + 5000;
     const isPmsIntake = intakeServiceType === 'Periodic Maintenance Service';
 
+    const vehicleId = generateUniqueId('VEH');
     const vehicleRecord: Vehicle = {
-      id: `VEH-${Date.now().toString().slice(-4)}`,
+      id: vehicleId,
       registrationNumber: cleanReg,
       make: intakeBrand.trim(),
       brand: intakeBrand.trim(),
@@ -734,7 +782,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
     if (!existingCustomer && onAddCustomer) {
       // Completely new customer and vehicle: automatically register in Customer Directory under their customer garage
-      assignedCustomerId = `CUST-${Date.now().toString().slice(-6)}`;
+      assignedCustomerId = generateUniqueId('CUST');
       const newCustomer: Customer = {
         id: assignedCustomerId,
         name: cleanCustName,
@@ -778,7 +826,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
         const currentVeh = existingCustomer.vehicles[existingVehIndex];
         const updatedVeh: Vehicle = {
           ...(typeof currentVeh === 'object' ? currentVeh : {}),
-          id: typeof currentVeh === 'object' && currentVeh.id ? currentVeh.id : `VEH-${Date.now().toString().slice(-4)}`,
+          id: typeof currentVeh === 'object' && currentVeh.id ? currentVeh.id : vehicleId,
           registrationNumber: cleanReg,
           make: intakeBrand.trim() || (typeof currentVeh === 'object' ? currentVeh.make : '') || 'Generic',
           brand: intakeBrand.trim() || (typeof currentVeh === 'object' ? currentVeh.brand : '') || 'Generic',
@@ -818,9 +866,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
     // 3. Construct the comprehensive Job Card
     const newJc: JobCard = {
-      id: `JC-${Date.now().toString().slice(-6)}`,
+      id: generateUniqueId('JC'),
       jobCardNumber: newJcNumber,
-      customerId: assignedCustomerId || `CUST-${Date.now().toString().slice(-4)}`,
+      customerId: assignedCustomerId || generateUniqueId('CUST'),
       customerName: cleanCustName,
       customerPhone: cleanCustPhone,
       arrivalDate: serviceBaseDate,
@@ -834,7 +882,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
         : matchedServiceHistory?.nextServiceDueDate || computedNextDueDate,
       nextServiceDueKm: computedNextDueKm,
       vehicle: {
-        id: `VEH-${Date.now().toString().slice(-4)}`,
+        id: vehicleId,
         registrationNumber: cleanReg,
         make: intakeBrand.trim(),
         brand: intakeBrand.trim(),
@@ -1274,13 +1322,12 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             className="flex items-stretch gap-4 overflow-x-auto pb-4 scrollbar-clean"
           >
             {KANBAN_COLUMNS.map((col, colIdx) => {
-              const columnCards = filteredCards.filter((jc) => jc.status === col.id);
-              const columnTotal = columnCards.reduce((sum, jc) => {
-                const lSum = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
-                const pList = jc.partsRequested || jc.partsItems || [];
-                const pSum = pList.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
-                return sum + lSum + pSum;
-              }, 0);
+              const colGroup = kanbanColumnData.get(col.id) || { cards: [], total: 0 };
+              const columnCards = colGroup.cards;
+              const columnTotal = colGroup.total;
+              const laneLimit = columnLimits[col.id] || 30;
+              const visibleColumnCards = columnCards.slice(0, laneLimit);
+              const remainingInLane = Math.max(0, columnCards.length - visibleColumnCards.length);
               const isDropTarget = dragOverColumn === col.id;
 
               return (
@@ -1339,7 +1386,8 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                         <span className="text-[10px] mt-0.5 text-[#94A3B8]">Drop a job card here</span>
                       </div>
                     ) : (
-                      columnCards.map((jc) => {
+                      <>
+                      {visibleColumnCards.map((jc) => {
                         const totalLabor = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
                         const partsList = jc.partsRequested || jc.partsItems || [];
                         const totalParts = partsList.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
@@ -1464,7 +1512,22 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                             )}
                           </div>
                         );
-                      })
+                      })}
+                      {remainingInLane > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setColumnLimits((prev) => ({
+                              ...prev,
+                              [col.id]: (prev[col.id] || 30) + 30,
+                            }))
+                          }
+                          className="w-full py-2 px-3 rounded-lg bg-[#FFFFFF] border border-[#E2E8F0] hover:border-[#0EA5E9] hover:bg-sky-50 text-[11px] font-semibold text-[#0F3D5E] transition text-center"
+                        >
+                          Show 30 more ({remainingInLane.toLocaleString()} remaining)
+                        </button>
+                      )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1491,7 +1554,7 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredCards.map((jc) => {
+              {paginatedListCards.map((jc) => {
                 const totalLabor = (jc.laborItems || []).reduce((acc, l) => acc + (l.totalAmount || 0), 0);
                 const partsList = jc.partsRequested || jc.partsItems || [];
                 const totalParts = partsList.reduce((acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))), 0);
@@ -1554,6 +1617,17 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
               })}
             </tbody>
           </table>
+          <PaginationBar
+            totalItems={filteredCards.length}
+            currentPage={listPage}
+            pageSize={listPageSize}
+            onPageChange={setListPage}
+            onPageSizeChange={(size) => {
+              setListPageSize(size);
+              setListPage(1);
+            }}
+            itemLabel="job cards"
+          />
         </div>
       )}
 
@@ -1690,6 +1764,14 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
             </div>
 
             <form onSubmit={handleCreateJobCardSubmit} className="mt-4 space-y-3 text-xs">
+              {intakeError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-[#DC2626] text-xs font-semibold flex items-center justify-between">
+                  <span>{intakeError}</span>
+                  <button type="button" onClick={() => setIntakeError(null)} className="text-[#DC2626] hover:opacity-75">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               {/* Check-in Arrival Date (B.S. & A.D. Synced) & Entry Time */}
               <div className="p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2.5">
                 <div className="flex items-center justify-between">

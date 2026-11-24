@@ -39,6 +39,8 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { VehicleServiceHistoryModal } from '../common/VehicleServiceHistoryModal';
+import { PaginationBar } from '../common/PaginationBar';
+import { generateUniqueId } from '../../utils/accountingEngine';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -127,12 +129,100 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   const [newVehModel, setNewVehModel] = useState('Creta');
   const [newVehYear, setNewVehYear] = useState(2022);
 
+  const [remindersPage, setRemindersPage] = useState(1);
+  const [remindersPageSize, setRemindersPageSize] = useState(25);
+  const [customersPage, setCustomersPage] = useState(1);
+  const [customersPageSize, setCustomersPageSize] = useState(50);
+
   // Today reference for date calculations (normalized to midnight)
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
+
+  // O(N) Pre-Indexed Maps for high-volume 1-year datasets (10,000+ Job Cards & Invoices)
+  const indexedHistory = useMemo(() => {
+    const jcByReg = new Map<string, JobCard[]>();
+    const jcByVin = new Map<string, JobCard[]>();
+    const invByReg = new Map<string, Invoice[]>();
+    const invByJcId = new Map<string, Invoice[]>();
+    const invByJcNum = new Map<string, Invoice[]>();
+    const invByCustId = new Map<string, Invoice[]>();
+    const jcByCustId = new Map<string, JobCard[]>();
+    const custById = new Map<string, Customer>();
+    const custByName = new Map<string, Customer>();
+
+    for (let i = 0; i < safeCustomers.length; i++) {
+      const c = safeCustomers[i];
+      if (c.id) custById.set(c.id, c);
+      if (c.name) custByName.set(c.name.trim().toLowerCase(), c);
+    }
+
+    const sortedJcs = [...(jobCards || [])]
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    for (let i = 0; i < sortedJcs.length; i++) {
+      const jc = sortedJcs[i];
+      const jcR = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const jcV = (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (jcR) {
+        const arr = jcByReg.get(jcR);
+        if (arr) arr.push(jc);
+        else jcByReg.set(jcR, [jc]);
+      }
+      if (jcV) {
+        const arr = jcByVin.get(jcV);
+        if (arr) arr.push(jc);
+        else jcByVin.set(jcV, [jc]);
+      }
+      if (jc.customerId) {
+        const arr = jcByCustId.get(jc.customerId);
+        if (arr) arr.push(jc);
+        else jcByCustId.set(jc.customerId, [jc]);
+      }
+    }
+
+    for (let i = 0; i < (invoices || []).length; i++) {
+      const inv = invoices[i];
+      if (!inv) continue;
+      const invR = (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (invR) {
+        const arr = invByReg.get(invR);
+        if (arr) arr.push(inv);
+        else invByReg.set(invR, [inv]);
+      }
+      if (inv.jobCardId) {
+        const arr = invByJcId.get(inv.jobCardId);
+        if (arr) arr.push(inv);
+        else invByJcId.set(inv.jobCardId, [inv]);
+      }
+      if (inv.jobCardNumber) {
+        const arr = invByJcNum.get(inv.jobCardNumber);
+        if (arr) arr.push(inv);
+        else invByJcNum.set(inv.jobCardNumber, [inv]);
+      }
+      if (inv.customerId) {
+        const arr = invByCustId.get(inv.customerId);
+        if (arr) arr.push(inv);
+        else invByCustId.set(inv.customerId, [inv]);
+      }
+    }
+
+    return {
+      sortedJcs,
+      jcByReg,
+      jcByVin,
+      invByReg,
+      invByJcId,
+      invByJcNum,
+      invByCustId,
+      jcByCustId,
+      custById,
+      custByName,
+    };
+  }, [safeCustomers, jobCards, invoices]);
 
   // Compute Service Reminders for all vehicles across all customer garages
   const allServiceReminders: ServiceReminderItem[] = useMemo(() => {
@@ -151,21 +241,30 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         const odo = typeof veh === 'object' && veh ? (veh.odometerReading || 0) : 0;
         const vehId = (typeof veh === 'object' && veh && veh.id) || `veh-${cust.id}-${vIdx}`;
 
-        // Match past job cards for this vehicle
+        // Match past job cards for this vehicle in O(1) via pre-indexed Maps
         const cleanR = reg.replace(/[^A-Z0-9]/g, '');
         const cleanV = vin.replace(/[^A-Z0-9]/g, '');
-        const matchingJobCards = jobCards.filter(jc => {
-          const jcR = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          const jcV = (jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          return (cleanR && jcR === cleanR) || (cleanV && jcV === cleanV);
-        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const matchedJcMap = new Map<string, JobCard>();
+        if (cleanR) {
+          indexedHistory.jcByReg.get(cleanR)?.forEach((jc) => matchedJcMap.set(jc.id, jc));
+        }
+        if (cleanV) {
+          indexedHistory.jcByVin.get(cleanV)?.forEach((jc) => matchedJcMap.set(jc.id, jc));
+        }
+        const matchingJobCards = Array.from(matchedJcMap.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
 
-        // Match past invoices for this vehicle
-        const matchingInvoices = invoices.filter(inv => {
-          const invR = (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          const isJcMatch = matchingJobCards.some(jc => jc.id === inv.jobCardId || jc.jobCardNumber === inv.jobCardNumber);
-          return (cleanR && invR === cleanR) || isJcMatch;
+        // Match past invoices for this vehicle in O(1) via pre-indexed Maps
+        const matchedInvMap = new Map<string, Invoice>();
+        if (cleanR) {
+          indexedHistory.invByReg.get(cleanR)?.forEach((inv) => matchedInvMap.set(inv.id, inv));
+        }
+        matchingJobCards.forEach((jc) => {
+          indexedHistory.invByJcId.get(jc.id)?.forEach((inv) => matchedInvMap.set(inv.id, inv));
+          indexedHistory.invByJcNum.get(jc.jobCardNumber)?.forEach((inv) => matchedInvMap.set(inv.id, inv));
         });
+        const matchingInvoices = Array.from(matchedInvMap.values());
 
         const totalBilled = matchingInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0) || 
           (typeof veh === 'object' && veh?.totalBilledAmount ? veh.totalBilledAmount : 0);
@@ -302,14 +401,12 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     const seenRegs = new Set(
       reminders.map((r) => r.registrationNumber.toUpperCase().replace(/[^A-Z0-9]/g, ''))
     );
-    const pmsJobCards = [...(jobCards || [])]
-      .filter(
-        (jc) =>
-          jc &&
-          (jc.serviceType === 'Periodic Maintenance Service' ||
-            (jc.serviceType || '').toLowerCase().includes('periodic maintenance'))
-      )
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const pmsJobCards = indexedHistory.sortedJcs.filter(
+      (jc) =>
+        jc &&
+        (jc.serviceType === 'Periodic Maintenance Service' ||
+          (jc.serviceType || '').toLowerCase().includes('periodic maintenance'))
+    );
 
     pmsJobCards.forEach((jc) => {
       const reg = (jc.vehicle?.registrationNumber || '').toUpperCase().trim();
@@ -341,15 +438,14 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
       const isDueSoon = !isOverdue && !isDueToday && (daysRemaining <= 15 || (odo > 0 && kmRemaining <= 500));
       const isRecentlyServiced = isServicedToday || (daysRemaining >= 115 && !isOverdue);
 
-      const matchedCust = safeCustomers.find(
-        (c) => c.id === jc.customerId || c.name.trim().toLowerCase() === (jc.customerName || '').trim().toLowerCase()
-      );
-      const matchingInvoices = invoices.filter(
-        (inv) =>
-          (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanR ||
-          inv.jobCardId === jc.id ||
-          inv.jobCardNumber === jc.jobCardNumber
-      );
+      const matchedCust =
+        (jc.customerId ? indexedHistory.custById.get(jc.customerId) : undefined) ||
+        indexedHistory.custByName.get((jc.customerName || '').trim().toLowerCase());
+      const invSet = new Map<string, Invoice>();
+      indexedHistory.invByReg.get(cleanR)?.forEach((inv) => invSet.set(inv.id, inv));
+      indexedHistory.invByJcId.get(jc.id)?.forEach((inv) => invSet.set(inv.id, inv));
+      indexedHistory.invByJcNum.get(jc.jobCardNumber)?.forEach((inv) => invSet.set(inv.id, inv));
+      const matchingInvoices = Array.from(invSet.values());
 
       reminders.push({
         customerId: matchedCust?.id || jc.customerId || `CUST-${jc.id}`,
@@ -401,7 +497,24 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
       // Tie-breaker: older lastServiceDate first, newest intakes at the bottom
       return new Date(a.lastServiceDate).getTime() - new Date(b.lastServiceDate).getTime();
     });
-  }, [safeCustomers, jobCards, invoices, today]);
+  }, [safeCustomers, indexedHistory, today]);
+
+  // O(1) Lookup Maps for Reminders by Customer ID (prevents O(C log C * R) sort lag)
+  const { remindersByCustomerId, minDaysByCustomerId } = useMemo(() => {
+    const byCust = new Map<string, ServiceReminderItem[]>();
+    const minDays = new Map<string, number>();
+    for (let i = 0; i < allServiceReminders.length; i++) {
+      const r = allServiceReminders[i];
+      const arr = byCust.get(r.customerId);
+      if (arr) arr.push(r);
+      else byCust.set(r.customerId, [r]);
+      const prev = minDays.get(r.customerId);
+      if (prev === undefined || r.daysRemaining < prev) {
+        minDays.set(r.customerId, r.daysRemaining);
+      }
+    }
+    return { remindersByCustomerId: byCust, minDaysByCustomerId: minDays };
+  }, [allServiceReminders]);
 
   // Overall Reminder Statistics
   const overdueCount = allServiceReminders.filter(r => r.isOverdue).length;
@@ -409,11 +522,11 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   const dueSoonCount = allServiceReminders.filter(r => r.isDueSoon).length;
   const safeCount = allServiceReminders.filter(r => r.daysRemaining > 15).length;
 
-  // Multi-dataset Comprehensive Search & Filtering for Customers
+  // Multi-dataset Comprehensive Search & Filtering for Customers (O(N) Indexed)
   const filteredCustomers = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
     return safeCustomers.filter(c => {
       // 1. Text Search across every data set field
-      const q = searchQuery.toLowerCase().trim();
       let matchesQuery = true;
       if (q) {
         const nameMatch = c.name.toLowerCase().includes(q);
@@ -434,16 +547,14 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
           return reg.includes(q) || make.includes(q) || brand.includes(q) || model.includes(q) || vin.includes(q) || eng.includes(q);
         });
 
-        // Match in invoices for this customer
-        const invoiceMatch = invoices.some(inv => 
-          (inv.customerId === c.id || inv.customerName.toLowerCase().includes(q)) &&
-          (inv.invoiceNumber.toLowerCase().includes(q) || (inv.vehicleReg || '').toLowerCase().includes(q))
+        const custInvoices = indexedHistory.invByCustId.get(c.id) || [];
+        const invoiceMatch = custInvoices.some(inv =>
+          inv.invoiceNumber.toLowerCase().includes(q) || (inv.vehicleReg || '').toLowerCase().includes(q)
         );
 
-        // Match in job cards for this customer
-        const jobCardMatch = jobCards.some(jc => 
-          (jc.customerId === c.id || jc.customerName.toLowerCase().includes(q)) &&
-          (jc.jobCardNumber.toLowerCase().includes(q) || (jc.vehicle?.registrationNumber || '').toLowerCase().includes(q))
+        const custJcs = indexedHistory.jcByCustId.get(c.id) || [];
+        const jobCardMatch = custJcs.some(jc =>
+          jc.jobCardNumber.toLowerCase().includes(q) || (jc.vehicle?.registrationNumber || '').toLowerCase().includes(q)
         );
 
         matchesQuery = nameMatch || phoneMatch || emailMatch || addressMatch || panMatch || typeMatch || vehicleMatch || invoiceMatch || jobCardMatch;
@@ -458,7 +569,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
       // 3. Service Status Filter
       let matchesServiceStatus = true;
       if (filterServiceStatus !== 'All') {
-        const customerReminders = allServiceReminders.filter(r => r.customerId === c.id);
+        const customerReminders = remindersByCustomerId.get(c.id) || [];
         if (filterServiceStatus === 'Overdue') {
           matchesServiceStatus = customerReminders.some(r => r.isOverdue);
         } else if (filterServiceStatus === 'DueToday') {
@@ -494,12 +605,12 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
       if (sortBy === 'recent') {
         return new Date(b.lastVisit || b.createdAt).getTime() - new Date(a.lastVisit || a.createdAt).getTime();
       }
-      // Default: urgency (customer with least days remaining on their vehicles first)
-      const minDaysA = Math.min(...allServiceReminders.filter(r => r.customerId === a.id).map(r => r.daysRemaining), 999);
-      const minDaysB = Math.min(...allServiceReminders.filter(r => r.customerId === b.id).map(r => r.daysRemaining), 999);
+      // Default: urgency (O(1) Map lookup)
+      const minDaysA = minDaysByCustomerId.get(a.id) ?? 999;
+      const minDaysB = minDaysByCustomerId.get(b.id) ?? 999;
       return minDaysA - minDaysB;
     });
-  }, [safeCustomers, searchQuery, filterCustomerType, filterServiceStatus, filterSpendingTier, sortBy, invoices, jobCards, allServiceReminders]);
+  }, [safeCustomers, searchQuery, filterCustomerType, filterServiceStatus, filterSpendingTier, sortBy, indexedHistory, remindersByCustomerId, minDaysByCustomerId]);
 
   // Filtered Service Reminders for the Reminders Tab
   const filteredReminders = useMemo(() => {
@@ -568,7 +679,11 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     }
     const message = getWhatsAppMessage(item);
     const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
   };
 
   const handleCopyReminder = (item: ServiceReminderItem) => {
@@ -580,8 +695,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
   const handleSaveCustomer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName || !newCustPhone || !newVehReg) {
-      alert('Customer name, phone, and vehicle registration are required.');
+    if (!newCustName.trim() || !newCustPhone.trim() || !newVehReg.trim()) {
       return;
     }
 
@@ -591,7 +705,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     const nextDue = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     const created: Customer = {
-      id: `CUST-${Date.now().toString().slice(-4)}`,
+      id: generateUniqueId('CUST'),
       name: newCustName.trim(),
       phone: newCustPhone.trim(),
       email: newCustEmail.trim() || 'customer@nepalmail.com',
@@ -603,7 +717,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
       lastVisit: createdDate,
       vehicles: [
         {
-          id: `VEH-${Date.now().toString().slice(-4)}`,
+          id: generateUniqueId('VEH'),
           registrationNumber: cleanReg,
           make: newVehBrand.trim(),
           brand: newVehBrand.trim(),
@@ -851,7 +965,12 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3.5">
-              {filteredReminders.map((item) => {
+              {filteredReminders
+                .slice(
+                  (Math.min(remindersPage, Math.max(1, Math.ceil(filteredReminders.length / remindersPageSize))) - 1) * remindersPageSize,
+                  Math.min(remindersPage, Math.max(1, Math.ceil(filteredReminders.length / remindersPageSize))) * remindersPageSize
+                )
+                .map((item) => {
                 // Determine styling based on threshold
                 // Overdue (> 120 days / negative days remaining OR km exceeded): RED
                 // 0 Days remaining / Due Today: URGENT AMBER/RED
@@ -1050,6 +1169,16 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   </div>
                 );
               })}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <PaginationBar
+                  totalItems={filteredReminders.length}
+                  currentPage={Math.min(remindersPage, Math.max(1, Math.ceil(filteredReminders.length / remindersPageSize)))}
+                  pageSize={remindersPageSize}
+                  onPageChange={setRemindersPage}
+                  onPageSizeChange={setRemindersPageSize}
+                  itemLabel="vehicles"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -1070,9 +1199,14 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
             </div>
 
             <div className="divide-y divide-slate-100 max-h-[640px] overflow-y-auto">
-              {filteredCustomers.map(cust => {
+              {filteredCustomers
+                .slice(
+                  (Math.min(customersPage, Math.max(1, Math.ceil(filteredCustomers.length / customersPageSize))) - 1) * customersPageSize,
+                  Math.min(customersPage, Math.max(1, Math.ceil(filteredCustomers.length / customersPageSize))) * customersPageSize
+                )
+                .map(cust => {
                 const isSelected = selectedCustomer?.id === cust.id;
-                const custReminders = allServiceReminders.filter(r => r.customerId === cust.id);
+                const custReminders = remindersByCustomerId.get(cust.id) || [];
                 const hasOverdue = custReminders.some(r => r.isOverdue);
                 const hasDueToday = custReminders.some(r => r.isDueToday);
 
@@ -1131,6 +1265,14 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                 );
               })}
             </div>
+            <PaginationBar
+              totalItems={filteredCustomers.length}
+              currentPage={Math.min(customersPage, Math.max(1, Math.ceil(filteredCustomers.length / customersPageSize)))}
+              pageSize={customersPageSize}
+              onPageChange={setCustomersPage}
+              onPageSizeChange={setCustomersPageSize}
+              itemLabel="clients"
+            />
           </div>
 
           {/* Right Column: Customer Dossier & History */}

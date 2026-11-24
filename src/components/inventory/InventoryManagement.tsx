@@ -31,6 +31,13 @@ import {
   Wrench
 } from 'lucide-react';
 import { DraggableTabBar } from '../common/DraggableTabBar';
+import { PaginationBar } from '../common/PaginationBar';
+import {
+  generateUniqueId,
+  getNepalFiscalYear,
+  getNextSequentialDocNumber,
+  round2,
+} from '../../utils/accountingEngine';
 import { 
   SparePart, 
   PartsQuotation, 
@@ -68,6 +75,8 @@ interface InventoryManagementProps {
   onDispatchOrder?: (orderId: string, isPartial: boolean) => void;
   onCreateSalesReturn?: (returnData: PartsSalesReturn) => void;
   onViewJobCard?: (jcNumber: string) => void;
+  onViewInvoice?: (invoice: Invoice) => void;
+  onGenerateOtcInvoice?: (order: PartsSalesOrder) => void;
 }
 
 type InventorySubTab = 'master' | 'purchase_orders' | 'replenishment' | 'fms_abc' | 'otc_sales' | 'quotations' | 'substitutes' | 'returns';
@@ -91,7 +100,9 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   onCreateSalesOrder,
   onDispatchOrder,
   onCreateSalesReturn,
-  onViewJobCard
+  onViewJobCard,
+  onViewInvoice,
+  onGenerateOtcInvoice
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<InventorySubTab>('master');
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,6 +117,12 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   const [printPO, setPrintPO] = useState<PurchaseOrder | null>(null);
   const [poSearchQuery, setPoSearchQuery] = useState('');
   const [poStatusFilter, setPoStatusFilter] = useState('All');
+  const [poPage, setPoPage] = useState(1);
+  const [poPageSize, setPoPageSize] = useState(25);
+  const [otcPage, setOtcPage] = useState(1);
+  const [otcPageSize, setOtcPageSize] = useState(25);
+  const [quotPage, setQuotPage] = useState(1);
+  const [quotPageSize, setQuotPageSize] = useState(25);
 
   // Barcode / QR inspection modal
   const [barcodeModalPart, setBarcodeModalPart] = useState<SparePart | null>(null);
@@ -200,8 +217,24 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   });
 
   // Total inventory valuation (NPR)
-  const totalValuationCost = parts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0);
-  const totalValuationSelling = parts.reduce((acc, p) => acc + (p.currentStock * p.sellingPrice), 0);
+  const totalValuationCost = round2(parts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0));
+  const totalValuationSelling = round2(parts.reduce((acc, p) => acc + (p.currentStock * p.sellingPrice), 0));
+  const paginatedPOs = filteredPOs.slice((poPage - 1) * poPageSize, poPage * poPageSize);
+  const paginatedSalesOrders = salesOrders.slice((otcPage - 1) * otcPageSize, otcPage * otcPageSize);
+  const paginatedQuotations = quotations.slice((quotPage - 1) * quotPageSize, quotPage * quotPageSize);
+
+  // Fast lookup linking each OTC Sales Order to its IRD Tax Invoice
+  const findLinkedOtcInvoice = (order: PartsSalesOrder): Invoice | undefined => {
+    return (invoices || []).find(
+      (inv) =>
+        (order.invoiceId && inv.id === order.invoiceId) ||
+        (order.invoiceNumber && inv.invoiceNumber === order.invoiceNumber) ||
+        inv.salesOrderId === order.id ||
+        inv.salesOrderNumber === order.orderNumber ||
+        inv.jobCardNumber === order.orderNumber ||
+        inv.paymentReference === order.orderNumber
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -725,7 +758,10 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                   type="text"
                   placeholder="Search by PO number, supplier name, PAN, or part description..."
                   value={poSearchQuery}
-                  onChange={(e) => setPoSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setPoSearchQuery(e.target.value);
+                    setPoPage(1);
+                  }}
                   className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
@@ -733,7 +769,10 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
               <div className="flex items-center space-x-2">
                 <select
                   value={poStatusFilter}
-                  onChange={(e) => setPoStatusFilter(e.target.value)}
+                  onChange={(e) => {
+                    setPoStatusFilter(e.target.value);
+                    setPoPage(1);
+                  }}
                   className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 outline-none font-semibold"
                 >
                   <option value="All">All Statuses</option>
@@ -771,7 +810,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredPOs.map((po) => {
+                    paginatedPOs.map((po) => {
                       const isReceived = po.status === 'Received' || po.status === 'Fully Received';
                       return (
                         <tr key={po.id} className="hover:bg-slate-50/80 transition">
@@ -859,6 +898,17 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              totalItems={filteredPOs.length}
+              currentPage={poPage}
+              pageSize={poPageSize}
+              onPageChange={setPoPage}
+              onPageSizeChange={(size) => {
+                setPoPageSize(size);
+                setPoPage(1);
+              }}
+              itemLabel="purchase orders"
+            />
           </div>
         </div>
       )}
@@ -899,12 +949,19 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                         onClick={() => {
                           const orderQty = Math.max(5, (part.maxStockLevel || 10) - part.currentStock);
                           const cost = part.purchasePrice || part.costPrice || 500;
-                          const taxable = orderQty * cost;
-                          const vat = Math.round(taxable * 0.13);
+                          const taxable = round2(orderQty * cost);
+                          const vat = round2(taxable * 0.13);
+                          const todayAd = new Date().toISOString().slice(0, 10);
+                          const poFy = getNepalFiscalYear(todayAd).replace('/', '-');
                           setSelectedPO({
-                            id: `PO-${Date.now().toString().slice(-4)}`,
-                            poNumber: `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
-                            date: new Date().toISOString().slice(0, 10),
+                            id: generateUniqueId('PO'),
+                            poNumber: getNextSequentialDocNumber(
+                              safePOs.map((p) => p.poNumber),
+                              'PO',
+                              poFy,
+                              5
+                            ),
+                            date: todayAd,
                             expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
                             supplierName: part.preferredVendor || 'Sipradi Trading Pvt. Ltd.',
                             supplierPanVat: '300049211',
@@ -1116,13 +1173,20 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {salesOrders.map(order => (
+                    {paginatedSalesOrders.map(order => {
+                      const linkedInvoice = findLinkedOtcInvoice(order);
+                      return (
                       <tr key={order.id} className="hover:bg-slate-50/70">
                         <td className="p-3">
                           <span className="font-bold font-mono text-slate-900 block">{order.orderNumber}</span>
                           <span className="text-[11px] text-slate-400">{order.date}</span>
                         </td>
-                        <td className="p-3 font-semibold text-slate-800">{order.customerName}</td>
+                        <td className="p-3 font-semibold text-slate-800">
+                          <div>{order.customerName}</div>
+                          {order.customerPhone && (
+                            <span className="text-[10px] font-mono text-slate-400">{order.customerPhone}</span>
+                          )}
+                        </td>
                         <td className="p-3">
                           <div className="max-w-xs truncate text-[11px] text-slate-600">
                             {order.items.map(item => `${item.quantity}x ${item.partName}`).join(', ')}
@@ -1149,13 +1213,33 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                           </span>
                         </td>
                         <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                            order.invoiceStatus === 'Invoiced'
-                              ? 'bg-sky-100 text-sky-800'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {order.invoiceStatus}
-                          </span>
+                          {linkedInvoice ? (
+                            <button
+                              type="button"
+                              onClick={() => onViewInvoice && onViewInvoice(linkedInvoice)}
+                              className="inline-flex flex-col items-center group"
+                              title="Open & Print IRD Tax Invoice"
+                            >
+                              <span className="font-mono font-bold text-[11px] text-[#0284C7] group-hover:underline">
+                                {linkedInvoice.invoiceNumber}
+                              </span>
+                              <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                linkedInvoice.status === 'Paid'
+                                  ? 'bg-emerald-100 text-[#16A34A]'
+                                  : 'bg-amber-100 text-[#B45309]'
+                              }`}>
+                                {linkedInvoice.status}
+                              </span>
+                            </button>
+                          ) : (
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              order.invoiceStatus === 'Invoiced'
+                                ? 'bg-sky-100 text-sky-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {order.invoiceStatus}
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end space-x-1.5">
@@ -1170,7 +1254,32 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                                 Dispatch
                               </button>
                             )}
+                            {(linkedInvoice && onViewInvoice) ? (
+                              <button
+                                type="button"
+                                onClick={() => onViewInvoice(linkedInvoice)}
+                                className="px-2.5 py-1 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                                title="View & Print A4 Nepal IRD 13% VAT Tax Invoice"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Tax Invoice</span>
+                              </button>
+                            ) : onGenerateOtcInvoice ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onGenerateOtcInvoice(order);
+                                  notify(`IRD Tax Invoice generated for OTC order ${order.orderNumber}.`);
+                                }}
+                                className="px-2.5 py-1 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                                title="Generate & Print Nepal IRD 13% VAT Tax Invoice"
+                              >
+                                <FileText className="w-3 h-3 text-[#0EA5E9]" />
+                                <span>Generate Invoice</span>
+                              </button>
+                            ) : null}
                             <button
+                              type="button"
                               onClick={() => setViewSalesOrder(order)}
                               className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
                             >
@@ -1180,9 +1289,21 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
+                <PaginationBar
+                  totalItems={salesOrders.length}
+                  currentPage={otcPage}
+                  pageSize={otcPageSize}
+                  onPageChange={setOtcPage}
+                  onPageSizeChange={(size) => {
+                    setOtcPageSize(size);
+                    setOtcPage(1);
+                  }}
+                  itemLabel="OTC sales orders"
+                />
               </div>
             )}
           </div>
@@ -1238,7 +1359,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {quotations.map(quot => (
+                    {paginatedQuotations.map(quot => (
                       <tr key={quot.id} className="hover:bg-slate-50/70">
                         <td className="p-3">
                           <span className="font-bold font-mono text-slate-900 block">{quot.quotationNumber}</span>
@@ -1307,6 +1428,17 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                     ))}
                   </tbody>
                 </table>
+                <PaginationBar
+                  totalItems={quotations.length}
+                  currentPage={quotPage}
+                  pageSize={quotPageSize}
+                  onPageChange={setQuotPage}
+                  onPageSizeChange={(size) => {
+                    setQuotPageSize(size);
+                    setQuotPage(1);
+                  }}
+                  itemLabel="quotations"
+                />
               </div>
             )}
           </div>
@@ -1722,6 +1854,7 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         onClose={() => setIsNewOrderModal(false)}
         parts={parts}
         customers={customers}
+        existingOrderNumbers={salesOrders.map((o) => o.orderNumber)}
         onCreateSalesOrder={onCreateSalesOrder}
         onNotify={notify}
       />

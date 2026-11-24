@@ -75,7 +75,21 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   const odometer = jobCard?.vehicle?.odometerReading;
   const vinNumber = jobCard?.vehicle?.vinNumber || jobCard?.vehicle?.chassisNumber;
   const isCreditNote = invoice.type === 'Credit Note' || grandTotal < 0;
-  const docTitle = isCreditNote ? 'CREDIT NOTE' : 'TAX INVOICE';
+  const isOtcInvoice = Boolean(
+    invoice.salesOrderId ||
+      invoice.salesOrderNumber ||
+      invoice.jobCardId === 'JC-OTC' ||
+      invoice.jobCardNumber === 'OTC-SALES' ||
+      (invoice.jobCardNumber || '').startsWith('PSO-') ||
+      invoice.vehicleReg === 'OTC-WALKIN' ||
+      (invoice.invoiceNumber || '').startsWith('OTC-')
+  );
+  const otcOrderRef =
+    invoice.salesOrderNumber ||
+    (invoice.jobCardNumber && invoice.jobCardNumber !== 'OTC-SALES' ? invoice.jobCardNumber : invoice.paymentReference) ||
+    invoice.invoiceNumber;
+  const totalPartsQty = items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+  const docTitle = isCreditNote ? 'CREDIT NOTE' : isOtcInvoice ? 'OTC TAX INVOICE' : 'TAX INVOICE';
 
   // Ensure Rs. 0 Free Service bills and fully-paid invoices always reflect Paid status
   const effectiveStatus: Invoice['status'] = isCreditNote
@@ -111,10 +125,17 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
     if (onWhatsAppShare) {
       onWhatsAppShare(invoice);
     } else {
-      const message = `Hello ${invoice.customerName}, your ${docTitle} #${invoice.invoiceNumber} from ${workshopName} for vehicle ${invoice.vehicleReg} is ready. Grand Total: NPR ${formatNPR(grandTotal)}. Thank you!`;
+      const subjectLabel = isOtcInvoice
+        ? `OTC spares order ${otcOrderRef}`
+        : `vehicle ${invoice.vehicleReg}`;
+      const message = `Hello ${invoice.customerName}, your ${docTitle} #${invoice.invoiceNumber} from ${workshopName} for ${subjectLabel} is ready. Grand Total: NPR ${formatNPR(grandTotal)}. Thank you!`;
       const cleanPhone = (invoice.customerPhone || '').replace(/[^0-9]/g, '');
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-      window.open(url, '_blank');
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.click();
     }
   };
 
@@ -309,31 +330,51 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
 
                 <div className="border border-[#E2E8F0] rounded-lg p-2.5 print:p-2 space-y-0.5">
                   <p className="text-[9px] font-bold uppercase tracking-wider text-[#0284C7] pb-1 border-b border-[#E2E8F0]">
-                    Vehicle &amp; Job Reference
+                    {isOtcInvoice ? 'OTC Spares Sales & Dispatch Ref' : 'Vehicle & Job Reference'}
                   </p>
-                  <p className="text-[11px] font-mono font-bold text-[#0F172A] pt-0.5">
-                    {invoice.vehicleReg || 'N/A'}
-                  </p>
-                  <div className="grid grid-cols-[82px_1fr] gap-y-0.5 text-[10px] leading-tight">
-                    <span className="text-[#64748B]">Vehicle:</span>
-                    <span className="font-medium text-[#0F172A]">
-                      {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Multi-Brand Vehicle'}
-                    </span>
-                    <span className="text-[#64748B]">Job Card #:</span>
-                    <span className="font-mono font-semibold text-[#0F172A]">{invoice.jobCardNumber || 'DIRECT'}</span>
-                    {odometer !== undefined && odometer > 0 && (
-                      <>
-                        <span className="text-[#64748B]">Odometer:</span>
-                        <span className="font-mono text-[#0F172A]">{odometer.toLocaleString('en-IN')} km</span>
-                      </>
-                    )}
-                    {vinNumber && (
-                      <>
-                        <span className="text-[#64748B]">VIN / Chassis:</span>
-                        <span className="font-mono text-[#0F172A]">{vinNumber}</span>
-                      </>
-                    )}
-                  </div>
+                  {isOtcInvoice ? (
+                    <>
+                      <p className="text-[11px] font-mono font-bold text-[#0F172A] pt-0.5">
+                        Order #{otcOrderRef}
+                      </p>
+                      <div className="grid grid-cols-[90px_1fr] gap-y-0.5 text-[10px] leading-tight">
+                        <span className="text-[#64748B]">Sale Channel:</span>
+                        <span className="font-semibold text-[#0F3D5E]">Over-the-Counter Spares</span>
+                        <span className="text-[#64748B]">Pricing Tier:</span>
+                        <span className="font-medium text-[#0F172A]">{invoice.pricingTier || 'Retail'} Counter Rate</span>
+                        <span className="text-[#64748B]">Items / Units:</span>
+                        <span className="font-mono text-[#0F172A]">{items.length} SKU(s) · {totalPartsQty} unit(s)</span>
+                        <span className="text-[#64748B]">Dispatch Status:</span>
+                        <span className="font-semibold text-[#16A34A]">Dispatched from Spares Store</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-mono font-bold text-[#0F172A] pt-0.5">
+                        {invoice.vehicleReg || 'N/A'}
+                      </p>
+                      <div className="grid grid-cols-[82px_1fr] gap-y-0.5 text-[10px] leading-tight">
+                        <span className="text-[#64748B]">Vehicle:</span>
+                        <span className="font-medium text-[#0F172A]">
+                          {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Multi-Brand Vehicle'}
+                        </span>
+                        <span className="text-[#64748B]">Job Card #:</span>
+                        <span className="font-mono font-semibold text-[#0F172A]">{invoice.jobCardNumber || 'DIRECT'}</span>
+                        {odometer !== undefined && odometer > 0 && (
+                          <>
+                            <span className="text-[#64748B]">Odometer:</span>
+                            <span className="font-mono text-[#0F172A]">{odometer.toLocaleString('en-IN')} km</span>
+                          </>
+                        )}
+                        {vinNumber && (
+                          <>
+                            <span className="text-[#64748B]">VIN / Chassis:</span>
+                            <span className="font-mono text-[#0F172A]">{vinNumber}</span>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -493,7 +534,10 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               {/* Terms & 3-Column Signature Block */}
               <div className="pt-2.5 print:pt-1.5 border-t border-[#E2E8F0] space-y-4 print:space-y-2.5 print-avoid-break">
                 <div className="text-[9px] text-[#64748B] leading-snug">
-                  <strong className="text-[#0F172A]">Terms &amp; Conditions:</strong> Goods and services once invoiced are subject to standard workshop warranty terms. Please verify vehicle items and gate pass prior to exit. E.&amp;O.E.
+                  <strong className="text-[#0F172A]">Terms &amp; Conditions:</strong>{' '}
+                  {isOtcInvoice
+                    ? 'Over-the-counter genuine spare parts once sold and unsealed cannot be returned unless defective under OEM policy. Please verify part SKUs and quantities at the spares counter before leaving. E.&O.E.'
+                    : 'Goods and services once invoiced are subject to standard workshop warranty terms. Please verify vehicle items and gate pass prior to exit. E.&O.E.'}
                 </div>
 
                 <div className="grid grid-cols-3 gap-6 pt-4 print:pt-3 text-center text-[10px]">
@@ -501,13 +545,15 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
                       Prepared By
                     </div>
-                    <p className="text-[9px] text-[#64748B]">Billing Desk</p>
+                    <p className="text-[9px] text-[#64748B]">{isOtcInvoice ? 'Spares Counter Desk' : 'Billing Desk'}</p>
                   </div>
                   <div>
                     <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
                       Customer Signature
                     </div>
-                    <p className="text-[9px] text-[#64748B]">Vehicle Received in Good Order</p>
+                    <p className="text-[9px] text-[#64748B]">
+                      {isOtcInvoice ? 'Spare Parts Received in Good Condition' : 'Vehicle Received in Good Order'}
+                    </p>
                   </div>
                   <div>
                     <div className="border-t border-[#0F3D5E] pt-1 font-bold text-[#0F3D5E]">
@@ -518,13 +564,17 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                 </div>
               </div>
 
-              {/* Compact Detachable Vehicle Exit Gate Pass Footer Section (Fits Together on Single A4 Sheet) */}
+              {/* Compact Detachable Exit / Store Dispatch Slip Footer Section (Fits Together on Single A4 Sheet) */}
               {!isCreditNote && (
                 <div className="pt-2.5 print:pt-2 mt-1 border-t-2 border-dashed border-[#94A3B8] print-avoid-break">
                   <div className="flex items-center justify-between text-[8.5px] text-[#64748B] uppercase tracking-wider mb-1.5 print:mb-1">
                     <span className="inline-flex items-center space-x-1 font-semibold">
                       <Scissors className="w-2.5 h-2.5 text-[#64748B]" />
-                      <span>Detach Along Perforation — Present Slip to Main Gate Security</span>
+                      <span>
+                        {isOtcInvoice
+                          ? 'Detach Along Perforation — Present Slip to Spares Store / Exit Security'
+                          : 'Detach Along Perforation — Present Slip to Main Gate Security'}
+                      </span>
                     </span>
                     <span className="font-mono font-bold text-[#0F3D5E]">{workshopName}</span>
                   </div>
@@ -534,7 +584,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       <div className="flex items-center space-x-1.5">
                         <Shield className="w-3 h-3 text-[#0EA5E9]" />
                         <span className="text-[10px] font-extrabold uppercase tracking-wider">
-                          Vehicle Exit Gate Pass
+                          {isOtcInvoice ? 'OTC Spares Dispatch & Store Exit Slip' : 'Vehicle Exit Gate Pass'}
                         </span>
                         <span className="text-[9px] font-mono text-sky-200">
                           #{gatePassNumber}
@@ -548,40 +598,76 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                         }`}
                       >
                         {effectiveStatus === 'Paid'
-                          ? 'PAID — CLEARED FOR EXIT'
+                          ? isOtcInvoice
+                            ? 'PAID — CLEARED FOR SPARES DISPATCH'
+                            : 'PAID — CLEARED FOR EXIT'
                           : `BALANCE DUE (NPR ${formatNPR(effectiveBalanceDue)}) — HOLD AT GATE`}
                       </span>
                     </div>
 
                     <div className="p-2.5 print:p-2 bg-[#FFFFFF] space-y-2 print:space-y-1.5 text-[9.5px] leading-tight">
                       <div className="grid grid-cols-4 gap-x-2.5 gap-y-1">
+                        {isOtcInvoice ? (
+                          <>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">OTC Order #</span>
+                              <span className="font-mono font-extrabold text-[#0F172A] text-[10px]">
+                                {otcOrderRef}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Tax Invoice #</span>
+                              <span className="font-mono font-bold text-[#0284C7]">
+                                {invoice.invoiceNumber}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Dispatched Qty</span>
+                              <span className="font-mono font-semibold text-[#0F172A]">
+                                {items.length} SKU(s) · {totalPartsQty} unit(s)
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Date (B.S. / A.D.)</span>
+                              <span className="font-mono font-semibold text-[#0F3D5E]">
+                                {bsDateObj.formatted} BS
+                              </span>{' '}
+                              <span className="text-[#64748B] font-mono">({isoDate})</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Vehicle Reg #</span>
+                              <span className="font-mono font-extrabold text-[#0F172A] text-[10px]">
+                                {invoice.vehicleReg || 'N/A'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Make / Model</span>
+                              <span className="font-semibold text-[#0F172A]">
+                                {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Job Card / Invoice #</span>
+                              <span className="font-mono font-semibold text-[#0F172A]">
+                                {invoice.jobCardNumber || 'DIRECT'} · {invoice.invoiceNumber}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Date (B.S. / A.D.)</span>
+                              <span className="font-mono font-semibold text-[#0F3D5E]">
+                                {bsDateObj.formatted} BS
+                              </span>{' '}
+                              <span className="text-[#64748B] font-mono">({isoDate})</span>
+                            </div>
+                          </>
+                        )}
                         <div>
-                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Vehicle Reg #</span>
-                          <span className="font-mono font-extrabold text-[#0F172A] text-[10px]">
-                            {invoice.vehicleReg || 'N/A'}
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">
+                            {isOtcInvoice ? 'Buyer / Company' : 'Owner / Company'}
                           </span>
-                        </div>
-                        <div>
-                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Make / Model</span>
-                          <span className="font-semibold text-[#0F172A]">
-                            {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Job Card / Invoice #</span>
-                          <span className="font-mono font-semibold text-[#0F172A]">
-                            {invoice.jobCardNumber || 'DIRECT'} · {invoice.invoiceNumber}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Date (B.S. / A.D.)</span>
-                          <span className="font-mono font-semibold text-[#0F3D5E]">
-                            {bsDateObj.formatted} BS
-                          </span>{' '}
-                          <span className="text-[#64748B] font-mono">({isoDate})</span>
-                        </div>
-                        <div>
-                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Owner / Company</span>
                           <span className="font-semibold text-[#0F172A] truncate block">
                             {invoice.companyName || invoice.customerName}
                           </span>
@@ -593,10 +679,13 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">VIN / Odometer</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">
+                            {isOtcInvoice ? 'Payment Mode' : 'VIN / Odometer'}
+                          </span>
                           <span className="font-mono text-[#0F172A]">
-                            {vinNumber ? `${vinNumber.slice(-8)}` : 'N/A'}
-                            {odometer !== undefined && odometer > 0 ? ` · ${odometer.toLocaleString('en-IN')} km` : ''}
+                            {isOtcInvoice
+                              ? `${invoice.paymentMethod || 'Cash'} (${effectiveStatus})`
+                              : `${vinNumber ? vinNumber.slice(-8) : 'N/A'}${odometer !== undefined && odometer > 0 ? ` · ${odometer.toLocaleString('en-IN')} km` : ''}`}
                           </span>
                         </div>
                         <div>
@@ -610,7 +699,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       <div className="grid grid-cols-3 gap-4 pt-3 print:pt-2.5 border-t border-[#E2E8F0] text-center text-[9px]">
                         <div>
                           <div className="border-t border-[#94A3B8] pt-0.5 font-semibold text-[#0F172A]">
-                            Authorized By ({gatePassAuthBy})
+                            {isOtcInvoice ? `Storekeeper (${gatePassAuthBy})` : `Authorized By (${gatePassAuthBy})`}
                           </div>
                         </div>
                         <div>
@@ -620,7 +709,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                         </div>
                         <div>
                           <div className="border-t border-[#94A3B8] pt-0.5 font-semibold text-[#0F172A]">
-                            Actual Exit Time: ____:____
+                            {isOtcInvoice ? 'Buyer Receipt Sign' : 'Actual Exit Time: ____:____'}
                           </div>
                         </div>
                       </div>

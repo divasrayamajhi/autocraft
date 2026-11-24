@@ -48,6 +48,8 @@ import {
   WorkshopProfile, 
   UserRole 
 } from '../../types';
+import { adToBs } from '../../utils/nepaliDate';
+import { isCreditNoteInvoice, round2 } from '../../utils/accountingEngine';
 
 interface AnalyticsDashboardProps {
   jobCards: JobCard[];
@@ -87,44 +89,100 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const safeCustomers = Array.isArray(customers) ? customers : [];
   const safeWarrantyClaims = Array.isArray(warrantyClaims) ? warrantyClaims : [];
 
-  const [period, setPeriod] = useState<PeriodFilter>('month');
+  const [period, setPeriod] = useState<PeriodFilter>('all');
   const [activeSubTab, setActiveSubTab] = useState<AnalyticsSubTab>('overview');
 
-  // --- KPI CALCULATIONS ---
+  // --- PERIOD-FILTERED INVOICES & JOB CARDS ---
+  const { periodInvoices, periodJobCards } = useMemo(() => {
+    if (period === 'all') {
+      return { periodInvoices: safeInvoices, periodJobCards: safeJobCards };
+    }
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const startOfDayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
+    let cutoffMs = 0;
+
+    if (period === 'today') {
+      cutoffMs = startOfDayMs;
+    } else if (period === 'week') {
+      cutoffMs = startOfDayMs - 6 * 86400000;
+    } else if (period === 'month') {
+      cutoffMs = startOfDayMs - 29 * 86400000;
+    } else if (period === 'quarter') {
+      cutoffMs = startOfDayMs - 89 * 86400000;
+    } else if (period === 'fiscal_year') {
+      cutoffMs = startOfDayMs - 364 * 86400000;
+    }
+
+    const inPeriod = (dateStr?: string) => {
+      if (!dateStr) return false;
+      const ms = new Date(dateStr.slice(0, 10)).getTime();
+      return !isNaN(ms) && ms >= cutoffMs;
+    };
+
+    return {
+      periodInvoices: safeInvoices.filter((inv) => inPeriod(inv.date || inv.createdAt)),
+      periodJobCards: safeJobCards.filter((jc) => inPeriod(jc.arrivalDate || jc.createdAt)),
+    };
+  }, [safeInvoices, safeJobCards, period]);
+
+  // --- KPI CALCULATIONS (100% LIVE, ROUNDED, REAL STATUSES) ---
   const metrics = useMemo(() => {
-    // Total Revenue Calculations
-    const totalInvoiced = safeInvoices.reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0);
-    const totalTaxable = safeInvoices.reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0);
-    const totalVat = safeInvoices.reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0);
-    const totalPaid = safeInvoices.reduce((acc, inv) => acc + (inv.paidAmount ?? inv.amountPaid ?? 0), 0);
-    const totalReceivables = safeInvoices.reduce((acc, inv) => acc + (inv.balanceDue ?? 0), 0);
+    const totalInvoiced = round2(periodInvoices.reduce((acc, inv) => acc + (inv.grandTotal ?? 0), 0));
+    const totalTaxable = round2(
+      periodInvoices.reduce((acc, inv) => acc + (inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0), 0)
+    );
+    const totalVat = round2(periodInvoices.reduce((acc, inv) => acc + (inv.vatAmount ?? inv.totalVatAmount ?? 0), 0));
+    const totalPaid = round2(periodInvoices.reduce((acc, inv) => acc + (inv.paidAmount ?? inv.amountPaid ?? 0), 0));
+    const totalReceivables = round2(
+      periodInvoices.reduce((acc, inv) => acc + (isCreditNoteInvoice(inv) ? 0 : (inv.balanceDue ?? 0)), 0)
+    );
+    const taxInvoiceCount = periodInvoices.filter((inv) => !isCreditNoteInvoice(inv)).length;
 
-    // Job Cards Breakdown
-    const totalJobs = safeJobCards.length;
-    const completedJobs = safeJobCards.filter(j => ['Ready', 'Delivered', 'Invoiced'].includes(j.status)).length;
-    const inProgressJobs = safeJobCards.filter(j => ['Diagnosis', 'Parts Requisition', 'In Repair', 'Quality Check'].includes(j.status)).length;
-    const pendingIntake = safeJobCards.filter(j => j.status === 'Intake').length;
+    // Job Cards Breakdown (using real JobCardStatus values)
+    const totalJobs = periodJobCards.length;
+    const intakeCount = periodJobCards.filter(
+      (j) => j.status === 'Appointment / Intake' || j.status === 'Vehicle Check-in'
+    ).length;
+    const inBayCount = periodJobCards.filter(
+      (j) => j.status === 'Bay In-Progress' || j.status === 'Bay Assigned (In Progress)'
+    ).length;
+    const awaitingSparesCount = periodJobCards.filter((j) => j.status === 'Awaiting Spares').length;
+    const qualityCheckCount = periodJobCards.filter((j) => j.status === 'Quality Check').length;
+    const readyBillingCount = periodJobCards.filter((j) => j.status === 'Ready for Billing').length;
+    const completedJobs = periodJobCards.filter(
+      (j) => j.status === 'Ready for Billing' || j.status === 'Billed & Locked' || j.status === 'Delivered'
+    ).length;
+    const inProgressJobs = inBayCount + awaitingSparesCount + qualityCheckCount;
+    const pendingIntake = intakeCount;
 
-    // Average Order Value (AOV) in NPR
-    const avgOrderValue = safeInvoices.length > 0 ? Math.round(totalInvoiced / safeInvoices.length) : 0;
+    const avgOrderValue = taxInvoiceCount > 0 ? Math.round(totalInvoiced / taxInvoiceCount) : 0;
 
     // Bay Utilization Calculation
     const totalBays = safeBays.length || 6;
-    const occupiedBays = safeBays.filter(b => b.status === 'Occupied').length;
+    const occupiedBays = safeBays.filter((b) => b.status === 'Occupied').length;
     const bayUtilizationRate = Math.min(100, Math.round((occupiedBays / totalBays) * 100));
 
-    // Turnaround Time (Estimated avg turnaround hours)
-    const avgTurnaroundHours = 4.8;
+    // Average Turnaround Hours (estimated from actual labor hours per completed job)
+    const totalJobHours = periodJobCards.reduce(
+      (sum, jc) => sum + (jc.laborItems || []).reduce((lh, l) => lh + (Number(l.hours ?? l.hoursEstimated) || 1), 0),
+      0
+    );
+    const avgTurnaroundHours =
+      totalJobs > 0 ? round2(Math.max(1.2, Math.min(18, totalJobHours / totalJobs + 1.5))) : 0;
 
     // Technician Labor Stats
     const totalBilledLaborHours = safeTechnicians.reduce((acc, t) => acc + (t.completedHoursThisMonth || 0), 0);
     const totalTargetHours = safeTechnicians.reduce((acc, t) => acc + (t.monthlyTargetHours || 160), 0);
-    const techProductivityRate = totalTargetHours > 0 ? Math.round((totalBilledLaborHours / totalTargetHours) * 100) : 85;
+    const techProductivityRate = totalTargetHours > 0 ? Math.round((totalBilledLaborHours / totalTargetHours) * 100) : 0;
 
     // Inventory Value
-    const totalStockCost = safeParts.reduce((acc, p) => acc + (p.currentStock * p.costPrice), 0);
-    const totalStockSellingValue = safeParts.reduce((acc, p) => acc + (p.currentStock * p.sellingPrice), 0);
-    const potentialMargin = totalStockSellingValue > 0 ? Math.round(((totalStockSellingValue - totalStockCost) / totalStockSellingValue) * 100) : 28;
+    const totalStockCost = round2(safeParts.reduce((acc, p) => acc + p.currentStock * p.costPrice, 0));
+    const totalStockSellingValue = round2(safeParts.reduce((acc, p) => acc + p.currentStock * p.sellingPrice, 0));
+    const potentialMargin =
+      totalStockSellingValue > 0
+        ? Math.round(((totalStockSellingValue - totalStockCost) / totalStockSellingValue) * 100)
+        : 0;
 
     // OEM Warranty Claim Stats
     const totalWarrantyClaims = safeWarrantyClaims.length;
@@ -143,7 +201,13 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       totalVat,
       totalPaid,
       totalReceivables,
+      taxInvoiceCount,
       totalJobs,
+      intakeCount,
+      inBayCount,
+      awaitingSparesCount,
+      qualityCheckCount,
+      readyBillingCount,
       completedJobs,
       inProgressJobs,
       pendingIntake,
@@ -163,57 +227,187 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       pendingWarrantyClaims,
       warrantyResolutionRate
     };
-  }, [safeInvoices, safeJobCards, safeBays, safeTechnicians, safeParts, safeWarrantyClaims]);
+  }, [periodInvoices, periodJobCards, safeBays, safeTechnicians, safeParts, safeWarrantyClaims]);
 
-  // --- REVENUE TREND DATA (Monthly / Quarterly Nepal Context) ---
+  // --- LIVE REVENUE TREND DATA (Grouped by Nepali B.S. Month) ---
   const revenueTrendData = useMemo(() => {
-    return [
-      { period: 'Baisakh', labor: 145000, parts: 210000, vat: 46150, total: 401150 },
-      { period: 'Jestha', labor: 168000, parts: 245000, vat: 53690, total: 466690 },
-      { period: 'Ashadh', labor: 195000, parts: 310000, vat: 65650, total: 570650 },
-      { period: 'Shrawan', labor: 160000, parts: 220000, vat: 49400, total: 429400 },
-      { period: 'Bhadra', labor: 210000, parts: 340000, vat: 71500, total: 621500 },
-      { period: 'Ashwin (Current)', labor: 235000, parts: 390000, vat: 81250, total: 706250 }
-    ];
-  }, []);
+    const buckets = new Map<
+      string,
+      { sortKey: string; period: string; labor: number; parts: number; vat: number; total: number }
+    >();
 
-  // --- SERVICE CATEGORY REVENUE CONTRIBUTION ---
+    for (const inv of periodInvoices) {
+      const adDate = (inv.date || inv.createdAt || '').slice(0, 10);
+      if (!adDate || adDate.length < 10) continue;
+      const bs = adToBs(adDate);
+      const sortKey = `${bs.year}-${String(bs.month).padStart(2, '0')}`;
+      const label = `${bs.monthName} ${String(bs.year).slice(-2)}`;
+      let bucket = buckets.get(sortKey);
+      if (!bucket) {
+        bucket = { sortKey, period: label, labor: 0, parts: 0, vat: 0, total: 0 };
+        buckets.set(sortKey, bucket);
+      }
+      const isCN = isCreditNoteInvoice(inv);
+      const sign = isCN ? -1 : 1;
+      const items = inv.items || [];
+      let invLabor = 0;
+      let invParts = 0;
+      if (items.length > 0 && !isCN) {
+        for (const it of items) {
+          const amt = Number(it.taxableAmount ?? it.amount ?? 0);
+          if (it.type === 'Labor') invLabor += amt;
+          else invParts += amt;
+        }
+      } else {
+        const taxable = Math.abs(Number(inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0));
+        invParts = sign * taxable;
+      }
+      const vat = Number(inv.vatAmount ?? inv.totalVatAmount ?? 0);
+      const grand = Number(inv.grandTotal ?? round2(invLabor + invParts + vat));
+
+      bucket.labor = round2(bucket.labor + invLabor);
+      bucket.parts = round2(bucket.parts + invParts);
+      bucket.vat = round2(bucket.vat + vat);
+      bucket.total = round2(bucket.total + grand);
+    }
+
+    return Array.from(buckets.values())
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .slice(-12);
+  }, [periodInvoices]);
+
+  // --- LIVE SERVICE CATEGORY REVENUE CONTRIBUTION ---
   const serviceCategoryData = useMemo(() => {
-    return [
-      { name: 'Periodic Maintenance (PMS)', value: 42, amount: 296000 },
-      { name: 'Brake & Suspension', value: 24, amount: 169000 },
-      { name: 'Engine & Transmission', value: 16, amount: 113000 },
-      { name: 'Electrical & AC System', value: 11, amount: 77600 },
-      { name: 'Accidental Body & Paint', value: 7, amount: 49400 }
-    ];
-  }, []);
+    const invByJcId = new Map<string, number>();
+    for (const inv of periodInvoices) {
+      if (isCreditNoteInvoice(inv)) continue;
+      if (inv.jobCardId) {
+        invByJcId.set(inv.jobCardId, round2((invByJcId.get(inv.jobCardId) || 0) + (inv.grandTotal || 0)));
+      }
+    }
 
-  // --- PAYMENT MODE DISTRIBUTION (Nepal Payment Ecosystem) ---
-  const paymentModeData = useMemo(() => {
-    return [
-      { name: 'Fonepay Dynamic QR', count: 48, percentage: 48, amount: 338000, color: '#dc2626' },
-      { name: 'Cash at Counter', count: 24, percentage: 24, amount: 169000, color: '#16a34a' },
-      { name: 'NepalPay / SCT Card', count: 14, percentage: 14, amount: 98000, color: '#2563eb' },
-      { name: 'Corporate Credit', count: 9, percentage: 9, amount: 63000, color: '#f59e0b' },
-      { name: 'Bank Transfer / Cheque', count: 5, percentage: 5, amount: 35000, color: '#7c3aed' }
-    ];
-  }, []);
+    const catMap = new Map<string, { amount: number; count: number }>();
+    for (const jc of periodJobCards) {
+      const key = jc.serviceType || 'General Repair';
+      const entry = catMap.get(key) || { amount: 0, count: 0 };
+      const billed = invByJcId.get(jc.id);
+      const est =
+        billed !== undefined
+          ? billed
+          : (jc.laborItems || []).reduce((s, l) => s + (l.totalAmount || 0), 0) +
+            (jc.partsRequested || jc.partsItems || []).reduce((s, p) => s + (p.totalAmount || 0), 0);
+      entry.amount = round2(entry.amount + est);
+      entry.count += 1;
+      catMap.set(key, entry);
+    }
 
-  // --- TECHNICIAN PRODUCTIVITY LEADERBOARD ---
+    const rows = Array.from(catMap.entries())
+      .map(([name, data]) => ({ name, amount: data.amount, count: data.count }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const totalAmt = rows.reduce((s, r) => s + r.amount, 0);
+    const totalCount = rows.reduce((s, r) => s + r.count, 0);
+
+    return rows.map((r) => ({
+      name: r.name,
+      amount: r.amount,
+      value:
+        totalAmt > 0
+          ? Math.round((r.amount / totalAmt) * 100)
+          : totalCount > 0
+          ? Math.round((r.count / totalCount) * 100)
+          : 0,
+    }));
+  }, [periodJobCards, periodInvoices]);
+
+  // --- LIVE PAYMENT MODE DISTRIBUTION ---
+  const { paymentModeData, digitalPaymentPct } = useMemo(() => {
+    const modeBuckets: Record<string, { name: string; count: number; amount: number; color: string; isDigital: boolean }> = {
+      fonepay: { name: 'Fonepay / Digital QR', count: 0, amount: 0, color: '#dc2626', isDigital: true },
+      cash: { name: 'Cash at Counter', count: 0, amount: 0, color: '#16a34a', isDigital: false },
+      card: { name: 'POS Card / NepalPay', count: 0, amount: 0, color: '#2563eb', isDigital: true },
+      bank: { name: 'Bank Transfer / Cheque', count: 0, amount: 0, color: '#7c3aed', isDigital: true },
+      credit: { name: 'Corporate Credit / Unpaid', count: 0, amount: 0, color: '#f59e0b', isDigital: false },
+    };
+
+    for (const inv of periodInvoices) {
+      if (isCreditNoteInvoice(inv)) continue;
+      const payments = inv.payments || [];
+      if (payments.length > 0) {
+        for (const p of payments) {
+          const m = (p.method || '').toLowerCase();
+          let key = 'cash';
+          if (m.includes('fonepay') || m.includes('esewa') || m.includes('khalti') || m.includes('qr')) key = 'fonepay';
+          else if (m.includes('card') || m.includes('pos') || m.includes('nepalpay')) key = 'card';
+          else if (m.includes('bank') || m.includes('connectips') || m.includes('cheque')) key = 'bank';
+          else if (m.includes('credit')) key = 'credit';
+          modeBuckets[key].count += 1;
+          modeBuckets[key].amount = round2(modeBuckets[key].amount + (Number(p.amount) || 0));
+        }
+      } else if ((inv.paidAmount ?? 0) > 0) {
+        const m = (inv.paymentMethod || 'Cash').toLowerCase();
+        let key = 'cash';
+        if (m.includes('fonepay') || m.includes('esewa') || m.includes('khalti') || m.includes('qr')) key = 'fonepay';
+        else if (m.includes('card') || m.includes('pos') || m.includes('nepalpay')) key = 'card';
+        else if (m.includes('bank') || m.includes('connectips') || m.includes('cheque')) key = 'bank';
+        modeBuckets[key].count += 1;
+        modeBuckets[key].amount = round2(modeBuckets[key].amount + (inv.paidAmount || 0));
+      }
+      if ((inv.balanceDue ?? 0) > 0) {
+        modeBuckets.credit.count += 1;
+        modeBuckets.credit.amount = round2(modeBuckets.credit.amount + (inv.balanceDue || 0));
+      }
+    }
+
+    const totalAmt = Object.values(modeBuckets).reduce((s, b) => s + b.amount, 0);
+    const digitalAmt = Object.values(modeBuckets)
+      .filter((b) => b.isDigital)
+      .reduce((s, b) => s + b.amount, 0);
+
+    const list = Object.values(modeBuckets)
+      .filter((b) => b.count > 0 || b.amount > 0)
+      .map((b) => ({
+        ...b,
+        percentage: totalAmt > 0 ? Math.round((b.amount / totalAmt) * 100) : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return {
+      paymentModeData: list,
+      digitalPaymentPct: totalAmt > 0 ? Math.round((digitalAmt / totalAmt) * 100) : 0,
+    };
+  }, [periodInvoices]);
+
+  // --- TECHNICIAN PRODUCTIVITY LEADERBOARD (Single O(N) pass) ---
   const technicianLeaderboard = useMemo(() => {
-    return safeTechnicians.map((tech, idx) => {
-      const assignedJobs = safeJobCards.filter(j => j.assignedTechnicianId === tech.id);
-      const completedJobs = assignedJobs.filter(j => ['Ready', 'Delivered', 'Invoiced'].includes(j.status)).length;
+    const byTech = new Map<string, { assigned: number; completed: number; hours: number; laborRev: number }>();
+    for (const jc of periodJobCards) {
+      const tid = jc.assignedTechnicianId || jc.technicianId;
+      if (!tid) continue;
+      const entry = byTech.get(tid) || { assigned: 0, completed: 0, hours: 0, laborRev: 0 };
+      entry.assigned += 1;
+      if (jc.status === 'Ready for Billing' || jc.status === 'Billed & Locked' || jc.status === 'Delivered') {
+        entry.completed += 1;
+      }
+      for (const l of jc.laborItems || []) {
+        entry.hours += Number(l.hours ?? l.hoursEstimated) || 1;
+        entry.laborRev = round2(entry.laborRev + (Number(l.totalAmount) || 0));
+      }
+      byTech.set(tid, entry);
+    }
+
+    return safeTechnicians.map((tech) => {
+      const stats = byTech.get(tech.id) || { assigned: 0, completed: 0, hours: 0, laborRev: 0 };
       const target = tech.monthlyTargetHours || 160;
-      const billed = tech.completedHoursThisMonth || (120 + idx * 15);
-      const efficiency = Math.min(125, Math.round((billed / target) * 100));
-      const laborRevenue = billed * 900; // estimated NPR 900/hr labor
+      const billed = stats.hours > 0 ? Math.round(stats.hours) : (tech.completedHoursThisMonth || 0);
+      const efficiency = target > 0 ? Math.min(200, Math.round((billed / target) * 100)) : 0;
+      const laborRevenue = stats.laborRev > 0 ? stats.laborRev : billed * 900;
       const commission = Math.round(laborRevenue * ((tech.commissionPercentage || 5) / 100));
 
       return {
         ...tech,
-        assignedJobsCount: assignedJobs.length,
-        completedJobsCount: completedJobs,
+        assignedJobsCount: stats.assigned,
+        completedJobsCount: stats.completed,
         billedHours: billed,
         targetHours: target,
         efficiency,
@@ -221,12 +415,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
         commission
       };
     });
-  }, [safeTechnicians, safeJobCards]);
+  }, [safeTechnicians, periodJobCards]);
 
   // --- INVENTORY VELOCITY (FMS & ABC) ---
   const inventoryAnalytics = useMemo(() => {
-    const fastMoving = safeParts.filter(p => p.category === 'Filters & Fluids' || (p.minReorderLevel && p.minReorderLevel > 5));
-    const mediumMoving = safeParts.filter(p => p.category === 'Brakes' || p.category === 'Suspension & Steering');
+    const fastMoving = safeParts.filter(p => p.fmsClass === 'Fast' || p.category === 'Filters & Fluids');
+    const mediumMoving = safeParts.filter(p => p.fmsClass === 'Medium' || p.category === 'Brakes' || p.category === 'Suspension & Steering');
     const slowMoving = safeParts.filter(p => !fastMoving.includes(p) && !mediumMoving.includes(p));
 
     const lowStockParts = safeParts.filter(p => p.currentStock <= (p.minReorderLevel || 5));
@@ -347,7 +541,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               Rs. {metrics.avgOrderValue.toLocaleString()}
             </div>
             <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-              Across {invoices.length || 0} tax invoices
+              Across {metrics.taxInvoiceCount.toLocaleString()} tax invoices
             </div>
           </div>
           <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400">
@@ -593,17 +787,47 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
               <div className="space-y-3">
                 {[
-                  { stage: 'Vehicle Intake & Initial Inspection', count: metrics.pendingIntake || 1, color: 'bg-blue-500', pct: 15 },
-                  { stage: 'Active Diagnosis & Estimation', count: 2, color: 'bg-indigo-500', pct: 25 },
-                  { stage: 'Parts Requisition from Store', count: 1, color: 'bg-amber-500', pct: 18 },
-                  { stage: 'Mechanical / Electrical Bay Repair', count: metrics.occupiedBays || 3, color: 'bg-purple-500', pct: 45 },
-                  { stage: 'Road Test & Quality Clearance', count: 1, color: 'bg-teal-500', pct: 15 },
-                  { stage: 'Ready for Delivery & Tax Invoiced', count: metrics.completedJobs || 4, color: 'bg-emerald-500', pct: 80 }
+                  {
+                    stage: 'Vehicle Check-in & Intake',
+                    count: metrics.intakeCount,
+                    color: 'bg-blue-500',
+                    pct: metrics.totalJobs > 0 ? Math.round((metrics.intakeCount / metrics.totalJobs) * 100) : 0,
+                  },
+                  {
+                    stage: 'In Service Bay (Repairs)',
+                    count: metrics.inBayCount,
+                    color: 'bg-indigo-500',
+                    pct: metrics.totalJobs > 0 ? Math.round((metrics.inBayCount / metrics.totalJobs) * 100) : 0,
+                  },
+                  {
+                    stage: 'Awaiting Spares Requisition',
+                    count: metrics.awaitingSparesCount,
+                    color: 'bg-amber-500',
+                    pct: metrics.totalJobs > 0 ? Math.round((metrics.awaitingSparesCount / metrics.totalJobs) * 100) : 0,
+                  },
+                  {
+                    stage: 'Road Test & Quality Clearance',
+                    count: metrics.qualityCheckCount,
+                    color: 'bg-teal-500',
+                    pct: metrics.totalJobs > 0 ? Math.round((metrics.qualityCheckCount / metrics.totalJobs) * 100) : 0,
+                  },
+                  {
+                    stage: 'Ready for Billing',
+                    count: metrics.readyBillingCount,
+                    color: 'bg-sky-500',
+                    pct: metrics.totalJobs > 0 ? Math.round((metrics.readyBillingCount / metrics.totalJobs) * 100) : 0,
+                  },
+                  {
+                    stage: 'Delivered & Tax Invoiced',
+                    count: metrics.completedJobs,
+                    color: 'bg-emerald-500',
+                    pct: metrics.totalJobs > 0 ? Math.round((metrics.completedJobs / metrics.totalJobs) * 100) : 0,
+                  },
                 ].map((item) => (
                   <div key={item.stage} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-slate-700">{item.stage}</span>
-                      <span className="font-bold font-mono text-slate-900">{item.count} Vehicles</span>
+                      <span className="font-bold font-mono text-slate-900">{item.count.toLocaleString()} Vehicles</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div className={`${item.color} h-full rounded-full transition-all duration-500`} style={{ width: `${item.pct}%` }}></div>
@@ -621,7 +845,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   <p className="text-xs text-slate-500">Fonepay, Cash, NepalPay and Credit breakdown</p>
                 </div>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                  67% Digital
+                  {digitalPaymentPct}% Digital
                 </span>
               </div>
 

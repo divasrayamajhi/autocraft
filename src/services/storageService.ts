@@ -33,6 +33,80 @@ import {
 const STORAGE_KEY = 'NEPAL_WORKSHOP_ERP_V2';
 const ACTIVE_USER_KEY = 'NEPAL_WORKSHOP_CURRENT_USER';
 const AUTH_SESSION_KEY = 'NEPAL_WORKSHOP_IS_LOGGED_IN';
+const IDB_NAME = 'NEPAL_WORKSHOP_ERP_IDB';
+const IDB_STORE = 'erp_state';
+const IDB_KEY = 'primary_db';
+const LOCAL_STORAGE_MAX_CHARS = 3_200_000; // ~3.2MB safe ceiling below browser 5MB quota
+
+const toFiniteNum = (value: unknown, fallback: number): number => {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const openErpIndexedDb = (): Promise<IDBDatabase | null> => {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+const readFromIndexedDb = async (): Promise<any | null> => {
+  const idb = await openErpIndexedDb();
+  if (!idb) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = idb.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+const writeToIndexedDb = async (data: AppDatabase): Promise<void> => {
+  const idb = await openErpIndexedDb();
+  if (!idb) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = idb.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(data, IDB_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+};
+
+const clearIndexedDb = async (): Promise<void> => {
+  const idb = await openErpIndexedDb();
+  if (!idb) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = idb.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+};
 
 export interface AppDatabase {
   profile: WorkshopProfile;
@@ -1279,6 +1353,8 @@ const INITIAL_GATE_PASSES: GatePass[] = [
 export class StorageService {
   private static instance: StorageService;
   private db: AppDatabase;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private hasHydratedIdb = false;
 
   private constructor() {
     this.db = this.loadFromStorage();
@@ -1372,35 +1448,44 @@ export class StorageService {
         ? jc.partsRequested 
         : (Array.isArray(jc.partsItems) ? jc.partsItems : []);
       
-      const normalizedParts = parts.map((p: any, pIdx: number) => ({
-        id: p.id || `JCP-${idx}-${pIdx}`,
-        partId: p.partId || 'PART-01',
-        partNumber: p.partNumber || 'GEN-PART',
-        name: p.name || p.partName || 'Spare Part',
-        partName: p.partName || p.name || 'Spare Part',
-        quantity: Number(p.quantity) || 1,
-        unitPrice: Number(p.unitPrice) || 0,
-        vatRate: Number(p.vatRate) ?? 13,
-        discount: Number(p.discount) || 0,
-        totalAmount: Number(p.totalAmount) ?? ((Number(p.quantity) || 1) * (Number(p.unitPrice) || 0) - (Number(p.discount) || 0)),
-        isCoveredByInsurance: Boolean(p.isCoveredByInsurance),
-        requisitionStatus: p.requisitionStatus || 'Issued'
-      }));
+      const normalizedParts = parts.map((p: any, pIdx: number) => {
+        const qty = toFiniteNum(p.quantity, 1);
+        const unitPrice = toFiniteNum(p.unitPrice, 0);
+        const discount = toFiniteNum(p.discount, 0);
+        return {
+          id: p.id || `JCP-${idx}-${pIdx}`,
+          partId: p.partId || 'PART-01',
+          partNumber: p.partNumber || 'GEN-PART',
+          name: p.name || p.partName || 'Spare Part',
+          partName: p.partName || p.name || 'Spare Part',
+          quantity: qty,
+          unitPrice,
+          vatRate: toFiniteNum(p.vatRate, 13),
+          discount,
+          totalAmount: toFiniteNum(p.totalAmount, qty * unitPrice - discount),
+          isCoveredByInsurance: Boolean(p.isCoveredByInsurance),
+          requisitionStatus: p.requisitionStatus || 'Issued'
+        };
+      });
 
-      const laborItems = (Array.isArray(jc.laborItems) ? jc.laborItems : []).map((l: any, lIdx: number) => ({
-        id: l.id || `LBR-${idx}-${lIdx}`,
-        serviceId: l.serviceId || 'SRV-01',
-        code: l.code || 'SRV-LBR',
-        description: l.description || 'General Labor',
-        hours: Number(l.hours ?? l.hoursEstimated ?? 1),
-        hoursEstimated: Number(l.hoursEstimated ?? l.hours ?? 1),
-        ratePerHour: Number(l.ratePerHour) || 1000,
-        vatRate: Number(l.vatRate) ?? 13,
-        totalAmount: Number(l.totalAmount) ?? (Number(l.hours ?? l.hoursEstimated ?? 1) * (Number(l.ratePerHour) || 1000)),
-        technicianId: l.technicianId || 'TECH-01',
-        technicianName: l.technicianName || 'Technician',
-        status: l.status || 'In Progress'
-      }));
+      const laborItems = (Array.isArray(jc.laborItems) ? jc.laborItems : []).map((l: any, lIdx: number) => {
+        const hrs = toFiniteNum(l.hours ?? l.hoursEstimated, 1);
+        const rate = toFiniteNum(l.ratePerHour, 0);
+        return {
+          id: l.id || `LBR-${idx}-${lIdx}`,
+          serviceId: l.serviceId || 'SRV-01',
+          code: l.code || 'SRV-LBR',
+          description: l.description || 'General Labor',
+          hours: hrs,
+          hoursEstimated: toFiniteNum(l.hoursEstimated ?? l.hours, 1),
+          ratePerHour: rate,
+          vatRate: toFiniteNum(l.vatRate, 13),
+          totalAmount: toFiniteNum(l.totalAmount, hrs * rate),
+          technicianId: l.technicianId || 'TECH-01',
+          technicianName: l.technicianName || 'Technician',
+          status: l.status || 'In Progress'
+        };
+      });
 
       return {
         ...jc,
@@ -1556,19 +1641,65 @@ export class StorageService {
     };
   }
 
-  private saveToStorage(data: AppDatabase): void {
+  private flushPersistence(data: AppDatabase): void {
+    // Always persist full dataset asynchronously to IndexedDB (handles 50MB–500MB+ 1-year datasets cleanly)
+    void writeToIndexedDb(data);
+
+    // Mirror to localStorage only when safely below the 5MB quota to prevent QuotaExceededError freezes
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (typeof localStorage === 'undefined') return;
       if (data.currentUser) {
         localStorage.setItem(ACTIVE_USER_KEY, data.currentUser.username);
       }
-    } catch (e) {
-      console.error('Error saving database to localStorage:', e);
+      const estimatedLarge =
+        (data.jobCards?.length || 0) +
+        (data.invoices?.length || 0) +
+        (data.journalEntries?.length || 0) >
+        1500;
+      if (estimatedLarge) {
+        // Large high-volume database lives in IndexedDB; remove stale localStorage blob so quota stays free
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      const serialized = JSON.stringify(data);
+      if (serialized.length <= LOCAL_STORAGE_MAX_CHARS) {
+        localStorage.setItem(STORAGE_KEY, serialized);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      // IndexedDB remains authoritative when localStorage quota is exceeded
     }
   }
 
+  private saveToStorage(data: AppDatabase, immediate = false): void {
+    if (immediate) {
+      if (this.persistTimer) {
+        clearTimeout(this.persistTimer);
+        this.persistTimer = null;
+      }
+      this.flushPersistence(data);
+      return;
+    }
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.flushPersistence(this.db);
+    }, 150);
+  }
+
+  public async hydrateFromIndexedDb(): Promise<AppDatabase | null> {
+    if (this.hasHydratedIdb) return null;
+    this.hasHydratedIdb = true;
+    const stored = await readFromIndexedDb();
+    if (stored && typeof stored === 'object' && stored.profile && Array.isArray(stored.jobCards)) {
+      this.db = this.normalizeDatabase(stored);
+      return { ...this.db };
+    }
+    return null;
+  }
+
   public getDatabase(): AppDatabase {
-    this.db = this.normalizeDatabase(this.db);
     return { ...this.db };
   }
 
@@ -1674,10 +1805,14 @@ export class StorageService {
   }
 
   public resetToDemo(): AppDatabase {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(ACTIVE_USER_KEY);
-    this.db = this.loadFromStorage();
-    return this.db;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_USER_KEY);
+    }
+    void clearIndexedDb();
+    this.db = this.getInitialDatabase();
+    this.saveToStorage(this.db, true);
+    return { ...this.db };
   }
 
   public syncCloud(): Promise<{ success: boolean; timestamp: string }> {
@@ -1686,7 +1821,7 @@ export class StorageService {
         const now = new Date().toISOString();
         this.db.lastCloudSync = now;
         this.db.isCloudSynced = true;
-        this.saveToStorage(this.db);
+        this.saveToStorage(this.db, true);
         resolve({ success: true, timestamp: now });
       }, 600);
     });
@@ -1700,8 +1835,8 @@ export class StorageService {
     try {
       const parsed = JSON.parse(jsonString);
       if (parsed && parsed.profile && parsed.users && parsed.jobCards) {
-        this.db = parsed;
-        this.saveToStorage(this.db);
+        this.db = this.normalizeDatabase(parsed);
+        this.saveToStorage(this.db, true);
         return true;
       }
     } catch (e) {

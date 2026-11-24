@@ -303,6 +303,10 @@ export interface PartsSalesOrder {
   quotationId?: string;
   customerId: string;
   customerName: string;
+  customerPhone?: string;
+  pricingTier?: 'Retail' | 'Fleet' | 'Wholesale';
+  paymentMethod?: NepalPaymentMethod;
+  paymentStatus?: 'Paid' | 'Unpaid';
   date: string;
   items: PartsQuotationItem[];
   subtotal: number;
@@ -310,6 +314,8 @@ export interface PartsSalesOrder {
   grandTotal: number;
   dispatchStatus: 'Pending' | 'Partially Dispatched' | 'Fully Dispatched';
   invoiceStatus: 'Not Invoiced' | 'Invoiced';
+  invoiceId?: string;
+  invoiceNumber?: string;
   companyBilling?: CompanyBillingDetails;
 }
 
@@ -486,6 +492,9 @@ export interface Invoice {
   fiscalYear?: string; // "2081/2082"
   jobCardId: string;
   jobCardNumber: string;
+  salesOrderId?: string;
+  salesOrderNumber?: string;
+  pricingTier?: string;
   date?: string; // Gregorian date
   bsDate?: string; // Bikram Sambat Date e.g. "2081-05-28"
   customerId?: string;
