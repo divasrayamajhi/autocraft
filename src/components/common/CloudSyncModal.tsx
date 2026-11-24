@@ -47,7 +47,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `multibrand_dms_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `autocraft_pro_backup_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -79,10 +79,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   };
 
   const handleResetDemo = () => {
-    if (confirm('Are you sure you want to reset all DMS records back to default demo data? All custom records will be replaced.')) {
+    if (confirm('Are you sure you want to reset all AutoCraft Pro records back to default demo data? All custom records will be replaced.')) {
       storage.resetToDemo();
       onDataUpdated();
-      alert('DMS database restored to demo state.');
+      alert('AutoCraft Pro database restored to demo state.');
       onClose();
     }
   };

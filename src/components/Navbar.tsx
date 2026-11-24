@@ -94,6 +94,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               {pageTitle}
             </h2>
             <p className="text-xs text-[#64748B] hidden sm:flex items-center space-x-2 truncate mt-0.5">
+              <span className="font-semibold text-[#0284C7]">AutoCraft Pro</span>
+              <span>·</span>
               <span className="font-medium text-[#0F3D5E]">{profile.name}</span>
               <span>·</span>
               <span>

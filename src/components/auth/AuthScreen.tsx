@@ -270,7 +270,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         <div className="p-6 sm:p-8">
           <div className="mb-6">
             <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
-              Welcome to Workshop DMS & ERP
+              Welcome to AutoCraft Pro
             </h2>
             <p className="text-xs text-slate-500 mt-1">
               Log in to access your role-specific work dashboard, jobs, inventory, or billing.
@@ -727,7 +727,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </div>
           <div>
             <h1 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
-              {workshopProfile.name}
+              AutoCraft Pro <span className="text-sky-200/80 font-medium text-xs">· {workshopProfile.name}</span>
             </h1>
             <p className="text-xs text-sky-200/80">
               {workshopProfile.address}, {workshopProfile.city} · PAN/VAT: {workshopProfile.panVatNumber}
@@ -753,7 +753,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       {/* Subtle Bottom Footer */}
       <footer className="text-center py-3 text-xs text-[#64748B] border-t border-[#E2E8F0] bg-[#FFFFFF]">
-        Multi-Brand Workshop DMS &amp; ERP · Nepal IRD 13% VAT Compliant
+        AutoCraft Pro · Nepal IRD 13% VAT Compliant
       </footer>
     </div>
   );

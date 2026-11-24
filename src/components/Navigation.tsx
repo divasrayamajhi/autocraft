@@ -159,10 +159,10 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-sm font-bold tracking-tight truncate leading-tight text-white">
-                {profile?.name || 'Continental Auto Kraft'}
+                AutoCraft Pro
               </h1>
               <p className="text-[11px] text-sky-200/80 font-medium truncate mt-0.5">
-                Workshop DMS &amp; ERP
+                {profile?.name || 'AutoCraft Pro Workshop'}
               </p>
             </div>
           </div>
