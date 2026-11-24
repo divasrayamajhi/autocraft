@@ -12,6 +12,21 @@ import { adToBs, getNepalFiscalYearFromAd } from './nepaliDate';
 export const round2 = (value: number): number =>
   Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
 
+/**
+ * Free Car Service waives labor charges ONLY for Periodic Maintenance Service (PMS) - 45-Point Checkup.
+ * All other labor tasks (brake overhaul, clutch, AC, alignment, dent/paint, custom jobs) remain billable.
+ */
+export const isFreeServicePmsLabor = (code?: string, name?: string): boolean => {
+  const cleanCode = (code || '').trim().toUpperCase();
+  if (cleanCode === 'SRV-GEN-PMS') return true;
+  const cleanName = (name || '').trim().toLowerCase();
+  if (!cleanName) return false;
+  return (
+    (cleanName.includes('periodic maintenance service') && (cleanName.includes('pms') || cleanName.includes('45-point') || cleanName.includes('45 point'))) ||
+    (cleanName.includes('pms') && (cleanName.includes('45-point') || cleanName.includes('45 point')))
+  );
+};
+
 export const formatAccountingNPR = (amount: number, showDecimals = false): string => {
   const num = Number(amount) || 0;
   const abs = Math.abs(num);

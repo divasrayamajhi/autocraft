@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { JobCard, WorkshopProfile } from '../../types';
 import { Printer, X, Share2, Wrench, Car, User, Calendar, Clock, CheckCircle2, Shield } from 'lucide-react';
 import { printElement } from '../../utils/printDocument';
+import { useEscapeKey, usePrintShortcut } from '../../hooks/useKeyboardShortcuts';
 
 interface PrintJobCardModalProps {
   jobCard: JobCard;
@@ -28,6 +29,9 @@ export const PrintJobCardModal: React.FC<PrintJobCardModalProps> = ({
   const handlePrint = () => {
     printElement(printAreaRef.current, `Job-Card-${jobCard.jobCardNumber}`);
   };
+
+  useEscapeKey(true, onClose);
+  usePrintShortcut(true, handlePrint);
 
   const handleWhatsApp = () => {
     if (onWhatsAppShare) {

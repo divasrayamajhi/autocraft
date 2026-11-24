@@ -11,9 +11,11 @@ import {
   MessageSquare,
   Send,
   CheckCheck,
+  Keyboard,
 } from 'lucide-react';
 import { ReadyNotificationLog, UserAccount, WorkshopProfile } from '../types';
 import { adToBs, formatAdDateReadable, getTodayAd } from '../utils/nepaliDate';
+import { useEscapeKey } from '../hooks/useKeyboardShortcuts';
 
 interface NavbarProps {
   profile: WorkshopProfile;
@@ -27,6 +29,7 @@ interface NavbarProps {
   isCloudSynced: boolean;
   lastSyncTime: string;
   onOpenCloudModal: () => void;
+  onOpenShortcuts?: () => void;
   onOpenProfileModal?: () => void;
   onToggleMobileMenu?: () => void;
   isMobileMenuOpen?: boolean;
@@ -58,11 +61,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenNewAccountModal,
   isCloudSynced,
   onOpenCloudModal,
+  onOpenShortcuts,
   onToggleMobileMenu,
   isMobileMenuOpen = false,
   activeTab = 'dashboard',
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+
+  useEscapeKey(isNotifOpen, () => setIsNotifOpen(false));
 
   const pageTitle = TAB_TITLES[activeTab] || profile.name;
   const todayAd = getTodayAd();
@@ -114,6 +120,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[#CBD5E1]">|</span>
             <span className="text-[#64748B] font-mono">{formatAdDateReadable(todayAd)} AD</span>
           </div>
+
+          {/* Keyboard Shortcuts Reference Button */}
+          {onOpenShortcuts && (
+            <button
+              type="button"
+              onClick={onOpenShortcuts}
+              className="hidden sm:inline-flex items-center space-x-1 p-2 rounded-lg text-[#64748B] hover:text-[#0F3D5E] hover:bg-[#F1F5F9] border border-[#E2E8F0] transition"
+              title="Keyboard Shortcuts (Shift + ? or Alt + K)"
+              aria-label="Open keyboard shortcuts"
+            >
+              <Keyboard className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Vehicle Ready SMS & Message Notifications Bell */}
           <div className="relative">

@@ -1447,8 +1447,19 @@ export class StorageService {
       const taxable = Number(inv.taxableAmount ?? inv.totalTaxableAmount ?? inv.subTotal ?? 0);
       const vat = Number(inv.vatAmount ?? inv.totalVatAmount ?? Math.round(taxable * 0.13));
       const grandTotal = Number(inv.grandTotal ?? (taxable + vat));
-      const status = inv.status || inv.paymentStatus || 'Unpaid';
-      const paymentStatus = inv.paymentStatus || inv.status || 'Unpaid';
+      const isCN = inv.type === 'Credit Note' || grandTotal < 0;
+      const rawPaid = Number(inv.paidAmount ?? inv.amountPaid ?? ((inv.status === 'Paid' || inv.paymentStatus === 'Paid') ? grandTotal : 0));
+      const isSettled = !isCN && (grandTotal <= 0.01 || rawPaid >= grandTotal - 0.01 || inv.status === 'Paid' || inv.paymentStatus === 'Paid');
+      const status = isCN
+        ? 'Paid'
+        : isSettled
+          ? 'Paid'
+          : rawPaid > 0.01
+            ? 'Partially Paid'
+            : (inv.status || inv.paymentStatus || 'Unpaid');
+      const paymentStatus = status;
+      const paidAmount = isCN ? rawPaid : (isSettled ? Math.max(rawPaid, grandTotal) : rawPaid);
+      const balanceDue = isCN || isSettled ? 0 : Math.max(0, Number(inv.balanceDue ?? (grandTotal - paidAmount)));
 
       return {
         ...inv,
@@ -1462,9 +1473,9 @@ export class StorageService {
         grandTotal,
         status,
         paymentStatus,
-        paidAmount: Number(inv.paidAmount ?? inv.amountPaid ?? (status === 'Paid' ? grandTotal : 0)),
-        amountPaid: Number(inv.amountPaid ?? inv.paidAmount ?? (status === 'Paid' ? grandTotal : 0)),
-        balanceDue: Number(inv.balanceDue ?? (status === 'Paid' ? 0 : grandTotal)),
+        paidAmount,
+        amountPaid: paidAmount,
+        balanceDue,
         items: Array.isArray(inv.items) ? inv.items : [],
         payments: Array.isArray(inv.payments) ? inv.payments : []
       };

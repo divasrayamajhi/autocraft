@@ -16,6 +16,7 @@ import {
   Hash,
 } from 'lucide-react';
 import { formatAccountingNPR, round2 } from '../../utils/accountingEngine';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 export interface TaxInvoiceGenerationOptions {
   companyBilling?: CompanyBillingDetails;
@@ -73,6 +74,8 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
     setErrorMsg('');
   }, [isOpen, jobCard, customer]);
 
+  useEscapeKey(isOpen, onClose);
+
   if (!isOpen || !jobCard) return null;
 
   const billedPartSet = new Set(jobCard.billedPartIds || []);
@@ -90,12 +93,12 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
   );
   const laborSubtotal = round2(
     rawLabor.reduce(
-      (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000))),
+      (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour ?? 0))),
       0
     )
   );
   const taxableAmount = round2(partsSubtotal + laborSubtotal);
-  const vatAmount = Math.round(taxableAmount * 0.13);
+  const vatAmount = round2(taxableAmount * 0.13);
   const grandTotal = round2(taxableAmount + vatAmount);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -209,6 +212,15 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
               </span>
             </div>
           </div>
+
+          {grandTotal <= 0.01 && (
+            <div className="bg-emerald-50 border border-emerald-200 text-[#16A34A] px-3.5 py-2 rounded-lg text-[11px] font-semibold flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Free Service — Rs. 0 Payable. This invoice will be automatically marked <strong>Paid</strong> upon generation.
+              </span>
+            </div>
+          )}
 
           {/* Billing Entity Switcher */}
           <div>

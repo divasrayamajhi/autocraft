@@ -50,6 +50,7 @@ import { JobCardDetailModal } from './JobCardDetailModal';
 import { ServicePriceItem, WorkshopBay } from '../../types';
 import { DualCalendarPicker } from '../common/DualCalendarPicker';
 import { adToBs } from '../../utils/nepaliDate';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface JobCardManagementProps {
   jobCards: JobCard[];
@@ -80,6 +81,7 @@ interface JobCardManagementProps {
     refundMethod: NepalPaymentMethod
   ) => void;
   onTriggerReadyNotification?: (jc: JobCard) => void;
+  openIntakeTrigger?: number;
 }
 
 const KANBAN_COLUMNS: { id: JobCardStatus; title: string; accent: string; badgeBg: string }[] = [
@@ -114,7 +116,8 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   onViewInvoice,
   onCreateQuotation,
   onCreateCreditNote,
-  onTriggerReadyNotification
+  onTriggerReadyNotification,
+  openIntakeTrigger
 }) => {
   const safeJobCards = jobCards || [];
   const safeAppointments = appointments || [];
@@ -413,6 +416,24 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const [aptDate, setAptDate] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16));
   const [aptService, setAptService] = useState('Periodic Maintenance Service');
   const [aptComplaints, setAptComplaints] = useState('');
+
+  // ESC closes Intake / Appointment dialogs cleanly
+  useEscapeKey(isIntakeModalOpen, () => setIsIntakeModalOpen(false));
+  useEscapeKey(isNewAptModalOpen, () => setIsNewAptModalOpen(false));
+
+  // Allow global Alt+N shortcut to open Vehicle Intake directly
+  const prevIntakeTriggerRef = useRef<number | undefined>(openIntakeTrigger);
+  useEffect(() => {
+    if (
+      openIntakeTrigger !== undefined &&
+      openIntakeTrigger > 0 &&
+      openIntakeTrigger !== prevIntakeTriggerRef.current
+    ) {
+      prevIntakeTriggerRef.current = openIntakeTrigger;
+      resetIntakeForm();
+      setIsIntakeModalOpen(true);
+    }
+  }, [openIntakeTrigger]);
 
   // Generate official appointment confirmation message for SMS/WhatsApp
   const getAppointmentShareText = (apt: Appointment) => {
@@ -910,9 +931,6 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const updatedJc: JobCard = { ...jc, status: targetStage };
     onUpdateJobCard(updatedJc);
     syncBayForStage(updatedJc, targetStage);
-    if (targetStage === 'Ready for Billing' && onTriggerReadyNotification) {
-      onTriggerReadyNotification(updatedJc);
-    }
   };
 
   // Advance Stage in Kanban
@@ -1710,6 +1728,11 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                     Free Service (Warranty / Coupon)
                   </button>
                 </div>
+                {intakeServiceBillingType === 'Free Service' && (
+                  <p className="text-[10px] text-[#16A34A] font-medium">
+                    Free Service waives labor only for Periodic Maintenance Service (PMS) - 45-Point Checkup. Other labor tasks &amp; spare parts remain billable.
+                  </p>
+                )}
               </div>
 
               {/* Vehicle Registration with Search Button */}

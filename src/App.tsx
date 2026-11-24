@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   storage, 
   AppDatabase 
@@ -21,7 +21,13 @@ import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { CloudSyncModal } from './components/common/CloudSyncModal';
 import { PrintInvoiceModal } from './components/common/PrintInvoiceModal';
 import { PrintGatePassModal } from './components/common/PrintGatePassModal';
+import { KeyboardShortcutsModal } from './components/common/KeyboardShortcutsModal';
 import { AuthScreen } from './components/auth/AuthScreen';
+import {
+  ensureGlobalEscapeListener,
+  isEditableTarget,
+  useEscapeKey,
+} from './hooks/useKeyboardShortcuts';
 import { 
   JobCard, 
   Invoice, 
@@ -73,6 +79,72 @@ export default function App() {
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [printGatePass, setPrintGatePass] = useState<GatePass | null>(null);
   const [activeReadyToast, setActiveReadyToast] = useState<ReadyNotificationLog | null>(null);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [quickIntakeTrigger, setQuickIntakeTrigger] = useState(0);
+
+  // Register global ESC listener & close top-level overlays via LIFO stack
+  useEscapeKey(isMobileNavOpen, () => setIsMobileNavOpen(false));
+  useEscapeKey(isNewAccountModalOpen, () => setIsNewAccountModalOpen(false));
+  useEscapeKey(Boolean(printGatePass), () => setPrintGatePass(null));
+
+  useEffect(() => {
+    ensureGlobalEscapeListener();
+
+    const TAB_SHORTCUTS: Record<string, TabType> = {
+      '1': 'dashboard',
+      '2': 'jobcards',
+      '3': 'customers',
+      '4': 'inventory',
+      '5': 'billing',
+      '6': 'accounting',
+      '7': 'insurance',
+      '8': 'warranty',
+      '9': 'analytics',
+      '0': 'admin_settings',
+    };
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!isAuthenticated) return;
+
+      // Alt + K or Shift + ? (outside editable inputs) -> Keyboard Shortcuts dialog
+      if ((e.altKey && e.key.toLowerCase() === 'k') || (e.key === '?' && !isEditableTarget(e.target))) {
+        e.preventDefault();
+        setIsShortcutsModalOpen((prev) => !prev);
+        return;
+      }
+
+      // Alt + N -> Quick New Vehicle Intake (Job Cards)
+      if (e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setActiveTab('jobcards');
+        setQuickIntakeTrigger((n) => n + 1);
+        return;
+      }
+
+      // Alt + 1..9 / 0 -> Switch primary modules
+      if (e.altKey && !e.ctrlKey && !e.metaKey && TAB_SHORTCUTS[e.key]) {
+        e.preventDefault();
+        setActiveTab(TAB_SHORTCUTS[e.key]);
+        setIsMobileNavOpen(false);
+        return;
+      }
+
+      // "/" outside inputs -> Focus current module's search input
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)) {
+        const searchInput = document.querySelector<HTMLInputElement>(
+          'main input[type="text"], main input[type="search"]'
+        );
+        if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isAuthenticated]);
 
   // Sync state changes with persistence
   const updateDb = (partial: Partial<AppDatabase>) => {
@@ -225,12 +297,13 @@ export default function App() {
       0
     );
     const laborSubtotal = rawLabor.reduce(
-      (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour || 1000))),
+      (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour ?? 0))),
       0
     );
     const taxableAmount = round2(partsSubtotal + laborSubtotal);
     const vatAmount = round2(taxableAmount * 0.13);
     const grandTotal = round2(taxableAmount + vatAmount);
+    const isZeroDue = grandTotal <= 0.01;
 
     const cb = options?.companyBilling;
     const isCompanyBill = Boolean(cb?.isCompanyBill && cb.companyName?.trim());
@@ -268,9 +341,11 @@ export default function App() {
       vatAmount,
       grandTotal,
       paidAmount: 0,
-      balanceDue: grandTotal,
+      amountPaid: 0,
+      balanceDue: isZeroDue ? 0 : grandTotal,
       paymentMethod: options?.paymentMethod || 'Fonepay',
-      status: 'Unpaid',
+      status: isZeroDue ? 'Paid' : 'Unpaid',
+      paymentStatus: isZeroDue ? 'Paid' : 'Unpaid',
       createdAt: todayIso,
       type: jc.isInsuranceClaim ? 'Split Invoice - Customer Share' : 'Tax Invoice',
       isLocked: false,
@@ -416,8 +491,10 @@ export default function App() {
       };
     });
 
-    // Post balanced Double-Entry GL Journal Entry for this IRD Tax Invoice
-    const invJv = buildInvoiceJournalEntry(newInvoice, (db.journalEntries || []).length);
+    // Post balanced Double-Entry GL Journal Entry for non-zero IRD Tax Invoices
+    const invJv = grandTotal > 0.01
+      ? buildInvoiceJournalEntry(newInvoice, (db.journalEntries || []).length)
+      : null;
     const updatedJournalEntries = invJv ? [invJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
     const updatedGlAccounts = invJv ? applyJournalEntryToAccounts(db.glAccounts || [], invJv) : (db.glAccounts || []);
 
@@ -560,23 +637,28 @@ export default function App() {
     if (!inv) return;
     if (isCreditNoteInvoice(inv)) return;
 
+    const grandTotal = round2(inv.grandTotal ?? 0);
     const currentPaid = round2(inv.paidAmount ?? inv.amountPaid ?? 0);
-    const currentDue = round2(inv.balanceDue ?? Math.max(0, (inv.grandTotal || 0) - currentPaid));
+    const currentDue = round2(Math.max(0, grandTotal - currentPaid));
     const appliedAmount = round2(Math.min(Math.max(0, Number(amount) || 0), currentDue));
-    if (appliedAmount <= 0) return;
+
+    // If balance is already Rs. 0 (e.g., Free Service Rs. 0 invoice or settled bill still stuck on Unpaid), normalize to Paid
+    if (appliedAmount <= 0 && currentDue > 0.01) return;
 
     const newPaid = round2(currentPaid + appliedAmount);
-    const newBalance = round2(Math.max(0, (inv.grandTotal || 0) - newPaid));
+    const newBalance = round2(Math.max(0, grandTotal - newPaid));
     const newStatus: Invoice['status'] = newBalance <= 0.01 ? 'Paid' : 'Partially Paid';
     const nowIso = new Date().toISOString();
 
-    const newPaymentRecord = {
-      id: `PAY-${Date.now().toString().slice(-6)}`,
-      method: method as any,
-      amount: appliedAmount,
-      referenceNumber: ref || `RCPT-${Date.now().toString().slice(-5)}`,
-      date: nowIso
-    };
+    const newPaymentRecord = appliedAmount > 0
+      ? {
+          id: `PAY-${Date.now().toString().slice(-6)}`,
+          method: method as any,
+          amount: appliedAmount,
+          referenceNumber: ref || `RCPT-${Date.now().toString().slice(-5)}`,
+          date: nowIso
+        }
+      : null;
 
     const updatedInv: Invoice = {
       ...inv,
@@ -586,8 +668,8 @@ export default function App() {
       status: newStatus,
       paymentStatus: newStatus,
       paymentMethod: method,
-      paymentReference: ref || newPaymentRecord.referenceNumber,
-      payments: [...(inv.payments || []), newPaymentRecord]
+      paymentReference: ref || newPaymentRecord?.referenceNumber || inv.paymentReference,
+      payments: newPaymentRecord ? [...(inv.payments || []), newPaymentRecord] : (inv.payments || [])
     };
 
     const updatedInvoices = db.invoices.map(i => i.id === updatedInv.id ? updatedInv : i);
@@ -599,15 +681,17 @@ export default function App() {
         : gp
     );
 
-    // Post balanced Double-Entry Receipt Voucher (Dr Cash/Bank/Gateway, Cr Accounts Receivable 1100)
-    const payJv = buildPaymentJournalEntry(
-      updatedInv,
-      appliedAmount,
-      method,
-      newPaymentRecord.referenceNumber,
-      nowIso.slice(0, 10),
-      (db.journalEntries || []).length
-    );
+    // Post balanced Double-Entry Receipt Voucher only when cash/bank movement > 0
+    const payJv = appliedAmount > 0
+      ? buildPaymentJournalEntry(
+          updatedInv,
+          appliedAmount,
+          method,
+          newPaymentRecord?.referenceNumber || `RCPT-${Date.now().toString().slice(-5)}`,
+          nowIso.slice(0, 10),
+          (db.journalEntries || []).length
+        )
+      : null;
     const updatedJournalEntries = payJv ? [payJv, ...(db.journalEntries || [])] : (db.journalEntries || []);
     const updatedGlAccounts = payJv ? applyJournalEntryToAccounts(db.glAccounts || [], payJv) : (db.glAccounts || []);
 
@@ -1361,6 +1445,7 @@ export default function App() {
           isCloudSynced={db.isCloudSynced}
           lastSyncTime={db.lastCloudSync}
           onOpenCloudModal={() => setIsCloudModalOpen(true)}
+          onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
           onToggleMobileMenu={() => setIsMobileNavOpen(!isMobileNavOpen)}
           isMobileMenuOpen={isMobileNavOpen}
           activeTab={activeTab}
@@ -1439,6 +1524,7 @@ export default function App() {
               onCreateQuotation={handleCreateQuotation}
               onCreateCreditNote={handleCreateCreditNote}
               onTriggerReadyNotification={handleTriggerReadyNotification}
+              openIntakeTrigger={quickIntakeTrigger}
             />
           )}
 
@@ -1575,43 +1661,33 @@ export default function App() {
         />
       )}
 
-      {/* Global Printable Nepal IRD Tax Invoice Modal */}
-      {printInvoice && (
-        <PrintInvoiceModal
-          invoice={printInvoice}
-          jobCard={(db.jobCards || []).find(
-            jc => jc.id === printInvoice.jobCardId || jc.jobCardNumber === printInvoice.jobCardNumber
-          )}
-          profile={db.profile}
-          onClose={() => setPrintInvoice(null)}
-          onCreateCreditNote={handleCreateCreditNote}
-          onOpenGatePass={(inv) => {
-            const now = new Date();
-            const pass = (db.gatePasses || []).find(gp => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id) || {
-              id: `GP-${Date.now().toString().slice(-6)}`,
-              passNumber: `GP-81-${Math.floor(1000 + Math.random() * 9000)}`,
-              invoiceId: inv.id,
-              invoiceNumber: inv.invoiceNumber,
-              jobCardNumber: inv.jobCardNumber,
-              vehicleReg: inv.vehicleReg,
-              vehicleMake: inv.vehicleBrand || 'Multi-Brand',
-              vehicleModel: inv.vehicleModel,
-              odometerReading: 0,
-              customerName: inv.customerName,
-              customerPhone: inv.customerPhone,
-              issueDate: now.toISOString().slice(0, 10),
-              issueTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              authorizedBy: currentUser?.name || 'Workshop Manager',
-              securityOfficerName: 'Main Gate Security',
-              status: 'Cleared for Exit' as const,
-              totalInvoiceAmount: inv.grandTotal,
-              paymentStatus: inv.status
-            };
-            setPrintInvoice(null);
-            setPrintGatePass(pass);
-          }}
-        />
-      )}
+      {/* Global Printable Nepal IRD Tax Invoice Modal (Live-Resolved with Integrated Gate Pass Footer) */}
+      {(() => {
+        const activePrintInvoice = printInvoice
+          ? (db.invoices || []).find((i) => i.id === printInvoice.id) || printInvoice
+          : null;
+        if (!activePrintInvoice) return null;
+        return (
+          <PrintInvoiceModal
+            invoice={activePrintInvoice}
+            jobCard={(db.jobCards || []).find(
+              jc => jc.id === activePrintInvoice.jobCardId || jc.jobCardNumber === activePrintInvoice.jobCardNumber
+            )}
+            gatePass={(db.gatePasses || []).find(
+              gp => gp.invoiceId === activePrintInvoice.id || gp.invoiceNumber === activePrintInvoice.invoiceNumber
+            )}
+            profile={db.profile}
+            onClose={() => setPrintInvoice(null)}
+            onCreateCreditNote={handleCreateCreditNote}
+          />
+        );
+      })()}
+
+      {/* Keyboard Shortcuts Reference Dialog */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+      />
 
       {/* Global Printable Nepal Vehicle Gate Pass Modal */}
       {printGatePass && (

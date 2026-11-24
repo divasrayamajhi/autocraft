@@ -1,17 +1,18 @@
 import React, { useRef, useState } from 'react';
-import { Invoice, JobCard, NepalPaymentMethod, WorkshopProfile } from '../../types';
-import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Lock, RotateCcw } from 'lucide-react';
+import { GatePass, Invoice, JobCard, NepalPaymentMethod, WorkshopProfile } from '../../types';
+import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Lock, RotateCcw, Scissors } from 'lucide-react';
 import { printElement, numberToWordsNPR, formatNPR } from '../../utils/printDocument';
 import { adToBs } from '../../utils/nepaliDate';
 import { formatAccountingNPR, round2 } from '../../utils/accountingEngine';
+import { useEscapeKey, usePrintShortcut } from '../../hooks/useKeyboardShortcuts';
 
 interface PrintInvoiceModalProps {
   invoice: Invoice;
   jobCard?: JobCard;
+  gatePass?: GatePass;
   profile?: WorkshopProfile;
   onClose: () => void;
   onWhatsAppShare?: (invoice: Invoice) => void;
-  onOpenGatePass?: (invoice: Invoice) => void;
   onCreateCreditNote?: (
     originalInv: Invoice,
     refundTaxable: number,
@@ -23,10 +24,10 @@ interface PrintInvoiceModalProps {
 export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   invoice,
   jobCard,
+  gatePass,
   profile,
   onClose,
   onWhatsAppShare,
-  onOpenGatePass,
   onCreateCreditNote
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
@@ -76,16 +77,35 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   const isCreditNote = invoice.type === 'Credit Note' || grandTotal < 0;
   const docTitle = isCreditNote ? 'CREDIT NOTE' : 'TAX INVOICE';
 
+  // Ensure Rs. 0 Free Service bills and fully-paid invoices always reflect Paid status
+  const effectiveStatus: Invoice['status'] = isCreditNote
+    ? 'Paid'
+    : invoice.status === 'Paid' || grandTotal <= 0.01 || paidAmount >= grandTotal - 0.01 || balanceDue <= 0.01
+      ? 'Paid'
+      : paidAmount > 0.01
+        ? 'Partially Paid'
+        : 'Unpaid';
+  const effectiveBalanceDue = effectiveStatus === 'Paid' ? 0 : Math.max(0, round2(grandTotal - paidAmount));
+
   const statusBadge =
-    invoice.status === 'Paid'
+    effectiveStatus === 'Paid'
       ? 'bg-green-50 text-[#16A34A] border-green-300'
-      : invoice.status === 'Partially Paid'
+      : effectiveStatus === 'Partially Paid'
         ? 'bg-amber-50 text-[#B45309] border-amber-300'
         : 'bg-red-50 text-[#DC2626] border-red-300';
 
   const handlePrint = () => {
     printElement(printAreaRef.current, `${docTitle.replace(/\s+/g, '-')}-${invoice.invoiceNumber}`);
   };
+
+  // ESC closes inner Credit Note dialog first, then the invoice preview; Ctrl/Cmd+P prints
+  useEscapeKey(true, onClose);
+  useEscapeKey(isCnOpen, () => setIsCnOpen(false));
+  usePrintShortcut(!isCnOpen, handlePrint);
+
+  const gatePassNumber = gatePass?.passNumber || `GP-${invoice.invoiceNumber.replace(/^TAX-/, '')}`;
+  const gatePassAuthBy = gatePass?.authorizedBy || 'Workshop Manager';
+  const gatePassTime = gatePass?.issueTime || new Date(invoice.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const defaultWhatsApp = () => {
     if (onWhatsAppShare) {
@@ -126,17 +146,6 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Add Credit Note</span>
-              </button>
-            )}
-            {onOpenGatePass && (
-              <button
-                type="button"
-                onClick={() => onOpenGatePass(invoice)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#0F3D5E] hover:bg-[#0B2F49] text-white text-xs font-semibold rounded-lg transition"
-                title="View / Print Security Gate Pass"
-              >
-                <Shield className="w-3.5 h-3.5 text-[#0EA5E9]" />
-                <span>Gate Pass</span>
               </button>
             )}
             <button
@@ -242,7 +251,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     </div>
                   </div>
                   <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded ${statusBadge}`}>
-                    {invoice.status || 'Unpaid'}
+                    {effectiveStatus}
                   </span>
                 </div>
               </div>
@@ -478,8 +487,8 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     </div>
                     <div className="flex justify-between px-3.5 py-2 bg-[#FFFFFF]">
                       <span className="font-bold text-[#0F172A]">Balance Due</span>
-                      <span className={`font-mono font-bold tabular-nums ${balanceDue > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
-                        NPR {formatNPR(balanceDue)}
+                      <span className={`font-mono font-bold tabular-nums ${effectiveBalanceDue > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
+                        NPR {formatNPR(effectiveBalanceDue)}
                       </span>
                     </div>
                   </div>
@@ -513,6 +522,117 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Compact Detachable Vehicle Exit Gate Pass Footer Section (replaces separate A4 Gate Pass) */}
+              {!isCreditNote && (
+                <div className="pt-4 mt-2 border-t-2 border-dashed border-[#94A3B8] print-avoid-break">
+                  <div className="flex items-center justify-between text-[9px] text-[#64748B] uppercase tracking-wider mb-2">
+                    <span className="inline-flex items-center space-x-1 font-semibold">
+                      <Scissors className="w-3 h-3 text-[#64748B]" />
+                      <span>Detach Along Perforation — Present Slip to Main Gate Security</span>
+                    </span>
+                    <span className="font-mono font-bold text-[#0F3D5E]">{workshopName}</span>
+                  </div>
+
+                  <div className="border border-[#0F3D5E] rounded-lg overflow-hidden">
+                    <div className="bg-[#0F3D5E] text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center space-x-1.5">
+                        <Shield className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider">
+                          Vehicle Exit Gate Pass
+                        </span>
+                        <span className="text-[10px] font-mono text-sky-200">
+                          #{gatePassNumber}
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider ${
+                          effectiveStatus === 'Paid'
+                            ? 'bg-[#16A34A] text-white'
+                            : 'bg-[#DC2626] text-white'
+                        }`}
+                      >
+                        {effectiveStatus === 'Paid'
+                          ? 'PAID — CLEARED FOR EXIT'
+                          : `BALANCE DUE (NPR ${formatNPR(effectiveBalanceDue)}) — HOLD AT GATE`}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-[#FFFFFF] space-y-2.5 text-[10px]">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1.5">
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Vehicle Reg #</span>
+                          <span className="font-mono font-extrabold text-[#0F172A] text-[11px]">
+                            {invoice.vehicleReg || 'N/A'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Make / Model</span>
+                          <span className="font-semibold text-[#0F172A]">
+                            {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Job Card / Invoice #</span>
+                          <span className="font-mono font-semibold text-[#0F172A]">
+                            {invoice.jobCardNumber || 'DIRECT'} · {invoice.invoiceNumber}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Date (B.S. / A.D.)</span>
+                          <span className="font-mono font-semibold text-[#0F3D5E]">
+                            {bsDateObj.formatted} BS
+                          </span>{' '}
+                          <span className="text-[#64748B] font-mono">({isoDate})</span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Owner / Company</span>
+                          <span className="font-semibold text-[#0F172A] truncate block">
+                            {invoice.companyName || invoice.customerName}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Contact Phone</span>
+                          <span className="font-mono text-[#0F172A]">
+                            {invoice.companyPhone || invoice.customerPhone || 'N/A'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">VIN / Odometer</span>
+                          <span className="font-mono text-[#0F172A]">
+                            {vinNumber ? `${vinNumber.slice(-8)}` : 'N/A'}
+                            {odometer !== undefined && odometer > 0 ? ` · ${odometer.toLocaleString('en-IN')} km` : ''}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Bill Total / Issued</span>
+                          <span className="font-mono font-bold text-[#0F172A]">
+                            NPR {formatNPR(grandTotal)} · {gatePassTime}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4 pt-3 mt-1 border-t border-[#E2E8F0] text-center">
+                        <div>
+                          <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
+                            Authorized By ({gatePassAuthBy})
+                          </div>
+                        </div>
+                        <div>
+                          <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
+                            Main Gate Security Sign
+                          </div>
+                        </div>
+                        <div>
+                          <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
+                            Actual Exit Time: ____:____
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

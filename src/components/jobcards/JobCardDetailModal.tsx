@@ -53,7 +53,8 @@ import { PrintJobCardModal } from './PrintJobCardModal';
 import { GenerateTaxInvoiceModal, TaxInvoiceGenerationOptions } from '../billing/GenerateTaxInvoiceModal';
 import { DualCalendarPicker } from '../common/DualCalendarPicker';
 import { adToBs } from '../../utils/nepaliDate';
-import { formatAccountingNPR, isCreditNoteInvoice, round2 } from '../../utils/accountingEngine';
+import { formatAccountingNPR, isCreditNoteInvoice, isFreeServicePmsLabor, round2 } from '../../utils/accountingEngine';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface JobCardDetailModalProps {
   jobCard: JobCard;
@@ -171,6 +172,11 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   const [cnMethod, setCnMethod] = useState<NepalPaymentMethod>('Cash');
   const [cnSuccessMsg, setCnSuccessMsg] = useState<string | null>(null);
 
+  // ESC closes the topmost modal (LIFO order: nested sub-dialogs close before this modal)
+  useEscapeKey(true, onClose);
+  useEscapeKey(Boolean(creditNoteTarget), () => setCreditNoteTarget(null));
+  useEscapeKey(isReopenModalOpen, () => setIsReopenModalOpen(false));
+
   const STAGES: JobCardStatus[] = [
     'Vehicle Check-in',
     'Bay Assigned (In Progress)',
@@ -274,18 +280,50 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
     syncBayForStatus(updated, newStatus);
-    if (newStatus === 'Ready for Billing') {
-      setReadyBannerMsg(
-        `Status updated to Ready for Billing and ${updated.bayNumber || 'assigned bay'} marked Available. Send pickup SMS to owner below.`
-      );
-      onTriggerReadyNotification?.(updated);
-    }
+  };
+
+  // Auto-update workflow stage to Ready for Billing -> release bay -> THEN ONLY send Vehicle Ready SMS -> open Tax Invoice modal
+  const handleProceedToTaxInvoice = (onlyUnbilled: boolean) => {
+    const targetStatus: JobCardStatus =
+      currentJobCard.status === 'Delivered' ? 'Delivered' : 'Ready for Billing';
+    const updated: JobCard = {
+      ...currentJobCard,
+      status: targetStatus,
+      readyNotificationSentAt: new Date().toISOString(),
+    };
+    setCurrentJobCard(updated);
+    onUpdateJobCard(updated);
+    syncBayForStatus(updated, targetStatus);
+    setReadyBannerMsg(
+      `Stage updated to Ready for Billing, ${updated.bayNumber || 'assigned bay'} released, and Vehicle Ready SMS triggered for ${updated.customerName}.`
+    );
+    onTriggerReadyNotification?.(updated);
+    setInvoiceOnlyUnbilled(onlyUnbilled);
+    setIsGenerateInvoiceOpen(true);
   };
 
   const handleToggleServiceBillingType = (newType: 'Paid Service' | 'Free Service') => {
     if (isLocked) return;
     setEditServiceBillingType(newType);
-    const updated: JobCard = { ...currentJobCard, serviceBillingType: newType };
+    // Re-price ONLY unbilled Periodic Maintenance Service (PMS) - 45-Point Checkup rows; keep all other labor charges unchanged
+    const updatedLaborItems = (currentJobCard.laborItems || []).map((item) => {
+      if (billedLaborSet.has(item.id)) return item;
+      if (!isFreeServicePmsLabor(item.code, item.description)) return item;
+      if (newType === 'Free Service') {
+        return { ...item, ratePerHour: 0, totalAmount: 0 };
+      }
+      const catalogMatch = (servicePrices || []).find(
+        (s) => s.code === item.code || isFreeServicePmsLabor(s.code, s.name)
+      );
+      const standardRate = catalogMatch?.fixedPrice ?? catalogMatch?.baseLaborRate ?? 2500;
+      return { ...item, ratePerHour: standardRate, totalAmount: standardRate };
+    });
+
+    const updated: JobCard = {
+      ...currentJobCard,
+      serviceBillingType: newType,
+      laborItems: updatedLaborItems,
+    };
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
   };
@@ -392,7 +430,9 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
   const handleAddLaborFromResult = (srv: ServicePriceItem) => {
     if (isLocked) return;
     const tech = technicians.find((t) => t.id === newLaborTechId);
-    const charge = isFreeService ? 0 : (srv.fixedPrice ?? srv.baseLaborRate);
+    // Free Service waives labor ONLY for Periodic Maintenance Service (PMS) - 45-Point Checkup
+    const isWaivedPms = isFreeService && isFreeServicePmsLabor(srv.code, srv.name);
+    const charge = isWaivedPms ? 0 : (srv.fixedPrice ?? srv.baseLaborRate);
     const newItem: JobCardLaborItem = {
       id: `LBR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       code: srv.code,
@@ -428,7 +468,8 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
     e.preventDefault();
     if (isLocked || !customLaborDesc.trim()) return;
     const tech = technicians.find((t) => t.id === newLaborTechId);
-    const charge = isFreeService ? 0 : Math.max(0, Number(customLaborRate) || 0);
+    const isWaivedPms = isFreeService && isFreeServicePmsLabor(customLaborCode, customLaborDesc);
+    const charge = isWaivedPms ? 0 : Math.max(0, Number(customLaborRate) || 0);
     const newItem: JobCardLaborItem = {
       id: `LBR-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       code: customLaborCode.trim().toUpperCase() || 'SRV-CUS',
@@ -510,9 +551,13 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
       requisitionStatus: 'Issued'
     };
 
-    // 3. Automatically update status to Ready for Billing once parts are issued from Parts
+    // 3. Advance status smoothly as parts are issued (SMS & Ready for Billing trigger ONLY on Proceed to IRD Tax Invoice)
     const nextStatus: JobCardStatus =
-      currentJobCard.status === 'Delivered' ? 'Delivered' : 'Ready for Billing';
+      currentJobCard.status === 'Vehicle Check-in' ||
+      currentJobCard.status === 'Appointment / Intake' ||
+      currentJobCard.status === 'Awaiting Spares'
+        ? 'Quality Check'
+        : currentJobCard.status;
 
     const updated: JobCard = {
       ...currentJobCard,
@@ -520,20 +565,11 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
       partsRequested: [...(currentJobCard.partsRequested || []), newItem]
     };
 
-    // 4. Sync Workshop Bay status automatically (Bay cleared/Available once Ready for Billing)
+    // 4. Sync Workshop Bay status automatically with updated work progress
     syncBayForStatus(updated, nextStatus);
 
     setCurrentJobCard(updated);
     onUpdateJobCard(updated);
-
-    // 5. Trigger Vehicle Ready / Pickup Notification to owner
-    if (nextStatus === 'Ready for Billing') {
-      setReadyBannerMsg(
-        `Part "${part.name}" (x${qty}) issued & stock synced. Job Card automatically updated to Ready for Billing and ${updated.bayNumber || 'bay'} released.`
-      );
-      onTriggerReadyNotification?.(updated);
-    }
-
     setPartQtyById((prev) => ({ ...prev, [part.id]: 1 }));
   };
 
@@ -1175,7 +1211,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                     <div className="flex items-center space-x-2">
                       {isFreeService && (
                         <span className="text-[10px] font-bold text-[#16A34A] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                          Free Service Active (Rs. 0 Labor)
+                          Free Service: Only PMS 45-Point Waived (Other Labor Billable)
                         </span>
                       )}
                       <select
@@ -1254,9 +1290,8 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                         <input
                           type="number"
                           min="0"
-                          value={isFreeService ? 0 : customLaborRate}
+                          value={customLaborRate}
                           onChange={(e) => setCustomLaborRate(parseFloat(e.target.value) || 0)}
-                          disabled={isFreeService}
                           placeholder="NPR"
                           className="w-24 border border-[#E2E8F0] rounded-lg px-2 py-1.5 font-mono font-bold text-xs outline-none"
                         />
@@ -1292,7 +1327,9 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       ) : (
                         <div className="max-h-56 overflow-y-auto divide-y divide-[#E2E8F0]">
                           {laborSearchResults.map((srv) => {
-                            const effectivePrice = isFreeService ? 0 : (srv.fixedPrice ?? srv.baseLaborRate);
+                            const standardPrice = srv.fixedPrice ?? srv.baseLaborRate;
+                            const isWaivedPms = isFreeService && isFreeServicePmsLabor(srv.code, srv.name);
+                            const effectivePrice = isWaivedPms ? 0 : standardPrice;
                             return (
                               <div
                                 key={srv.id}
@@ -1312,9 +1349,13 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                                     <span className="font-mono font-bold text-[#0F172A] block">
                                       Rs. {effectivePrice.toLocaleString()}
                                     </span>
-                                    {isFreeService && (
-                                      <span className="text-[9px] text-[#16A34A] font-semibold">Free Service</span>
-                                    )}
+                                    {isWaivedPms ? (
+                                      <span className="text-[9px] text-[#16A34A] font-semibold">
+                                        Free PMS Waiver <span className="line-through text-[#64748B]">Rs. {standardPrice.toLocaleString()}</span>
+                                      </span>
+                                    ) : isFreeService ? (
+                                      <span className="text-[9px] text-[#64748B] font-medium">Billable Labor</span>
+                                    ) : null}
                                   </div>
                                   <button
                                     type="button"
@@ -1407,8 +1448,8 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                       <Package className="w-3.5 h-3.5 text-[#0EA5E9]" />
                       <span>Search Spare Parts by SKU, Part Number, or Name</span>
                     </span>
-                    <span className="text-[10px] text-[#16A34A] bg-emerald-50 font-bold px-2 py-0.5 rounded border border-emerald-200">
-                      Issuing Parts Auto-Updates Stock &amp; Status → Ready for Billing
+                    <span className="text-[10px] text-[#0284C7] bg-sky-50 font-bold px-2 py-0.5 rounded border border-sky-200">
+                      Issuing Parts Auto-Deducts Spare Parts Master Stock
                     </span>
                   </div>
 
@@ -1604,7 +1645,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
               <div>
                 <h4 className="font-bold text-[#0F172A] mb-1">Automatic Bay &amp; Workflow Stage Lifecycle</h4>
                 <p className="text-[#64748B] text-xs mb-3">
-                  Stages and workshop bay occupancy update automatically as labor and parts are issued. Issuing parts advances the job card to Ready for Billing and releases the bay.
+                  Clicking &ldquo;Proceed to IRD Tax Invoice&rdquo; automatically advances this Job Card to Ready for Billing, releases the assigned workshop bay, and sends the Vehicle Ready SMS to the customer.
                 </p>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1815,12 +1856,9 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
                 {hasPaidInvoice && !isLocked && hasUnbilledAdditions && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setInvoiceOnlyUnbilled(true);
-                      setIsGenerateInvoiceOpen(true);
-                    }}
+                    onClick={() => handleProceedToTaxInvoice(true)}
                     className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
-                    title="Previous paid invoice stays Paid; generates a separate new invoice for newly added items only"
+                    title="Previous paid invoice stays Paid; updates stage to Ready for Billing, sends Ready SMS, and generates a separate new invoice for newly added items"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>
@@ -1832,10 +1870,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setInvoiceOnlyUnbilled(false);
-                  setIsGenerateInvoiceOpen(true);
-                }}
+                onClick={() => handleProceedToTaxInvoice(false)}
                 className="px-5 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5"
               >
                 <FileText className="w-4 h-4" />

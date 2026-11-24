@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Cloud, RefreshCw, Download, Upload, RotateCcw, CheckCircle2, AlertCircle, HardDrive } from 'lucide-react';
 import { storage, AppDatabase } from '../../services/storageService';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface CloudSyncModalProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importError, setImportError] = useState<string | null>(null);
+
+  useEscapeKey(Boolean(isOpen), onClose);
 
   if (!isOpen) return null;
 

@@ -19,7 +19,6 @@ import {
   CreditCard,
   QrCode,
   ShieldCheck,
-  Shield,
   Lock,
   X,
   CalendarDays,
@@ -38,6 +37,7 @@ import {
   round2,
   toNepalBsDate,
 } from '../../utils/accountingEngine';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface BillingManagementProps {
   invoices: Invoice[];
@@ -108,6 +108,17 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
 
   // Notification Banner
   const [notification, setNotification] = useState<string | null>(null);
+
+  // ESC closes active Billing dialogs in LIFO order
+  useEscapeKey(Boolean(qrModalInvoice), () => setQrModalInvoice(null));
+  useEscapeKey(Boolean(paymentInvoice), () => setPaymentInvoice(null));
+  useEscapeKey(Boolean(creditNoteSource), () => setCreditNoteSource(null));
+  useEscapeKey(isJobCardPickerOpen, () => setIsJobCardPickerOpen(false));
+
+  // Always resolve the print preview invoice live so Paid / Balance updates reflect immediately
+  const livePrintInvoice = selectedInvoiceForPrint
+    ? invoices.find((i) => i.id === selectedInvoiceForPrint.id) || selectedInvoiceForPrint
+    : null;
 
   const unbilledJobCards = useMemo(() => {
     return (jobCards || []).filter((jc) => {
@@ -456,9 +467,6 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                 const isCN = isCreditNoteInvoice(inv);
                 const synced = isInvoiceSyncedToCbms(inv);
                 const dateStr = (inv.date || inv.createdAt || '').slice(0, 10);
-                const matchedGatePass = gatePasses.find(
-                  (gp) => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id
-                );
 
                 return (
                   <div
@@ -600,16 +608,6 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                           Sync CBMS
                         </button>
                       )}
-
-                      {matchedGatePass && onViewGatePass && (
-                        <button
-                          onClick={() => onViewGatePass(matchedGatePass)}
-                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#16A34A] border border-emerald-200 rounded-lg text-[11px] font-semibold flex items-center space-x-1"
-                        >
-                          <Shield className="w-3.5 h-3.5" />
-                          <span>Gate Pass</span>
-                        </button>
-                      )}
                     </div>
                   </div>
                 );
@@ -645,9 +643,6 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                       const isCN = isCreditNoteInvoice(inv);
                       const synced = isInvoiceSyncedToCbms(inv);
                       const dateStr = (inv.date || inv.createdAt || '').slice(0, 10);
-                      const matchedGatePass = gatePasses.find(
-                        (gp) => gp.invoiceNumber === inv.invoiceNumber || gp.invoiceId === inv.id
-                      );
 
                       return (
                         <tr
@@ -810,16 +805,6 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                                 </button>
                               )}
 
-                              {matchedGatePass && onViewGatePass && (
-                                <button
-                                  onClick={() => onViewGatePass(matchedGatePass)}
-                                  className="p-1.5 text-[#16A34A] hover:bg-emerald-50 rounded-lg transition"
-                                  title={`Print Gate Pass ${matchedGatePass.passNumber}`}
-                                >
-                                  <Shield className="w-4 h-4" />
-                                </button>
-                              )}
-
                               <button
                                 onClick={() => handleSendWhatsApp(inv)}
                                 className="p-1.5 text-[#0284C7] hover:bg-sky-50 rounded-lg transition"
@@ -953,9 +938,13 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
               onSubmit={(e) => {
                 e.preventDefault();
                 const applied = round2(Math.min(Math.max(0, payAmount), paymentDue));
-                if (applied <= 0) return;
+                if (paymentDue > 0.01 && applied <= 0) return;
                 onRecordPayment(paymentInvoice.id, applied, payMethod, payRef.trim() || `${payMethod}-RCPT`);
-                notify(`Receipt of ${formatAccountingNPR(applied)} via ${payMethod} recorded & posted to GL.`);
+                notify(
+                  applied > 0
+                    ? `Receipt of ${formatAccountingNPR(applied)} via ${payMethod} recorded & posted to GL.`
+                    : `Zero-due invoice ${paymentInvoice.invoiceNumber} settled & marked Paid.`
+                );
                 setPaymentInvoice(null);
               }}
               className="p-5 space-y-3.5 text-xs"
@@ -972,7 +961,7 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
                 <input
                   type="number"
                   step="0.01"
-                  min={0.01}
+                  min={paymentDue <= 0.01 ? 0 : 0.01}
                   max={paymentDue}
                   value={payAmount}
                   onChange={(e) => setPayAmount(Math.min(paymentDue, Math.max(0, parseFloat(e.target.value) || 0)))}
@@ -1124,14 +1113,19 @@ export const BillingManagement: React.FC<BillingManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL 4: PRINTABLE A4 NEPAL IRD TAX INVOICE */}
-      {selectedInvoiceForPrint && (
+      {/* MODAL 4: PRINTABLE A4 NEPAL IRD TAX INVOICE (WITH INTEGRATED GATE PASS FOOTER) */}
+      {livePrintInvoice && (
         <PrintInvoiceModal
-          invoice={selectedInvoiceForPrint}
+          invoice={livePrintInvoice}
           jobCard={jobCards.find(
             (jc) =>
-              jc.id === selectedInvoiceForPrint.jobCardId ||
-              jc.jobCardNumber === selectedInvoiceForPrint.jobCardNumber
+              jc.id === livePrintInvoice.jobCardId ||
+              jc.jobCardNumber === livePrintInvoice.jobCardNumber
+          )}
+          gatePass={gatePasses.find(
+            (gp) =>
+              gp.invoiceId === livePrintInvoice.id ||
+              gp.invoiceNumber === livePrintInvoice.invoiceNumber
           )}
           profile={profile}
           onClose={() => setSelectedInvoiceForPrint(null)}
