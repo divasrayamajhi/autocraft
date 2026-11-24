@@ -21,7 +21,6 @@ export type TabType =
   | 'jobcards'
   | 'inventory'
   | 'warranty'
-  | 'insurance'
   | 'billing'
   | 'customers'
   | 'accounting'
@@ -34,7 +33,6 @@ export interface NavigationBadges {
   activeJobCardsCount?: number;
   pendingWarrantyCount?: number;
   unpaidInvoicesCount?: number;
-  pendingInsuranceCount?: number;
 }
 
 export interface NavigationProps {
@@ -79,8 +77,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     lowStockCount,
     activeJobCardsCount,
     pendingWarrantyCount,
-    unpaidInvoicesCount,
-    pendingInsuranceCount
+    unpaidInvoicesCount
   } = badges || {};
 
   // Flat list of independent navigation buttons (no grouped categories)
@@ -120,14 +117,6 @@ export const Navigation: React.FC<NavigationProps> = ({
       allowedRoles: ['Admin', 'Service Advisor', 'Inventory Manager'],
       badge: pendingWarrantyCount,
       badgeClass: 'bg-[#0284C7] text-white'
-    },
-    {
-      id: 'insurance',
-      label: 'Cashless Insurance',
-      icon: ShieldCheck,
-      allowedRoles: ['Admin', 'Service Advisor', 'Cashier'],
-      badge: pendingInsuranceCount,
-      badgeClass: 'bg-[#16A34A] text-white'
     },
     {
       id: 'billing',

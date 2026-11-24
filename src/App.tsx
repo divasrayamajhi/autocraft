@@ -12,7 +12,6 @@ import { WorkshopOverview } from './components/dashboard/WorkshopOverview';
 import { InventoryManagement } from './components/inventory/InventoryManagement';
 import { JobCardManagement } from './components/jobcards/JobCardManagement';
 import { CustomerManagement } from './components/customers/CustomerManagement';
-import { InsuranceBilling } from './components/insurance/InsuranceBilling';
 import { BillingManagement } from './components/billing/BillingManagement';
 import { AccountingReports } from './components/accounting/AccountingReports';
 import { WarrantyManagement } from './components/warranty/WarrantyManagement';
@@ -31,7 +30,6 @@ import {
 import { 
   JobCard, 
   Invoice, 
-  InsuranceClaim, 
   Appointment, 
   SparePart, 
   PurchaseOrder, 
@@ -67,7 +65,7 @@ import {
   toNepalBsDate,
 } from './utils/accountingEngine';
 import { adToBs } from './utils/nepaliDate';
-import { Bell, MessageSquare, Phone, Send, X } from 'lucide-react';
+import { Bell, MessageSquare, Send, X } from 'lucide-react';
 
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
@@ -97,10 +95,9 @@ export default function App() {
       '4': 'inventory',
       '5': 'billing',
       '6': 'accounting',
-      '7': 'insurance',
-      '8': 'warranty',
-      '9': 'analytics',
-      '0': 'admin_settings',
+      '7': 'warranty',
+      '8': 'analytics',
+      '9': 'admin_settings',
     };
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -173,14 +170,11 @@ export default function App() {
   // Badges Calculation for Navigation
   const partsList = db.parts || [];
   const jobCardsList = db.jobCards || [];
-  const insuranceClaimsList = db.insuranceClaims || [];
   const invoicesList = db.invoices || [];
   const warrantyClaimsList = db.warrantyClaims || [];
-  const warrantyRecordsList = db.warrantyRecords || [];
 
   const lowStockCount = partsList.filter(p => p && p.currentStock <= p.minReorderLevel).length;
   const activeJobCardsCount = jobCardsList.filter(jc => jc && jc.status !== 'Delivered').length;
-  const pendingInsuranceCount = insuranceClaimsList.filter(c => c && c.status !== 'Settled').length;
   const unpaidInvoicesCount = invoicesList.filter(i => i && i.status !== 'Paid').length;
   const pendingWarrantyCount = warrantyClaimsList.filter(w => w && (w.status === 'Submitted to OEM' || w.status === 'OEM Inspection / Under Review')).length;
 
@@ -191,14 +185,42 @@ export default function App() {
   };
 
   // --- JOB CARDS HANDLERS ---
+  const syncJobCardContactToCustomers = (jc: JobCard, customersList: Customer[]): Customer[] => {
+    const cleanPhone = (jc.customerPhone || '').trim();
+    const cleanName = (jc.customerName || '').trim();
+    const cleanReg = (jc.vehicle?.registrationNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanPhone && !cleanName) return customersList;
+
+    return (customersList || []).map((cust) => {
+      const matchesId = Boolean(jc.customerId && cust.id === jc.customerId);
+      const matchesReg = Boolean(
+        cleanReg &&
+        (cust.vehicles || []).some(
+          (v) =>
+            (typeof v === 'string' ? v : v?.registrationNumber || '')
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, '') === cleanReg
+        )
+      );
+      if (!matchesId && !matchesReg) return cust;
+      return {
+        ...cust,
+        phone: cleanPhone || cust.phone,
+        name: cleanName || cust.name,
+      };
+    });
+  };
+
   const handleCreateJobCard = (newJc: JobCard) => {
     const updatedCards = [newJc, ...db.jobCards];
-    updateDb({ jobCards: updatedCards });
+    const syncedCustomers = syncJobCardContactToCustomers(newJc, db.customers || []);
+    updateDb({ jobCards: updatedCards, customers: syncedCustomers });
   };
 
   const handleUpdateJobCard = (updatedJc: JobCard) => {
     const updatedCards = db.jobCards.map(jc => jc.id === updatedJc.id ? updatedJc : jc);
-    updateDb({ jobCards: updatedCards });
+    const syncedCustomers = syncJobCardContactToCustomers(updatedJc, db.customers || []);
+    updateDb({ jobCards: updatedCards, customers: syncedCustomers });
   };
 
   const handleCreateAppointment = (newApt: Appointment) => {
@@ -211,8 +233,9 @@ export default function App() {
     const nowIso = new Date().toISOString();
     const todayDate = nowIso.slice(0, 10);
     const workshopName = db.profile?.name || 'Continental Auto Kraft';
-    const businessOwnerPhone = db.profile?.contactNumber || '+977-1-4378920';
-    const message = `Vehicle Ready for Pickup: ${jc.vehicle?.registrationNumber || ''} (${jc.vehicle?.brand || jc.vehicle?.make || ''} ${jc.vehicle?.model || ''}) under ${jc.jobCardNumber} is Ready for Billing & Pickup at ${workshopName}. Customer: ${jc.customerName}. Contact: ${businessOwnerPhone}.`;
+    const workshopPhone = db.profile?.contactNumber || '+977-1-4378920';
+    const customerContact = (jc.customerPhone || '').trim();
+    const message = `Vehicle Ready for Pickup: ${jc.vehicle?.registrationNumber || ''} (${jc.vehicle?.brand || jc.vehicle?.make || ''} ${jc.vehicle?.model || ''}) under ${jc.jobCardNumber} is Ready for Billing & Pickup at ${workshopName}. Customer: ${jc.customerName}. Workshop Helpline: ${workshopPhone}.`;
 
     const newLog: ReadyNotificationLog = {
       id: `NTF-${Date.now().toString().slice(-6)}`,
@@ -221,8 +244,7 @@ export default function App() {
       vehicleReg: jc.vehicle?.registrationNumber || '',
       vehicleLabel: `${jc.vehicle?.brand || jc.vehicle?.make || ''} ${jc.vehicle?.model || ''}`.trim() || 'Vehicle',
       customerName: jc.customerName,
-      recipientPhone: jc.customerPhone,
-      businessOwnerPhone,
+      recipientPhone: customerContact,
       channel: 'SMS & Message',
       message,
       sentAt: nowIso,
@@ -347,7 +369,7 @@ export default function App() {
       status: isZeroDue ? 'Paid' : 'Unpaid',
       paymentStatus: isZeroDue ? 'Paid' : 'Unpaid',
       createdAt: todayIso,
-      type: jc.isInsuranceClaim ? 'Split Invoice - Customer Share' : 'Tax Invoice',
+      type: 'Tax Invoice',
       isLocked: false,
       irdSyncDetails: {
         isSynced: true,
@@ -845,32 +867,6 @@ export default function App() {
       glAccounts: updatedGlAccounts
     });
     setPrintInvoice(creditNote);
-  };
-
-  const handleCreateSplitInvoices = (customerInv: Invoice, insurerInv: Invoice) => {
-    const updated = [customerInv, insurerInv, ...(db.invoices || [])];
-    let entries = [...(db.journalEntries || [])];
-    let accounts = [...(db.glAccounts || [])];
-    [customerInv, insurerInv].forEach((inv) => {
-      const jv = buildInvoiceJournalEntry(inv, entries.length);
-      if (jv) {
-        entries = [jv, ...entries];
-        accounts = applyJournalEntryToAccounts(accounts, jv);
-      }
-    });
-    updateDb({ invoices: updated, journalEntries: entries, glAccounts: accounts });
-    setActiveTab('billing');
-  };
-
-  // --- INSURANCE CLAIMS HANDLERS ---
-  const handleUpdateClaim = (claim: InsuranceClaim) => {
-    const updated = (db.insuranceClaims || []).map(c => c.id === claim.id ? claim : c);
-    updateDb({ insuranceClaims: updated });
-  };
-
-  const handleCreateClaim = (claim: InsuranceClaim) => {
-    const updated = [claim, ...(db.insuranceClaims || [])];
-    updateDb({ insuranceClaims: updated });
   };
 
   // --- INVENTORY HANDLERS ---
@@ -1417,7 +1413,6 @@ export default function App() {
         badges={{
           lowStockCount,
           activeJobCardsCount,
-          pendingInsuranceCount,
           unpaidInvoicesCount,
           pendingWarrantyCount
         }}
@@ -1460,7 +1455,6 @@ export default function App() {
               appointments={db.appointments}
               parts={db.parts}
               invoices={db.invoices}
-              claims={db.insuranceClaims}
               technicians={db.technicians}
               warrantyClaims={db.warrantyClaims}
               profile={db.profile}
@@ -1550,20 +1544,7 @@ export default function App() {
             />
           )}
 
-          {/* TAB 5: Cashless Insurance & Split Billing */}
-          {activeTab === 'insurance' && (
-            <InsuranceBilling
-              claims={db.insuranceClaims}
-              jobCards={db.jobCards}
-              invoices={db.invoices}
-              customers={db.customers}
-              onUpdateClaim={handleUpdateClaim}
-              onCreateClaim={handleCreateClaim}
-              onCreateSplitInvoices={handleCreateSplitInvoices}
-            />
-          )}
-
-          {/* TAB 6: Warranty Management & OEM Claims */}
+          {/* TAB 5: Warranty Management & OEM Claims */}
           {activeTab === 'warranty' && (
             <WarrantyManagement
               warrantyRecords={db.warrantyRecords || []}
@@ -1607,7 +1588,7 @@ export default function App() {
             />
           )}
 
-          {/* TAB 9: BI & Performance Analytics */}
+          {/* TAB 8: BI & Performance Analytics */}
           {activeTab === 'analytics' && (
             <AnalyticsDashboard
               jobCards={db.jobCards || []}
@@ -1616,7 +1597,6 @@ export default function App() {
               technicians={db.technicians || []}
               bays={db.bays || []}
               customers={db.customers || []}
-              insuranceClaims={db.insuranceClaims || []}
               warrantyClaims={db.warrantyClaims || []}
               profile={db.profile}
               userRole={currentUser.role}
@@ -1733,20 +1713,11 @@ export default function App() {
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <a
                 href={`sms:${(activeReadyToast.recipientPhone || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(activeReadyToast.message)}`}
-                className="px-2.5 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+                className="px-3 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1.5 transition"
               >
                 <Send className="w-3 h-3" />
                 <span>SMS Customer ({activeReadyToast.recipientPhone})</span>
               </a>
-              {activeReadyToast.businessOwnerPhone && (
-                <a
-                  href={`sms:${activeReadyToast.businessOwnerPhone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(activeReadyToast.message)}`}
-                  className="px-2.5 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
-                >
-                  <Phone className="w-3 h-3" />
-                  <span>SMS Owner</span>
-                </a>
-              )}
               <a
                 href={`https://wa.me/${(activeReadyToast.recipientPhone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(activeReadyToast.message)}`}
                 target="_blank"

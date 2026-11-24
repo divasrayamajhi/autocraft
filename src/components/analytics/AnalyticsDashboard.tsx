@@ -44,7 +44,6 @@ import {
   Technician, 
   WorkshopBay, 
   Customer, 
-  InsuranceClaim, 
   WarrantyClaim, 
   WorkshopProfile, 
   UserRole 
@@ -57,7 +56,6 @@ interface AnalyticsDashboardProps {
   technicians: Technician[];
   bays: WorkshopBay[];
   customers: Customer[];
-  insuranceClaims: InsuranceClaim[];
   warrantyClaims: WarrantyClaim[];
   profile: WorkshopProfile;
   userRole?: UserRole;
@@ -76,7 +74,6 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   technicians = [],
   bays = [],
   customers = [],
-  insuranceClaims = [],
   warrantyClaims = [],
   profile,
   userRole,
@@ -88,7 +85,6 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const safeTechnicians = Array.isArray(technicians) ? technicians : [];
   const safeBays = Array.isArray(bays) ? bays : [];
   const safeCustomers = Array.isArray(customers) ? customers : [];
-  const safeInsuranceClaims = Array.isArray(insuranceClaims) ? insuranceClaims : [];
   const safeWarrantyClaims = Array.isArray(warrantyClaims) ? warrantyClaims : [];
 
   const [period, setPeriod] = useState<PeriodFilter>('month');
@@ -130,13 +126,16 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     const totalStockSellingValue = safeParts.reduce((acc, p) => acc + (p.currentStock * p.sellingPrice), 0);
     const potentialMargin = totalStockSellingValue > 0 ? Math.round(((totalStockSellingValue - totalStockCost) / totalStockSellingValue) * 100) : 28;
 
-    // Insurance & Warranty Stats
-    const totalClaims = safeInsuranceClaims.length;
-    const settledClaims = safeInsuranceClaims.filter(c => c.status === 'Settled').length;
-    const claimSettlementRate = totalClaims > 0 ? Math.round((settledClaims / totalClaims) * 100) : 75;
-    const totalOutstandingClaimAmount = safeInsuranceClaims
-      .filter(c => c.status !== 'Settled')
-      .reduce((acc, c) => acc + (c.approvedAmount || c.totalClaimAmount || 0), 0);
+    // OEM Warranty Claim Stats
+    const totalWarrantyClaims = safeWarrantyClaims.length;
+    const approvedWarrantyClaims = safeWarrantyClaims.filter(
+      (c) => c.status === 'Approved & Credited' || c.status === 'Resolved / Replaced'
+    ).length;
+    const pendingWarrantyClaims = safeWarrantyClaims.filter(
+      (c) => c.status === 'Submitted to OEM' || c.status === 'OEM Inspection / Under Review'
+    ).length;
+    const warrantyResolutionRate =
+      totalWarrantyClaims > 0 ? Math.round((approvedWarrantyClaims / totalWarrantyClaims) * 100) : 100;
 
     return {
       totalInvoiced,
@@ -159,12 +158,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       totalStockCost,
       totalStockSellingValue,
       potentialMargin,
-      totalClaims,
-      settledClaims,
-      claimSettlementRate,
-      totalOutstandingClaimAmount
+      totalWarrantyClaims,
+      approvedWarrantyClaims,
+      pendingWarrantyClaims,
+      warrantyResolutionRate
     };
-  }, [safeInvoices, safeJobCards, safeBays, safeTechnicians, safeParts, safeInsuranceClaims]);
+  }, [safeInvoices, safeJobCards, safeBays, safeTechnicians, safeParts, safeWarrantyClaims]);
 
   // --- REVENUE TREND DATA (Monthly / Quarterly Nepal Context) ---
   const revenueTrendData = useMemo(() => {
@@ -419,24 +418,24 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
         </div>
 
-        {/* KPI 6: Insurance Recovery Rate */}
+        {/* KPI 6: OEM Warranty Resolution */}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow transition flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Claim Settlement</span>
+            <span className="text-xs font-semibold text-slate-500">OEM Warranty</span>
             <span className="p-1.5 rounded-lg bg-teal-50 text-teal-600">
               <ShieldCheck className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2">
             <div className="text-lg font-black text-slate-900 font-mono">
-              {metrics.claimSettlementRate}%
+              {metrics.warrantyResolutionRate}%
             </div>
             <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-              Rs. {Math.round(metrics.totalOutstandingClaimAmount / 1000)}k pending
+              {metrics.pendingWarrantyClaims} pending review
             </div>
           </div>
           <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400">
-            Shikhar, Sagarmatha, etc.
+            {metrics.totalWarrantyClaims} total OEM claims
           </div>
         </div>
       </div>
@@ -449,7 +448,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           { id: 'operations', label: 'Bay Operations & SLA', icon: Layers },
           { id: 'technicians', label: 'Technician Leaderboard', icon: Users },
           { id: 'inventory', label: 'Spares Velocity & ABC', icon: Package },
-          { id: 'claims', label: 'Cashless & OEM Claims', icon: ShieldCheck }
+          { id: 'claims', label: 'OEM Warranty Claims', icon: ShieldCheck }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.id;
@@ -622,7 +621,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   <p className="text-xs text-slate-500">Fonepay, Cash, NepalPay and Credit breakdown</p>
                 </div>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                  67% Cashless
+                  67% Digital
                 </span>
               </div>
 
@@ -675,7 +674,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               <div className="text-xl font-black text-rose-700 font-mono mt-1">
                 Rs. {metrics.totalReceivables.toLocaleString()}
               </div>
-              <p className="text-xs text-slate-500 mt-1">Customer credit & pending insurance settlements</p>
+              <p className="text-xs text-slate-500 mt-1">Customer credit &amp; unpaid service invoices</p>
             </div>
           </div>
 
@@ -898,32 +897,32 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
         </div>
       )}
 
-      {/* SUBTAB 6: INSURANCE & OEM WARRANTY CLAIMS */}
+      {/* SUBTAB 6: OEM WARRANTY CLAIMS */}
       {activeSubTab === 'claims' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">Cashless Insurance Claims</span>
-              <div className="text-xl font-black text-slate-900 font-mono mt-1">
-                {insuranceClaims.length} Claims
-              </div>
-              <p className="text-xs text-slate-500 mt-1">Shikhar, Sagarmatha, NLG, Himalayan Everest</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">Settled Recovery Rate</span>
-              <div className="text-xl font-black text-emerald-700 font-mono mt-1">
-                {metrics.claimSettlementRate}%
-              </div>
-              <p className="text-xs text-slate-500 mt-1">{metrics.settledClaims} claims reimbursed to workshop</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">OEM Warranty Claims</span>
+              <span className="text-xs font-semibold text-slate-500">Total OEM Warranty Claims</span>
               <div className="text-xl font-black text-indigo-700 font-mono mt-1">
                 {warrantyClaims.length} Claims
               </div>
               <p className="text-xs text-slate-500 mt-1">Hyundai, Bosch, Minda OEM credit notes</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold text-slate-500">OEM Resolution Rate</span>
+              <div className="text-xl font-black text-emerald-700 font-mono mt-1">
+                {metrics.warrantyResolutionRate}%
+              </div>
+              <p className="text-xs text-slate-500 mt-1">{metrics.approvedWarrantyClaims} claims approved &amp; credited</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold text-slate-500">Pending OEM Inspection</span>
+              <div className="text-xl font-black text-amber-600 font-mono mt-1">
+                {metrics.pendingWarrantyClaims} Claims
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Awaiting manufacturer approval</p>
             </div>
           </div>
         </div>

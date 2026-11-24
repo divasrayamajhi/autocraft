@@ -42,7 +42,6 @@ const TAB_TITLES: Record<string, string> = {
   customers: 'Customer Garages',
   inventory: 'Spare Parts Master',
   warranty: 'Warranty & Claims',
-  insurance: 'Cashless Insurance',
   billing: 'Invoicing & IRD Tax',
   accounting: 'GL & VAT Ledger',
   analytics: 'BI & Performance',

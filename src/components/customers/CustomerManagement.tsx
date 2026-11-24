@@ -170,54 +170,69 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         const totalBilled = matchingInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0) || 
           (typeof veh === 'object' && veh?.totalBilledAmount ? veh.totalBilledAmount : 0);
 
-        // Determine last service date and last odometer
+        // Determine last service date and last odometer (prefer latest PMS Job Card when newer)
         const latestJc = matchingJobCards[0];
-        const lastServiceDate = (typeof veh === 'object' && veh?.lastServiceDate) ||
-          latestJc?.arrivalDate ||
-          latestJc?.createdAt?.slice(0, 10) ||
-          matchingInvoices[0]?.date?.slice(0, 10) ||
-          new Date(Date.now() - 110 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const latestPmsJc = matchingJobCards.find(
+          (jc) =>
+            jc.serviceType === 'Periodic Maintenance Service' ||
+            (jc.serviceType || '').toLowerCase().includes('periodic maintenance')
+        );
+        const preferredJc = latestPmsJc || latestJc;
 
-        const lastServiceKm = latestJc?.vehicle?.odometerReading || 
-          (typeof veh === 'object' && veh?.odometerReading) || 
+        const vehLastDate = typeof veh === 'object' ? veh?.lastServiceDate : undefined;
+        const jcLastDate = preferredJc?.arrivalDate || preferredJc?.createdAt?.slice(0, 10);
+        const lastServiceDate = (() => {
+          if (vehLastDate && jcLastDate) {
+            return new Date(jcLastDate).getTime() >= new Date(vehLastDate).getTime()
+              ? jcLastDate
+              : vehLastDate;
+          }
+          return (
+            jcLastDate ||
+            vehLastDate ||
+            matchingInvoices[0]?.date?.slice(0, 10) ||
+            new Date(Date.now() - 110 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+          );
+        })();
+
+        const lastServiceKm = preferredJc?.vehicle?.odometerReading ||
+          latestJc?.vehicle?.odometerReading ||
+          (typeof veh === 'object' && veh?.odometerReading) ||
           25000;
 
-        const currentOdometer = odo || lastServiceKm;
+        const currentOdometer = Math.max(odo || 0, lastServiceKm);
 
-        const lastServiceType = latestJc?.serviceType || 
-          (typeof veh === 'object' && veh?.lastServiceType) || 
-          'Scheduled PMS Inspection';
+        const lastServiceType = preferredJc?.serviceType ||
+          (typeof veh === 'object' && veh?.lastServiceType) ||
+          'Periodic Maintenance Service';
+
+        // Sync contact phone from latest Job Card entry if available so Customer Garages & Reminders always match
+        const syncedPhone = (latestJc?.customerPhone || cust.phone || '').trim();
 
         // Check if service was performed today
         const todayStr = today.toISOString().slice(0, 10);
         const isServicedToday = lastServiceDate === todayStr;
 
         // RULE: Every 4 months (120 days) OR every 5,000 km — whichever comes first.
-        // When service is recorded today:
-        // 1. Day-based countdown resets to exactly 120 days
-        // 2. Odometer-based countdown resets to Current Odometer + 5,000 km
         let nextServiceDueDate: string;
         if (isServicedToday) {
           nextServiceDueDate = new Date(today.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        } else if (preferredJc?.nextServiceDueDate && jcLastDate === lastServiceDate) {
+          const lastDateObj = new Date(lastServiceDate);
+          const maxAllowedTime = lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000;
+          const storedTime = new Date(preferredJc.nextServiceDueDate).getTime();
+          nextServiceDueDate =
+            !isNaN(storedTime) && storedTime <= maxAllowedTime
+              ? preferredJc.nextServiceDueDate
+              : new Date(maxAllowedTime).toISOString().slice(0, 10);
         } else if (typeof veh === 'object' && veh?.nextServiceDueDate) {
-          // If stored due date was previously set beyond 120 days from lastServiceDate, clamp it
           const lastDateObj = new Date(lastServiceDate);
           const maxAllowedTime = lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000;
           const storedTime = new Date(veh.nextServiceDueDate).getTime();
-          if (storedTime > maxAllowedTime) {
-            nextServiceDueDate = new Date(maxAllowedTime).toISOString().slice(0, 10);
-          } else {
-            nextServiceDueDate = veh.nextServiceDueDate;
-          }
-        } else if (latestJc?.nextServiceDueDate) {
-          const lastDateObj = new Date(lastServiceDate);
-          const maxAllowedTime = lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000;
-          const storedTime = new Date(latestJc.nextServiceDueDate).getTime();
-          if (storedTime > maxAllowedTime) {
-            nextServiceDueDate = new Date(maxAllowedTime).toISOString().slice(0, 10);
-          } else {
-            nextServiceDueDate = latestJc.nextServiceDueDate;
-          }
+          nextServiceDueDate =
+            !isNaN(storedTime) && storedTime <= maxAllowedTime
+              ? veh.nextServiceDueDate
+              : new Date(maxAllowedTime).toISOString().slice(0, 10);
         } else {
           const lastDateObj = new Date(lastServiceDate);
           nextServiceDueDate = new Date(lastDateObj.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -227,10 +242,10 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         let nextServiceDueKm: number;
         if (isServicedToday) {
           nextServiceDueKm = currentOdometer + 5000;
+        } else if (preferredJc?.nextServiceDueKm && jcLastDate === lastServiceDate) {
+          nextServiceDueKm = preferredJc.nextServiceDueKm;
         } else if (typeof veh === 'object' && veh?.nextServiceDueKm) {
           nextServiceDueKm = veh.nextServiceDueKm;
-        } else if (latestJc?.nextServiceDueKm) {
-          nextServiceDueKm = latestJc.nextServiceDueKm;
         } else {
           nextServiceDueKm = lastServiceKm + 5000;
         }
@@ -246,10 +261,6 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         const kmRemaining = Math.max(0, nextServiceDueKm - currentOdometer);
         const isKmExceeded = currentOdometer >= nextServiceDueKm;
 
-        // System determines next service based on whichever threshold is reached first:
-        // - Overdue if daysRemaining < 0 OR isKmExceeded
-        // - Due today if daysRemaining === 0 OR (kmRemaining === 0 && !isKmExceeded)
-        // - Due soon if daysRemaining <= 15 OR kmRemaining <= 500
         const isDueToday = daysRemaining === 0 || (kmRemaining === 0 && !isKmExceeded);
         const isOverdue = daysRemaining < 0 || isKmExceeded;
         const isDueSoon = !isOverdue && !isDueToday && (daysRemaining <= 15 || kmRemaining <= 500);
@@ -258,7 +269,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         reminders.push({
           customerId: cust.id,
           customerName: cust.name,
-          customerPhone: cust.phone,
+          customerPhone: syncedPhone,
           customerType: cust.customerType || 'Individual',
           vehicleId: vehId,
           registrationNumber: reg,
@@ -287,9 +298,109 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
       });
     });
 
-    // Sort: user requirement:
-    // "the newer one with less day remaining will be on top and those who recently serviced with high number will be on the bottom"
-    return reminders.sort((a, b) => a.daysRemaining - b.daysRemaining);
+    // Guarantee every Job Card with serviceType === 'Periodic Maintenance Service' is included in Service Reminders
+    const seenRegs = new Set(
+      reminders.map((r) => r.registrationNumber.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+    );
+    const pmsJobCards = [...(jobCards || [])]
+      .filter(
+        (jc) =>
+          jc &&
+          (jc.serviceType === 'Periodic Maintenance Service' ||
+            (jc.serviceType || '').toLowerCase().includes('periodic maintenance'))
+      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    pmsJobCards.forEach((jc) => {
+      const reg = (jc.vehicle?.registrationNumber || '').toUpperCase().trim();
+      const cleanR = reg.replace(/[^A-Z0-9]/g, '');
+      if (!cleanR || seenRegs.has(cleanR)) return;
+      seenRegs.add(cleanR);
+
+      const serviceDate = (jc.arrivalDate || jc.createdAt || today.toISOString()).slice(0, 10);
+      const todayStr = today.toISOString().slice(0, 10);
+      const isServicedToday = serviceDate === todayStr;
+      const baseTime = new Date(serviceDate).getTime();
+      const nextDueDate = isServicedToday
+        ? new Date(today.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        : jc.nextServiceDueDate ||
+          new Date((isNaN(baseTime) ? today.getTime() : baseTime) + 120 * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .slice(0, 10);
+
+      const odo = jc.vehicle?.odometerReading || 0;
+      const nextDueKm = isServicedToday ? odo + 5000 : jc.nextServiceDueKm || odo + 5000;
+      const dueDateObj = new Date(nextDueDate);
+      dueDateObj.setHours(0, 0, 0, 0);
+      const rawDaysRemaining = Math.round((dueDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const daysRemaining = isServicedToday ? 120 : Math.min(120, rawDaysRemaining);
+      const kmRemaining = Math.max(0, nextDueKm - odo);
+      const isKmExceeded = odo > 0 && odo >= nextDueKm;
+      const isOverdue = daysRemaining < 0 || isKmExceeded;
+      const isDueToday = !isOverdue && (daysRemaining === 0 || (odo > 0 && kmRemaining === 0));
+      const isDueSoon = !isOverdue && !isDueToday && (daysRemaining <= 15 || (odo > 0 && kmRemaining <= 500));
+      const isRecentlyServiced = isServicedToday || (daysRemaining >= 115 && !isOverdue);
+
+      const matchedCust = safeCustomers.find(
+        (c) => c.id === jc.customerId || c.name.trim().toLowerCase() === (jc.customerName || '').trim().toLowerCase()
+      );
+      const matchingInvoices = invoices.filter(
+        (inv) =>
+          (inv.vehicleReg || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanR ||
+          inv.jobCardId === jc.id ||
+          inv.jobCardNumber === jc.jobCardNumber
+      );
+
+      reminders.push({
+        customerId: matchedCust?.id || jc.customerId || `CUST-${jc.id}`,
+        customerName: jc.customerName,
+        customerPhone: jc.customerPhone || matchedCust?.phone || '',
+        customerType: matchedCust?.customerType || 'Individual',
+        vehicleId: jc.vehicle?.id || `veh-jc-${jc.id}`,
+        registrationNumber: reg,
+        brand: jc.vehicle?.brand || jc.vehicle?.make || 'Multi-Brand',
+        model: jc.vehicle?.model || 'Vehicle',
+        year: jc.vehicle?.year || new Date().getFullYear(),
+        fuelType: jc.vehicle?.fuelType || 'Petrol',
+        vinNumber: jc.vehicle?.vinNumber || jc.vehicle?.chassisNumber,
+        engineNumber: jc.vehicle?.engineNumber,
+        currentOdometer: odo,
+        lastServiceDate: serviceDate,
+        lastServiceKm: odo,
+        lastServiceType: jc.serviceType || 'Periodic Maintenance Service',
+        nextServiceDueDate: nextDueDate,
+        nextServiceDueKm: nextDueKm,
+        daysRemaining,
+        kmRemaining,
+        isKmExceeded,
+        isOverdue,
+        isDueToday,
+        isDueSoon,
+        isRecentlyServiced,
+        matchingJobCardsCount: 1,
+        totalBilledAmount: matchingInvoices.reduce((s, inv) => s + (inv.grandTotal || 0), 0)
+      });
+    });
+
+    // Strict Urgency Ordering:
+    // Upcoming / Overdue / Due Today / Due Soon vehicles ALWAYS at the TOP;
+    // Newly serviced / newly added vehicles (high days remaining) ALWAYS at the BOTTOM.
+    const getUrgencyRank = (item: ServiceReminderItem) => {
+      if (item.isOverdue) return 0;
+      if (item.isDueToday) return 1;
+      if (item.isDueSoon) return 2;
+      if (!item.isRecentlyServiced) return 3;
+      return 4;
+    };
+
+    return reminders.sort((a, b) => {
+      const rankDiff = getUrgencyRank(a) - getUrgencyRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      if (a.daysRemaining !== b.daysRemaining) return a.daysRemaining - b.daysRemaining;
+      if (a.kmRemaining !== b.kmRemaining) return a.kmRemaining - b.kmRemaining;
+      // Tie-breaker: older lastServiceDate first, newest intakes at the bottom
+      return new Date(a.lastServiceDate).getTime() - new Date(b.lastServiceDate).getTime();
+    });
   }, [safeCustomers, jobCards, invoices, today]);
 
   // Overall Reminder Statistics
@@ -644,7 +755,6 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
               <option value="All">All Client Types</option>
               <option value="Individual">Individual</option>
               <option value="Corporate">Corporate / Fleet</option>
-              <option value="Insurance Partner">Insurance Partner</option>
             </select>
 
             {/* Service Status Filter */}

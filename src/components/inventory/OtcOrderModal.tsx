@@ -1,13 +1,23 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, ShoppingBag, FileText, CheckCircle2, AlertCircle, Building2 } from 'lucide-react';
-import { SparePart, Customer, PartsQuotation, PartsSalesOrder, PartsQuotationItem } from '../../types';
+import {
+  X,
+  Plus,
+  Trash2,
+  ShoppingBag,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Building2,
+  PackageCheck
+} from 'lucide-react';
+import { SparePart, Customer, PartsSalesOrder, PartsQuotationItem } from '../../types';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface OtcOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   parts: SparePart[];
   customers: Customer[];
-  onCreateQuotation?: (quotation: PartsQuotation) => void;
   onCreateSalesOrder?: (order: PartsSalesOrder) => void;
   onNotify: (msg: string) => void;
 }
@@ -17,15 +27,13 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   onClose,
   parts,
   customers,
-  onCreateQuotation,
   onCreateSalesOrder,
   onNotify
 }) => {
-  const [docType, setDocType] = useState<'order' | 'quotation'>('order');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('walkin');
   const [walkinName, setWalkinName] = useState<string>('Walk-in Customer (Kathmandu)');
   const [walkinPhone, setWalkinPhone] = useState<string>('+977-98');
-  const [pricingTier, setPricingTier] = useState<'Retail' | 'Fleet' | 'Insurance' | 'Wholesale'>('Retail');
+  const [pricingTier, setPricingTier] = useState<'Retail' | 'Fleet' | 'Wholesale'>('Retail');
 
   // Optional Corporate / Company Tax Invoice Billing
   const [billToCompany, setBillToCompany] = useState<boolean>(false);
@@ -37,70 +45,111 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   // Active line item selection
   const [selectedPartId, setSelectedPartId] = useState<string>(parts[0]?.id || '');
   const [quantity, setQuantity] = useState<number>(1);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Cart
   const [cartItems, setCartItems] = useState<PartsQuotationItem[]>([]);
 
+  useEscapeKey(isOpen, onClose);
+
   if (!isOpen) return null;
 
   // Selected customer object
-  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
   // Discount % based on tier
   const getTierDiscountPercent = (tier: string) => {
     switch (tier) {
-      case 'Fleet': return 10;
-      case 'Insurance': return 5;
-      case 'Wholesale': return 15;
-      default: return 0;
+      case 'Fleet':
+        return 10;
+      case 'Wholesale':
+        return 15;
+      default:
+        return 0;
     }
   };
 
   const handleCustomerChange = (custId: string) => {
     setSelectedCustomerId(custId);
     if (custId !== 'walkin') {
-      const cust = customers.find(c => c.id === custId);
-      if (cust?.pricingTier) {
+      const cust = customers.find((c) => c.id === custId);
+      if (cust?.pricingTier === 'Fleet' || cust?.pricingTier === 'Wholesale' || cust?.pricingTier === 'Retail') {
         setPricingTier(cust.pricingTier);
       }
     }
   };
 
-  const activePart = parts.find(p => p.id === selectedPartId) || parts[0];
+  const activePart = parts.find((p) => p.id === selectedPartId) || parts[0];
   const discountPercent = getTierDiscountPercent(pricingTier);
   const basePrice = activePart ? activePart.sellingPrice : 0;
   const unitDiscount = (basePrice * discountPercent) / 100;
   const netUnitPrice = Math.max(0, basePrice - unitDiscount);
 
+  // Live stock evaluation for the currently selected spare part
+  const inCartQtyForActive = activePart
+    ? cartItems.filter((item) => item.partId === activePart.id).reduce((sum, item) => sum + item.quantity, 0)
+    : 0;
+  const availableStock = activePart ? Math.max(0, activePart.currentStock - inCartQtyForActive) : 0;
+  const remainingAfterAdd = availableStock - quantity;
+  const minReorder = activePart?.minReorderLevel ?? 5;
+
+  const isOutOfStock = Boolean(activePart && activePart.currentStock <= 0);
+  const isInsufficientStock = Boolean(activePart && !isOutOfStock && (availableStock <= 0 || quantity > availableStock));
+  const isLowStockWarning = Boolean(
+    activePart &&
+      !isOutOfStock &&
+      !isInsufficientStock &&
+      (remainingAfterAdd <= minReorder || activePart.currentStock <= minReorder)
+  );
+  const canAddSelectedPart = Boolean(activePart && quantity > 0 && !isOutOfStock && !isInsufficientStock);
+
+  // Check if any cart line item violates current warehouse stock
+  const cartStockViolations = cartItems.filter((item) => {
+    const livePart = parts.find((p) => p.id === item.partId);
+    return !livePart || item.quantity > livePart.currentStock;
+  });
+
   const handleAddToCart = () => {
+    setFormError(null);
     if (!activePart) {
-      onNotify('Please select a valid spare part SKU');
+      setFormError('Please select a valid spare part SKU.');
       return;
     }
 
     if (quantity <= 0) {
-      onNotify('Quantity must be at least 1');
+      setFormError('Order quantity must be at least 1.');
       return;
     }
 
-    // Check stock if creating direct sales order
-    if (docType === 'order' && quantity > activePart.currentStock) {
-      onNotify(`Insufficient stock! Available: ${activePart.currentStock} ${activePart.unit}`);
+    if (activePart.currentStock <= 0) {
+      setFormError(`Out of Stock: ${activePart.name} has 0 ${activePart.unit} available in inventory.`);
+      return;
+    }
+
+    if (quantity > availableStock) {
+      setFormError(
+        `Low in Stock: Requested ${quantity} ${activePart.unit} of ${activePart.name}, but only ${availableStock} ${activePart.unit} available in stock.`
+      );
       return;
     }
 
     const itemTotal = netUnitPrice * quantity;
-    const existingIndex = cartItems.findIndex(item => item.partId === activePart.id);
+    const existingIndex = cartItems.findIndex((item) => item.partId === activePart.id);
 
     if (existingIndex >= 0) {
       const updated = [...cartItems];
       const newQty = updated[existingIndex].quantity + quantity;
-      if (docType === 'order' && newQty > activePart.currentStock) {
-        onNotify(`Total quantity (${newQty}) exceeds stock (${activePart.currentStock})`);
+      if (newQty > activePart.currentStock) {
+        setFormError(
+          `Low in Stock: Total order quantity (${newQty} ${activePart.unit}) exceeds available stock (${activePart.currentStock} ${activePart.unit}).`
+        );
         return;
       }
-      updated[existingIndex].quantity = newQty;
-      updated[existingIndex].total = updated[existingIndex].unitPrice * newQty;
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: newQty,
+        total: updated[existingIndex].unitPrice * newQty
+      };
       setCartItems(updated);
     } else {
       const newItem: PartsQuotationItem = {
@@ -117,10 +166,11 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     }
 
     setQuantity(1);
-    onNotify(`Added ${activePart.name} to order list`);
+    onNotify(`Added ${quantity} × ${activePart.name} to OTC order.`);
   };
 
   const handleRemoveFromCart = (index: number) => {
+    setFormError(null);
     setCartItems(cartItems.filter((_, i) => i !== index));
   };
 
@@ -131,163 +181,135 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
 
     if (cartItems.length === 0) {
-      onNotify('Please add at least one spare part item to proceed');
+      setFormError('Please add at least one spare part item before confirming OTC dispatch.');
       return;
     }
 
-    const customerName = selectedCustomerId === 'walkin'
-      ? (walkinName.trim() || 'Walk-in Retail Customer')
-      : (selectedCustomer?.name || 'Walk-in Customer');
+    if (cartStockViolations.length > 0) {
+      const first = cartStockViolations[0];
+      const livePart = parts.find((p) => p.id === first.partId);
+      setFormError(
+        `Low in Stock: ${first.partName} requires ${first.quantity} units, but only ${livePart?.currentStock ?? 0} units are available in warehouse.`
+      );
+      return;
+    }
+
+    if (billToCompany) {
+      if (!companyName.trim() || !companyPanVat.trim() || !companyAddress.trim() || !companyPhone.trim()) {
+        setFormError('Please complete Company Name, VAT/PAN Number, Address, and Phone Number for company billing.');
+        return;
+      }
+    }
+
+    const customerName =
+      selectedCustomerId === 'walkin'
+        ? walkinName.trim() || 'Walk-in Retail Customer'
+        : selectedCustomer?.name || 'Walk-in Customer';
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    if (docType === 'quotation') {
-      const expiryDateObj = new Date();
-      expiryDateObj.setDate(expiryDateObj.getDate() + 15);
+    const salesOrder: PartsSalesOrder = {
+      id: `PSO-${Date.now().toString().slice(-4)}`,
+      orderNumber: `PSO-81-${Math.floor(1000 + Math.random() * 9000)}`,
+      customerId: selectedCustomerId,
+      customerName: billToCompany ? companyName.trim() : customerName,
+      date: todayStr,
+      items: cartItems,
+      subtotal,
+      vatAmount,
+      grandTotal,
+      dispatchStatus: 'Fully Dispatched',
+      invoiceStatus: 'Invoiced',
+      companyBilling: billToCompany
+        ? {
+            isCompanyBill: true,
+            companyName: companyName.trim(),
+            panVatNumber: companyPanVat.trim(),
+            address: companyAddress.trim(),
+            phone: companyPhone.trim()
+          }
+        : undefined
+    };
 
-      const quotation: PartsQuotation = {
-        id: `QTN-${Date.now().toString().slice(-4)}`,
-        quotationNumber: `QTN-81-${Math.floor(1000 + Math.random() * 9000)}`,
-        customerId: selectedCustomerId,
-        customerName,
-        date: todayStr,
-        expiryDate: expiryDateObj.toISOString().slice(0, 10),
-        items: cartItems,
-        subtotal,
-        vatAmount,
-        grandTotal,
-        status: 'Draft'
-      };
-
-      if (onCreateQuotation) {
-        onCreateQuotation(quotation);
-      }
-      onNotify(`Quotation ${quotation.quotationNumber} generated successfully!`);
-    } else {
-      if (billToCompany) {
-        if (!companyName.trim() || !companyPanVat.trim() || !companyAddress.trim() || !companyPhone.trim()) {
-          onNotify('Please complete Company Name, VAT/PAN Number, Address, and Phone Number for company billing.');
-          return;
-        }
-      }
-
-      const salesOrder: PartsSalesOrder = {
-        id: `PSO-${Date.now().toString().slice(-4)}`,
-        orderNumber: `PSO-81-${Math.floor(1000 + Math.random() * 9000)}`,
-        customerId: selectedCustomerId,
-        customerName: billToCompany ? companyName.trim() : customerName,
-        date: todayStr,
-        items: cartItems,
-        subtotal,
-        vatAmount,
-        grandTotal,
-        dispatchStatus: 'Fully Dispatched',
-        invoiceStatus: 'Invoiced',
-        companyBilling: billToCompany
-          ? {
-              isCompanyBill: true,
-              companyName: companyName.trim(),
-              panVatNumber: companyPanVat.trim(),
-              address: companyAddress.trim(),
-              phone: companyPhone.trim(),
-            }
-          : undefined
-      };
-
-      if (onCreateSalesOrder) {
-        onCreateSalesOrder(salesOrder);
-      }
-      onNotify(`OTC Sales Order ${salesOrder.orderNumber} dispatched! Spares stock deducted.`);
+    if (onCreateSalesOrder) {
+      onCreateSalesOrder(salesOrder);
     }
-
+    onNotify(`OTC Sales Order ${salesOrder.orderNumber} dispatched! Warehouse stock updated.`);
+    setCartItems([]);
+    setQuantity(1);
+    setFormError(null);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 text-xs my-8 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-2xl w-full p-6 border border-[#E2E8F0] text-xs my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-          <div className="flex items-center space-x-2">
-            <div className={`p-2 rounded-xl ${docType === 'order' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`}>
-              {docType === 'order' ? <ShoppingBag className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+        <div className="flex items-center justify-between pb-3.5 border-b border-[#E2E8F0] shrink-0">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-lg bg-[#0F3D5E] text-white">
+              <ShoppingBag className="w-4 h-4 text-[#0EA5E9]" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">
-                {docType === 'order' ? 'New OTC Spares Sales Order & Dispatch' : 'New Spares Formal Quotation / Estimate'}
+              <h3 className="text-sm font-bold text-[#0F172A]">
+                New OTC Spares Sales Order &amp; Dispatch
               </h3>
-              <p className="text-[11px] text-slate-500">
-                {docType === 'order'
-                  ? 'Over-the-counter spare parts direct sale with immediate inventory reduction & 13% Nepal VAT.'
-                  : 'Prepare price estimation with 15-day validity and optional tiered discount.'}
+              <p className="text-[11px] text-[#64748B]">
+                Over-the-counter direct spare parts sale with live stock verification, immediate inventory deduction &amp; 13% Nepal VAT.
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close OTC Sales Order dialog"
+            className="text-[#64748B] hover:text-[#0F172A] p-1.5 rounded-lg hover:bg-[#F1F5F9] transition"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Scrollable Form Content */}
-        <div className="overflow-y-auto pr-1 py-3 space-y-4 shrink grow">
-          {/* Doc Type Selector */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setDocType('order')}
-              className={`py-2 text-center rounded-lg font-bold transition-all ${
-                docType === 'order'
-                  ? 'bg-white text-teal-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Direct OTC Sales Order (Instant Dispatch)
-            </button>
-            <button
-              type="button"
-              onClick={() => setDocType('quotation')}
-              className={`py-2 text-center rounded-lg font-bold transition-all ${
-                docType === 'quotation'
-                  ? 'bg-white text-blue-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Formal Quotation / Estimate
-            </button>
-          </div>
+        <div className="overflow-y-auto pr-1 py-4 space-y-4 shrink grow">
+          {formError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-[#DC2626] flex items-start space-x-2 text-xs font-semibold">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
 
           {/* Customer & Pricing Tier */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Customer Selection</label>
+              <label className="block font-semibold text-[#0F172A] mb-1">Customer Selection</label>
               <select
                 value={selectedCustomerId}
                 onChange={(e) => handleCustomerChange(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-medium focus:ring-2 focus:ring-teal-500"
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-medium focus:ring-2 focus:ring-[#0EA5E9]"
               >
                 <option value="walkin">Walk-in Retail Buyer (Cash / Fonepay)</option>
-                {customers.map(c => (
+                {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.pricingTier} Tier • {c.phone})
+                    {c.name} ({c.pricingTier || 'Retail'} Tier • {c.phone})
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">
+              <label className="block font-semibold text-[#0F172A] mb-1">
                 Pricing Tier / Discount Strategy
               </label>
               <select
                 value={pricingTier}
-                onChange={(e) => setPricingTier(e.target.value as any)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-bold text-slate-800 focus:ring-2 focus:ring-teal-500"
+                onChange={(e) => setPricingTier(e.target.value as 'Retail' | 'Fleet' | 'Wholesale')}
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-semibold text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9]"
               >
                 <option value="Retail">Retail (Standard MRP • 0% Disc)</option>
                 <option value="Fleet">Fleet Customer (10% Commercial Disc)</option>
-                <option value="Insurance">Insurance Surveyor Agreed (5% Disc)</option>
                 <option value="Wholesale">Wholesale Workshop Tier (15% Disc)</option>
               </select>
             </div>
@@ -295,98 +317,106 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
             {selectedCustomerId === 'walkin' && (
               <>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Walk-in Customer Name</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Walk-in Customer Name</label>
                   <input
                     value={walkinName}
                     onChange={(e) => setWalkinName(e.target.value)}
                     placeholder="Customer Name"
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white"
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] focus:ring-2 focus:ring-[#0EA5E9]"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Customer Mobile #</label>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Customer Mobile #</label>
                   <input
                     value={walkinPhone}
                     onChange={(e) => setWalkinPhone(e.target.value)}
                     placeholder="+977-98XXXXXXXX"
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-mono"
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-mono focus:ring-2 focus:ring-[#0EA5E9]"
                   />
                 </div>
               </>
             )}
 
-            {docType === 'order' && (
-              <div className="md:col-span-2 pt-2 border-t border-[#E2E8F0] space-y-2.5">
-                <label className="flex items-center space-x-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={billToCompany}
-                    onChange={(e) => setBillToCompany(e.target.checked)}
-                    className="w-4 h-4 rounded border-[#CBD5E1] text-[#0EA5E9] focus:ring-[#0EA5E9]"
-                  />
-                  <Building2 className="w-4 h-4 text-[#0F3D5E]" />
-                  <span className="font-bold text-[#0F172A]">
-                    Bill Tax Invoice in Company Name (Corporate VAT / PAN Bill)
-                  </span>
-                </label>
+            <div className="md:col-span-2 pt-2 border-t border-[#E2E8F0] space-y-2.5">
+              <label className="flex items-center space-x-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={billToCompany}
+                  onChange={(e) => setBillToCompany(e.target.checked)}
+                  className="w-4 h-4 rounded border-[#CBD5E1] text-[#0EA5E9] focus:ring-[#0EA5E9]"
+                />
+                <Building2 className="w-4 h-4 text-[#0F3D5E]" />
+                <span className="font-bold text-[#0F172A]">
+                  Bill Tax Invoice in Company Name (Corporate VAT / PAN Bill)
+                </span>
+              </label>
 
-                {billToCompany && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-[#FFFFFF] p-3 rounded-lg border border-[#CBD5E1]">
-                    <div className="sm:col-span-2">
-                      <label className="block font-semibold text-[#0F172A] mb-1">Company Name *</label>
-                      <input
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="e.g. Himalayan Traders Pvt. Ltd."
-                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-[#0F172A] mb-1">VAT / PAN Number *</label>
-                      <input
-                        value={companyPanVat}
-                        onChange={(e) => setCompanyPanVat(e.target.value)}
-                        placeholder="e.g. 601234567"
-                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 font-mono outline-none focus:ring-2 focus:ring-[#0EA5E9]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-[#0F172A] mb-1">Company Phone *</label>
-                      <input
-                        value={companyPhone}
-                        onChange={(e) => setCompanyPhone(e.target.value)}
-                        placeholder="+977-1-4220192"
-                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 font-mono outline-none focus:ring-2 focus:ring-[#0EA5E9]"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block font-semibold text-[#0F172A] mb-1">Company Address *</label>
-                      <input
-                        value={companyAddress}
-                        onChange={(e) => setCompanyAddress(e.target.value)}
-                        placeholder="e.g. Durbar Marg, Kathmandu"
-                        className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
-                      />
-                    </div>
+              {billToCompany && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-[#FFFFFF] p-3 rounded-lg border border-[#CBD5E1]">
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-[#0F172A] mb-1">Company Name *</label>
+                    <input
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="e.g. Himalayan Traders Pvt. Ltd."
+                      className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    />
                   </div>
-                )}
-              </div>
-            )}
+                  <div>
+                    <label className="block font-semibold text-[#0F172A] mb-1">VAT / PAN Number *</label>
+                    <input
+                      value={companyPanVat}
+                      onChange={(e) => setCompanyPanVat(e.target.value)}
+                      placeholder="e.g. 601234567"
+                      className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 font-mono outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-[#0F172A] mb-1">Company Phone *</label>
+                    <input
+                      value={companyPhone}
+                      onChange={(e) => setCompanyPhone(e.target.value)}
+                      placeholder="+977-1-4220192"
+                      className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 font-mono outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-[#0F172A] mb-1">Company Address *</label>
+                    <input
+                      value={companyAddress}
+                      onChange={(e) => setCompanyAddress(e.target.value)}
+                      placeholder="e.g. Durbar Marg, Kathmandu"
+                      className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Add Part Section */}
-          <div className="p-3.5 bg-teal-50/50 rounded-xl border border-teal-200 space-y-3">
-            <span className="font-bold text-teal-900 block">Select Spares & Add to Order</span>
+          {/* Add Part Section with Real-Time Stock Validation & Stock Notifications */}
+          <div className="p-3.5 bg-[#F0F9FF] rounded-xl border border-[#BAE6FD] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-[#0F3D5E]">Select Spares &amp; Add to OTC Dispatch</span>
+              {activePart && (
+                <span className="text-[11px] font-mono font-semibold text-[#0284C7]">
+                  Available: {availableStock} {activePart.unit} (Warehouse: {activePart.currentStock})
+                </span>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
               <div className="md:col-span-6">
-                <label className="block font-semibold text-slate-700 mb-1">Select Spare Part SKU</label>
+                <label className="block font-semibold text-[#0F172A] mb-1">Select Spare Part SKU</label>
                 <select
                   value={selectedPartId}
-                  onChange={(e) => setSelectedPartId(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white font-mono focus:ring-2 focus:ring-teal-500"
+                  onChange={(e) => {
+                    setSelectedPartId(e.target.value);
+                    setFormError(null);
+                  }}
+                  className="w-full border border-[#CBD5E1] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-mono focus:ring-2 focus:ring-[#0EA5E9]"
                 >
-                  {parts.map(p => (
+                  {parts.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.sku} - {p.name} (Stock: {p.currentStock} {p.unit} | NPR {p.sellingPrice})
                     </option>
@@ -395,23 +425,32 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
               </div>
 
               <div className="md:col-span-2">
-                <label className="block font-semibold text-slate-700 mb-1">Quantity</label>
+                <label className="block font-semibold text-[#0F172A] mb-1">Order Qty</label>
                 <input
                   type="number"
-                  min="1"
-                  max={docType === 'order' && activePart ? activePart.currentStock : undefined}
+                  min={1}
                   value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                  className="w-full font-mono border border-slate-300 rounded-xl px-3 py-2 outline-none bg-white text-center font-bold"
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setQuantity(isNaN(parsed) ? 0 : Math.max(0, parsed));
+                    setFormError(null);
+                  }}
+                  className={`w-full font-mono border rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] text-center font-bold focus:ring-2 ${
+                    isOutOfStock || isInsufficientStock
+                      ? 'border-[#DC2626] text-[#DC2626] focus:ring-[#DC2626]'
+                      : isLowStockWarning
+                        ? 'border-[#F59E0B] text-[#B45309] focus:ring-[#F59E0B]'
+                        : 'border-[#CBD5E1] text-[#0F172A] focus:ring-[#0EA5E9]'
+                  }`}
                 />
               </div>
 
               <div className="md:col-span-2">
-                <label className="block font-semibold text-slate-700 mb-1">Net Price</label>
-                <div className="font-mono text-xs font-bold text-slate-900 py-2 px-2 bg-white rounded-xl border border-slate-200">
+                <label className="block font-semibold text-[#0F172A] mb-1">Net Price</label>
+                <div className="font-mono text-xs font-bold text-[#0F172A] py-2 px-2 bg-[#FFFFFF] rounded-lg border border-[#E2E8F0]">
                   NPR {netUnitPrice.toLocaleString()}
                   {discountPercent > 0 && (
-                    <span className="text-[10px] text-emerald-600 block">(-{discountPercent}%)</span>
+                    <span className="text-[10px] text-[#16A34A] block">(-{discountPercent}%)</span>
                   )}
                 </div>
               </div>
@@ -420,7 +459,12 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  className="w-full py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold flex items-center justify-center space-x-1 shadow-sm transition-colors"
+                  disabled={!canAddSelectedPart}
+                  className={`w-full py-2 rounded-lg font-bold flex items-center justify-center space-x-1 transition-colors ${
+                    canAddSelectedPart
+                      ? 'bg-[#0EA5E9] hover:bg-[#0284C7] text-white'
+                      : 'bg-[#CBD5E1] text-[#64748B] cursor-not-allowed'
+                  }`}
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add</span>
@@ -428,60 +472,114 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
               </div>
             </div>
 
-            {activePart && docType === 'order' && activePart.currentStock < 5 && (
-              <div className="flex items-center space-x-1.5 text-amber-700 text-[11px]">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>Notice: Low stock alert ({activePart.currentStock} {activePart.unit} remaining).</span>
-              </div>
+            {/* Live Stock Status Notification Bar */}
+            {activePart && (
+              <>
+                {isOutOfStock ? (
+                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[#DC2626] text-[11px] font-semibold">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Out of Stock — 0 {activePart.unit} available for <strong>{activePart.name}</strong>. Please replenish inventory before OTC dispatch.
+                    </span>
+                  </div>
+                ) : isInsufficientStock ? (
+                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[#DC2626] text-[11px] font-semibold">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Low in Stock — Only <strong>{availableStock} {activePart.unit}</strong> available in stock
+                      {inCartQtyForActive > 0 ? ` (${inCartQtyForActive} already in order)` : ''}, cannot fulfill requested order of <strong>{quantity} {activePart.unit}</strong>. Please lower the quantity.
+                    </span>
+                  </div>
+                ) : isLowStockWarning ? (
+                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[#B45309] text-[11px] font-semibold">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[#F59E0B]" />
+                    <span>
+                      Low Stock Warning — <strong>{availableStock} {activePart.unit}</strong> available; only{' '}
+                      <strong>{Math.max(0, remainingAfterAdd)} {activePart.unit}</strong> will remain after this sale (at or below reorder threshold of {minReorder} {activePart.unit}).
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[#16A34A] text-[11px] font-semibold">
+                    <PackageCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      In Stock — Sufficient stock available (<strong>{availableStock} {activePart.unit}</strong> ready;{' '}
+                      <strong>{Math.max(0, remainingAfterAdd)} {activePart.unit}</strong> remaining after this order).
+                    </span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
           {/* Cart Items Table */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <span className="font-bold text-slate-800">Order Items ({cartItems.length})</span>
-              <span className="text-slate-400 text-[11px]">Nepal VAT 13% Calculated at Checkout</span>
+              <span className="font-bold text-[#0F172A]">Order Items ({cartItems.length})</span>
+              <span className="text-[#64748B] text-[11px]">Nepal VAT 13% Calculated at Checkout</span>
             </div>
 
             {cartItems.length === 0 ? (
-              <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400">
-                No spare parts added to this order yet. Choose a part above and click "Add".
+              <div className="p-6 text-center border-2 border-dashed border-[#E2E8F0] rounded-xl text-[#64748B]">
+                No spare parts added to this OTC order yet. Choose a part above and click &ldquo;Add&rdquo;.
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-[#E2E8F0] rounded-xl overflow-hidden">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                  <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] font-semibold text-[#64748B]">
                     <tr>
                       <th className="p-2.5">Item / SKU</th>
                       <th className="p-2.5 text-center">Qty</th>
+                      <th className="p-2.5 text-center">Stock Status</th>
                       <th className="p-2.5 text-right">Unit Price</th>
                       <th className="p-2.5 text-right">Line Total</th>
                       <th className="p-2.5 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {cartItems.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="p-2.5">
-                          <span className="font-bold text-slate-800 block">{item.partName}</span>
-                          <span className="text-slate-400 font-mono text-[10px]">{item.sku}</span>
-                        </td>
-                        <td className="p-2.5 text-center font-mono font-bold">{item.quantity}</td>
-                        <td className="p-2.5 text-right font-mono">NPR {item.unitPrice.toLocaleString()}</td>
-                        <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                          NPR {item.total.toLocaleString()}
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFromCart(idx)}
-                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-[#E2E8F0]">
+                    {cartItems.map((item, idx) => {
+                      const livePart = parts.find((p) => p.id === item.partId);
+                      const stockAfter = (livePart?.currentStock ?? 0) - item.quantity;
+                      const exceeds = !livePart || item.quantity > livePart.currentStock;
+                      const hitsReorder = !exceeds && stockAfter <= (livePart?.minReorderLevel ?? 5);
+
+                      return (
+                        <tr key={idx} className="hover:bg-[#F8FAFC]">
+                          <td className="p-2.5">
+                            <span className="font-bold text-[#0F172A] block">{item.partName}</span>
+                            <span className="text-[#64748B] font-mono text-[10px]">{item.sku}</span>
+                          </td>
+                          <td className="p-2.5 text-center font-mono font-bold">{item.quantity}</td>
+                          <td className="p-2.5 text-center">
+                            {exceeds ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-[#DC2626] border border-red-200">
+                                Low in Stock ({livePart?.currentStock ?? 0})
+                              </span>
+                            ) : hitsReorder ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-[#B45309] border border-amber-200">
+                                Low After Sale ({stockAfter} left)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-[#16A34A] border border-emerald-200">
+                                In Stock ({stockAfter} left)
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-right font-mono">NPR {item.unitPrice.toLocaleString()}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-[#0F172A]">
+                            NPR {item.total.toLocaleString()}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFromCart(idx)}
+                              className="text-[#64748B] hover:text-[#DC2626] p-1 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -490,50 +588,44 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
 
           {/* Pricing Totals */}
           {cartItems.length > 0 && (
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 font-medium">
-              <div className="flex justify-between text-slate-600">
+            <div className="p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-1.5 font-medium">
+              <div className="flex justify-between text-[#64748B]">
                 <span>Taxable Subtotal:</span>
                 <span className="font-mono">NPR {subtotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-slate-600">
+              <div className="flex justify-between text-[#64748B]">
                 <span>Nepal VAT (13%):</span>
-                <span className="font-mono text-teal-700 font-semibold">+ NPR {vatAmount.toLocaleString()}</span>
+                <span className="font-mono text-[#0284C7] font-semibold">+ NPR {vatAmount.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-slate-900 font-bold text-sm pt-2 border-t border-slate-200">
+              <div className="flex justify-between text-[#0F172A] font-bold text-sm pt-2 border-t border-[#E2E8F0]">
                 <span>Grand Total:</span>
-                <span className="font-mono text-teal-800">NPR {grandTotal.toLocaleString()}</span>
+                <span className="font-mono text-[#0F3D5E]">NPR {grandTotal.toLocaleString()}</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Modal Footer */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+        <div className="pt-3.5 border-t border-[#E2E8F0] flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-slate-300 rounded-xl font-semibold text-slate-700 hover:bg-slate-50"
+            className="px-4 py-2 border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] hover:bg-[#F1F5F9]"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={cartItems.length === 0}
-            className={`px-5 py-2 rounded-xl font-bold text-white shadow-sm flex items-center space-x-1.5 transition-all ${
-              cartItems.length === 0
-                ? 'bg-slate-300 cursor-not-allowed'
-                : docType === 'order'
-                ? 'bg-teal-600 hover:bg-teal-700'
-                : 'bg-blue-600 hover:bg-blue-700'
+            disabled={cartItems.length === 0 || cartStockViolations.length > 0}
+            className={`px-5 py-2 rounded-lg font-bold text-white flex items-center space-x-1.5 transition-all ${
+              cartItems.length === 0 || cartStockViolations.length > 0
+                ? 'bg-[#CBD5E1] text-[#64748B] cursor-not-allowed'
+                : 'bg-[#0EA5E9] hover:bg-[#0284C7]'
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>
-              {docType === 'order'
-                ? `Confirm OTC Dispatch (NPR ${grandTotal.toLocaleString()})`
-                : `Generate Quotation (NPR ${grandTotal.toLocaleString()})`}
-            </span>
+            <span>Confirm OTC Dispatch (NPR {grandTotal.toLocaleString()})</span>
           </button>
         </div>
       </div>

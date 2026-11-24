@@ -143,7 +143,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 7mm 8mm;
   }
 
   *, *::before, *::after {
@@ -155,8 +155,8 @@
   html, body {
     background: #ffffff !important;
     color: #0F172A !important;
-    font-size: 10pt !important;
-    line-height: 1.4 !important;
+    font-size: 9.5pt !important;
+    line-height: 1.3 !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
@@ -179,6 +179,20 @@
     padding: 0 !important;
     background: #ffffff !important;
     overflow: visible !important;
+  }
+
+  /* Single A4 sheet sizing for Tax Invoice + Detachable Vehicle Gate Pass */
+  #app-print-root .invoice-single-a4,
+  .print-modal-root .invoice-single-a4 {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    font-size: 8.5pt !important;
+    line-height: 1.22 !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 
   /* Fallback if user triggers Ctrl+P directly while a print modal is open */

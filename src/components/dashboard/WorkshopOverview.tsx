@@ -24,7 +24,6 @@ import {
   Appointment, 
   SparePart, 
   Invoice, 
-  InsuranceClaim, 
   Technician, 
   WorkshopProfile,
   WarrantyClaim 
@@ -35,7 +34,6 @@ interface WorkshopOverviewProps {
   appointments: Appointment[];
   parts: SparePart[];
   invoices: Invoice[];
-  claims: InsuranceClaim[];
   technicians: Technician[];
   warrantyClaims: WarrantyClaim[];
   profile: WorkshopProfile;
@@ -49,7 +47,6 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
   appointments = [],
   parts = [],
   invoices = [],
-  claims = [],
   technicians = [],
   warrantyClaims = [],
   profile,
@@ -61,14 +58,12 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
   const safeAppointments = Array.isArray(appointments) ? appointments.filter(Boolean) : [];
   const safeParts = Array.isArray(parts) ? parts.filter(Boolean) : [];
   const safeInvoices = Array.isArray(invoices) ? invoices.filter(Boolean) : [];
-  const safeClaims = Array.isArray(claims) ? claims.filter(Boolean) : [];
   const safeWarrantyClaims = Array.isArray(warrantyClaims) ? warrantyClaims.filter(Boolean) : [];
   const safeTechnicians = Array.isArray(technicians) ? technicians.filter(Boolean) : [];
 
   const activeJobCards = safeJobCards.filter(j => j && j.status !== 'Delivered');
   const deliveredCards = safeJobCards.filter(j => j && j.status === 'Delivered');
   const lowStockParts = safeParts.filter(p => p && p.currentStock <= p.minReorderLevel);
-  const pendingInsurance = safeClaims.filter(c => c && c.status !== 'Settled');
   const pendingWarranty = safeWarrantyClaims.filter(w => w && (w.status === 'Submitted to OEM' || w.status === 'OEM Inspection / Under Review'));
 
   // Revenue aggregates in NPR
@@ -282,7 +277,7 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
             )}
           </div>
 
-          {/* Quick Warranty & Insurance badges */}
+          {/* Quick OEM Warranty badge */}
           <div className="pt-3 border-t border-slate-100 space-y-2">
             <div 
               onClick={() => onNavigateTab('warranty')}
@@ -293,17 +288,6 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
                 <span>Pending OEM Warranty Claims</span>
               </div>
               <span className="font-mono font-black">{pendingWarranty.length}</span>
-            </div>
-
-            <div 
-              onClick={() => onNavigateTab('insurance')}
-              className="flex justify-between items-center p-2.5 bg-blue-50 rounded-xl text-xs font-semibold text-blue-900 cursor-pointer hover:bg-blue-100 transition"
-            >
-              <div className="flex items-center space-x-2">
-                <ShieldCheck className="w-4 h-4 text-blue-700" />
-                <span>Cashless Insurance Claims</span>
-              </div>
-              <span className="font-mono font-black">{pendingInsurance.length}</span>
             </div>
           </div>
         </div>

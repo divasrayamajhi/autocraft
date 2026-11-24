@@ -698,6 +698,15 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
     const vehicleTotalBilledAmount = vehiclePastInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
     const vehicleTotalServiceCount = vehiclePastJobCards.length + 1; // including this intake
 
+    const cleanCustPhone = intakeCustPhone.trim();
+    const serviceBaseDate = intakeArrivalDate || new Date().toISOString().slice(0, 10);
+    const serviceBaseTime = new Date(serviceBaseDate).getTime();
+    const computedNextDueDate = new Date(
+      (isNaN(serviceBaseTime) ? Date.now() : serviceBaseTime) + 120 * 24 * 60 * 60 * 1000
+    ).toISOString().slice(0, 10);
+    const computedNextDueKm = Number(intakeOdo) + 5000;
+    const isPmsIntake = intakeServiceType === 'Periodic Maintenance Service';
+
     const vehicleRecord: Vehicle = {
       id: `VEH-${Date.now().toString().slice(-4)}`,
       registrationNumber: cleanReg,
@@ -714,7 +723,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       customerName: cleanCustName,
       totalServiceCount: vehicleTotalServiceCount,
       totalBilledAmount: vehicleTotalBilledAmount,
-      lastServiceDate: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+      lastServiceDate: serviceBaseDate,
+      nextServiceDueDate: computedNextDueDate,
+      nextServiceDueKm: computedNextDueKm,
       lastServiceType: intakeServiceType,
       lastJobCardNumber: newJcNumber
     };
@@ -727,19 +738,19 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       const newCustomer: Customer = {
         id: assignedCustomerId,
         name: cleanCustName,
-        phone: intakeCustPhone.trim(),
+        phone: cleanCustPhone,
         email: `${cleanCustName.toLowerCase().replace(/\s+/g, '.')}@nepalmail.com`,
         address: 'Kathmandu, Nepal',
         customerType: 'Individual',
         createdAt: new Date().toISOString().slice(0, 10),
-        lastVisit: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+        lastVisit: serviceBaseDate,
         totalSpent: vehicleTotalBilledAmount,
         outstandingBalance: 0,
         vehicles: [vehicleRecord]
       };
       onAddCustomer(newCustomer);
     } else if (existingCustomer && onUpdateCustomer) {
-      // Existing customer brings a vehicle: check if it is a new vehicle or existing garage vehicle
+      // Existing customer brings a vehicle: sync latest contact phone & update garage vehicle record
       const existingVehIndex = (existingCustomer.vehicles || []).findIndex((v: any) => {
         const regStr = typeof v === 'string' ? v : v.registrationNumber || '';
         const regMatch = regStr.toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanReg.replace(/[^A-Z0-9]/g, '');
@@ -750,18 +761,20 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
       if (existingVehIndex === -1) {
         // Existing customer brings a NEW vehicle:
-        // Update customer garage with all past service history and the bill amount
+        // Update customer garage with all past service history, synced phone, and the bill amount
         const updatedVehicles = [...(existingCustomer.vehicles || []), vehicleRecord];
         const updatedTotalSpent = (existingCustomer.totalSpent || 0) + vehicleTotalBilledAmount;
 
         onUpdateCustomer({
           ...existingCustomer,
-          lastVisit: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+          name: cleanCustName || existingCustomer.name,
+          phone: cleanCustPhone || existingCustomer.phone,
+          lastVisit: serviceBaseDate,
           totalSpent: updatedTotalSpent,
           vehicles: updatedVehicles
         });
       } else {
-        // Existing vehicle in garage: update garage entry with fresh odometer, service count, service date and synced bill amount
+        // Existing vehicle in garage: update garage entry with fresh odometer, contact, service date and upcoming PMS due schedule
         const currentVeh = existingCustomer.vehicles[existingVehIndex];
         const updatedVeh: Vehicle = {
           ...(typeof currentVeh === 'object' ? currentVeh : {}),
@@ -777,10 +790,16 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
           vinNumber: cleanVin || (typeof currentVeh === 'object' ? currentVeh.vinNumber || currentVeh.chassisNumber : ''),
           chassisNumber: cleanVin || (typeof currentVeh === 'object' ? currentVeh.chassisNumber || currentVeh.vinNumber : ''),
           engineNumber: cleanEngine || (typeof currentVeh === 'object' ? currentVeh.engineNumber : ''),
-          customerName: existingCustomer.name,
+          customerName: cleanCustName || existingCustomer.name,
           totalServiceCount: ((typeof currentVeh === 'object' && currentVeh.totalServiceCount) || vehiclePastJobCards.length) + 1,
           totalBilledAmount: vehicleTotalBilledAmount,
-          lastServiceDate: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+          lastServiceDate: serviceBaseDate,
+          nextServiceDueDate: isPmsIntake
+            ? computedNextDueDate
+            : (typeof currentVeh === 'object' && currentVeh.nextServiceDueDate) || computedNextDueDate,
+          nextServiceDueKm: isPmsIntake
+            ? computedNextDueKm
+            : (typeof currentVeh === 'object' && currentVeh.nextServiceDueKm) || computedNextDueKm,
           lastServiceType: intakeServiceType,
           lastJobCardNumber: newJcNumber
         };
@@ -789,7 +808,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
 
         onUpdateCustomer({
           ...existingCustomer,
-          lastVisit: intakeArrivalDate || new Date().toISOString().slice(0, 10),
+          name: cleanCustName || existingCustomer.name,
+          phone: cleanCustPhone || existingCustomer.phone,
+          lastVisit: serviceBaseDate,
           vehicles: updatedVehicles
         });
       }
@@ -800,16 +821,18 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       id: `JC-${Date.now().toString().slice(-6)}`,
       jobCardNumber: newJcNumber,
       customerId: assignedCustomerId || `CUST-${Date.now().toString().slice(-4)}`,
-      customerName: intakeCustName.trim(),
-      customerPhone: intakeCustPhone.trim(),
-      arrivalDate: intakeArrivalDate,
+      customerName: cleanCustName,
+      customerPhone: cleanCustPhone,
+      arrivalDate: serviceBaseDate,
       entryTime: intakeEntryTime,
       couponNumber: intakeCouponNumber.trim() || undefined,
       lastServiceDate: matchedServiceHistory?.lastServiceDate,
       lastServiceKm: matchedServiceHistory?.lastOdometer,
       lastServiceSummary: matchedServiceHistory ? `${matchedServiceHistory.lastServiceType}: ${matchedServiceHistory.lastComplaints}` : undefined,
-      nextServiceDueDate: matchedServiceHistory?.nextServiceDueDate || new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      nextServiceDueKm: Number(intakeOdo) + 5000,
+      nextServiceDueDate: isPmsIntake
+        ? computedNextDueDate
+        : matchedServiceHistory?.nextServiceDueDate || computedNextDueDate,
+      nextServiceDueKm: computedNextDueKm,
       vehicle: {
         id: `VEH-${Date.now().toString().slice(-4)}`,
         registrationNumber: cleanReg,

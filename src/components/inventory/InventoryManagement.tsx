@@ -70,7 +70,7 @@ interface InventoryManagementProps {
   onViewJobCard?: (jcNumber: string) => void;
 }
 
-type InventorySubTab = 'master' | 'purchase_orders' | 'replenishment' | 'fms_abc' | 'sales_flow' | 'substitutes' | 'returns';
+type InventorySubTab = 'master' | 'purchase_orders' | 'replenishment' | 'fms_abc' | 'otc_sales' | 'quotations' | 'substitutes' | 'returns';
 
 export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   parts = [],
@@ -115,16 +115,14 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
   const [isAddPartModalOpen, setIsAddPartModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<SparePart | null>(null);
 
-  // New OTC Quotation / Sales Order Modal
+  // Over the Counter Sale & Return Modals
   const [isNewOrderModal, setIsNewOrderModal] = useState(false);
   const [isNewReturnModal, setIsNewReturnModal] = useState(false);
-  const [selectedPricingTier, setSelectedPricingTier] = useState<'Retail' | 'Fleet' | 'Insurance' | 'Wholesale'>('Retail');
 
   // Document Slip Preview Modals
   const [viewQuotation, setViewQuotation] = useState<PartsQuotation | null>(null);
   const [viewSalesOrder, setViewSalesOrder] = useState<PartsSalesOrder | null>(null);
   const [viewSalesReturn, setViewSalesReturn] = useState<PartsSalesReturn | null>(null);
-  const [salesPipelineView, setSalesPipelineView] = useState<'all' | 'orders' | 'quotations'>('all');
 
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -224,9 +222,10 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <button
             onClick={() => setIsNewOrderModal(true)}
-            className="flex-1 sm:flex-none px-3.5 py-2 bg-[#FFFFFF] hover:bg-[#F1F5F9] text-[#0F172A] rounded-lg text-xs font-semibold border border-[#E2E8F0] transition text-center"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1.5 px-3.5 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg text-xs font-semibold transition text-center"
           >
-            New Spares Order
+            <ShoppingBag className="w-3.5 h-3.5 text-[#0EA5E9]" />
+            <span>Over the Counter Sale</span>
           </button>
           <button
             onClick={() => {
@@ -300,7 +299,8 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
           { id: 'purchase_orders', label: 'Purchase Orders (PO)', icon: ShoppingBag, badge: pendingPOsCount },
           { id: 'replenishment', label: 'Replenishment & Alerts', icon: AlertTriangle, badge: lowStockParts.length },
           { id: 'fms_abc', label: 'FMS & ABC Classification', icon: Layers },
-          { id: 'sales_flow', label: 'Quotation → Order → Dispatch', icon: ArrowRight },
+          { id: 'otc_sales', label: 'OTC Spares Sales', icon: ShoppingCart, badge: salesOrders.length },
+          { id: 'quotations', label: 'Quotations', icon: FileText, badge: quotations.length },
           { id: 'substitutes', label: 'Cross-References & Substitutes', icon: Sparkles },
           { id: 'returns', label: 'Sales Returns (Credit Notes)', icon: RotateCcw }
         ].map((tab) => {
@@ -1023,39 +1023,32 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         </div>
       )}
 
-      {/* SUBTAB 4: SALES PIPELINE (QUOTATION -> ORDER -> DISPATCH) */}
-      {activeSubTab === 'sales_flow' && (
+      {/* SUBTAB 4: OTC SPARES SALES & DISPATCH */}
+      {activeSubTab === 'otc_sales' && (
         <div className="space-y-4">
           {/* Header */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Over-the-Counter (OTC) Spares Sales Pipeline</h3>
-                <p className="text-xs text-slate-500">Manage OTC sales orders, formal customer quotations, stock dispatch, and 13% Nepal VAT invoicing.</p>
+                <h3 className="text-sm font-bold text-slate-900">Over-the-Counter (OTC) Spares Sales & Dispatch</h3>
+                <p className="text-xs text-slate-500">Issue over-the-counter spare parts sales orders, verify live stock availability, dispatch inventory, and calculate 13% Nepal VAT.</p>
               </div>
               <button
                 onClick={() => setIsNewOrderModal(true)}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center space-x-1.5 shrink-0 transition-colors"
+                className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center space-x-1.5 shrink-0 transition-colors"
               >
-                <Plus className="w-4 h-4" />
-                <span>Create Quotation / Order</span>
+                <ShoppingBag className="w-4 h-4" />
+                <span>Over the Counter Sale</span>
               </button>
             </div>
 
-            {/* Metrics */}
+            {/* OTC Metrics */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-[11px] text-slate-500 block">Sales Orders</span>
+                <span className="text-[11px] text-slate-500 block">Total OTC Orders</span>
                 <span className="text-base font-extrabold text-slate-900 font-mono">{salesOrders.length}</span>
-                <span className="text-[10px] text-teal-600 block font-semibold">
+                <span className="text-[10px] text-[#0284C7] block font-semibold">
                   NPR {salesOrders.reduce((sum, o) => sum + o.grandTotal, 0).toLocaleString()}
-                </span>
-              </div>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-[11px] text-slate-500 block">Quotations Active</span>
-                <span className="text-base font-extrabold text-slate-900 font-mono">{quotations.length}</span>
-                <span className="text-[10px] text-blue-600 block font-semibold">
-                  NPR {quotations.reduce((sum, q) => sum + q.grandTotal, 0).toLocaleString()}
                 </span>
               </div>
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
@@ -1066,275 +1059,257 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                 <span className="text-[10px] text-slate-400 block font-semibold">Stock issued from shelves</span>
               </div>
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-500 block">Pending Dispatch</span>
+                <span className="text-base font-extrabold text-amber-600 font-mono">
+                  {salesOrders.filter(o => o.dispatchStatus !== 'Fully Dispatched').length}
+                </span>
+                <span className="text-[10px] text-slate-400 block font-semibold">Awaiting warehouse pickup</span>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                 <span className="text-[11px] text-slate-500 block">Nepal VAT (13%)</span>
-                <span className="text-base font-extrabold text-teal-800 font-mono">
+                <span className="text-base font-extrabold text-[#0F3D5E] font-mono">
                   NPR {salesOrders.reduce((sum, o) => sum + o.vatAmount, 0).toLocaleString()}
                 </span>
                 <span className="text-[10px] text-slate-400 block font-semibold">IRD Tax Ledger Ready</span>
               </div>
             </div>
 
-            {/* Pricing Tiers Ribbon & Pipeline Filter */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-              <div className="flex items-center space-x-1.5 overflow-x-auto py-0.5">
-                <span className="font-semibold text-slate-500 text-[11px] mr-1">Filter View:</span>
-                <button
-                  onClick={() => setSalesPipelineView('all')}
-                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
-                    salesPipelineView === 'all' ? 'bg-teal-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  All Records ({salesOrders.length + quotations.length})
-                </button>
-                <button
-                  onClick={() => setSalesPipelineView('orders')}
-                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
-                    salesPipelineView === 'orders' ? 'bg-teal-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Sales Orders ({salesOrders.length})
-                </button>
-                <button
-                  onClick={() => setSalesPipelineView('quotations')}
-                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors ${
-                    salesPipelineView === 'quotations' ? 'bg-teal-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Quotations ({quotations.length})
-                </button>
-              </div>
-
+            {/* Pricing Tiers Ribbon */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
               <div className="flex items-center space-x-1.5 text-[11px] text-slate-500">
-                <span>Tiers:</span>
-                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">Retail</span>
-                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Fleet (-10%)</span>
-                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">Wholesale (-15%)</span>
+                <span className="font-semibold">OTC Pricing Tiers:</span>
+                <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-semibold">Retail</span>
+                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Fleet (-10%)</span>
+                <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">Wholesale (-15%)</span>
               </div>
+              <span className="text-[11px] text-slate-400">Stock levels deduct automatically on dispatch</span>
             </div>
           </div>
 
-          {/* Sales Orders Table */}
-          {(salesPipelineView === 'all' || salesPipelineView === 'orders') && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <ShoppingBag className="w-4 h-4 text-teal-700" />
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                    Sales Orders & Dispatches ({salesOrders.length})
-                  </h4>
+          {/* OTC Sales Orders Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ShoppingBag className="w-4 h-4 text-[#0F3D5E]" />
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  OTC Sales Orders & Dispatches ({salesOrders.length})
+                </h4>
+              </div>
+            </div>
+
+            {salesOrders.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                No OTC sales orders recorded yet. Click "Over the Counter Sale" above to create and dispatch an order.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                    <tr>
+                      <th className="p-3">Order # & Date</th>
+                      <th className="p-3">Customer</th>
+                      <th className="p-3">Items Summary</th>
+                      <th className="p-3 text-right">Grand Total</th>
+                      <th className="p-3 text-center">Dispatch Status</th>
+                      <th className="p-3 text-center">Invoice</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {salesOrders.map(order => (
+                      <tr key={order.id} className="hover:bg-slate-50/70">
+                        <td className="p-3">
+                          <span className="font-bold font-mono text-slate-900 block">{order.orderNumber}</span>
+                          <span className="text-[11px] text-slate-400">{order.date}</span>
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800">{order.customerName}</td>
+                        <td className="p-3">
+                          <div className="max-w-xs truncate text-[11px] text-slate-600">
+                            {order.items.map(item => `${item.quantity}x ${item.partName}`).join(', ')}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">({order.items.length} unique parts)</span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <span className="font-mono font-bold text-slate-900 block">
+                            NPR {order.grandTotal.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            (VAT: NPR {order.vatAmount.toLocaleString()})
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            order.dispatchStatus === 'Fully Dispatched'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : order.dispatchStatus === 'Partially Dispatched'
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {order.dispatchStatus}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            order.invoiceStatus === 'Invoiced'
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {order.invoiceStatus}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            {order.dispatchStatus !== 'Fully Dispatched' && onDispatchOrder && (
+                              <button
+                                onClick={() => {
+                                  onDispatchOrder(order.id, false);
+                                  notify(`Stock dispatched for order ${order.orderNumber}! Shelves updated.`);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition-colors"
+                              >
+                                Dispatch
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setViewSalesOrder(order)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>Challan</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SUBTAB 5: QUOTATIONS REGISTER */}
+      {activeSubTab === 'quotations' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 text-[#0284C7]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Customer Repair Estimates & Quotations</h3>
+                  <p className="text-xs text-slate-500">
+                    Preliminary cost estimates for vehicle repairs and spare parts generated from Job Cards.
+                  </p>
                 </div>
               </div>
-
-              {salesOrders.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                  No sales orders recorded yet. Click "+ Create Quotation / Order" above to issue spares.
+              <div className="flex items-center gap-3 text-xs">
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                  <span className="text-[10px] text-slate-500 block">Total Quotations</span>
+                  <span className="font-mono font-extrabold text-slate-900 text-sm">{quotations.length}</span>
                 </div>
-              ) : (
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
-                      <tr>
-                        <th className="p-3">Order # & Date</th>
-                        <th className="p-3">Customer</th>
-                        <th className="p-3">Items Summary</th>
-                        <th className="p-3 text-right">Grand Total</th>
-                        <th className="p-3 text-center">Dispatch Status</th>
-                        <th className="p-3 text-center">Invoice</th>
-                        <th className="p-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {salesOrders.map(order => (
-                        <tr key={order.id} className="hover:bg-slate-50/70">
-                          <td className="p-3">
-                            <span className="font-bold font-mono text-slate-900 block">{order.orderNumber}</span>
-                            <span className="text-[11px] text-slate-400">{order.date}</span>
-                          </td>
-                          <td className="p-3 font-semibold text-slate-800">{order.customerName}</td>
-                          <td className="p-3">
-                            <div className="max-w-xs truncate text-[11px] text-slate-600">
-                              {order.items.map(item => `${item.quantity}x ${item.partName}`).join(', ')}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-mono">({order.items.length} unique parts)</span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <span className="font-mono font-bold text-slate-900 block">
-                              NPR {order.grandTotal.toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              (VAT: NPR {order.vatAmount.toLocaleString()})
-                            </span>
-                          </td>
-                          <td className="p-3 text-center">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                              order.dispatchStatus === 'Fully Dispatched'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : order.dispatchStatus === 'Partially Dispatched'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {order.dispatchStatus}
-                            </span>
-                          </td>
-                          <td className="p-3 text-center">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                              order.invoiceStatus === 'Invoiced'
-                                ? 'bg-teal-100 text-teal-800'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {order.invoiceStatus}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end space-x-1.5">
-                              {order.dispatchStatus !== 'Fully Dispatched' && onDispatchOrder && (
-                                <button
-                                  onClick={() => {
-                                    onDispatchOrder(order.id, false);
-                                    notify(`Stock dispatched for order ${order.orderNumber}! Shelves updated.`);
-                                  }}
-                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition-colors"
-                                >
-                                  Dispatch
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setViewSalesOrder(order)}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
-                              >
-                                <Eye className="w-3 h-3" />
-                                <span>Challan</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Quotations Table */}
-          {(salesPipelineView === 'all' || salesPipelineView === 'quotations') && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-blue-700" />
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                      Customer Repair Estimates & Quotations ({quotations.length})
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      Preliminary price estimations for vehicle repair and parts. Quotations provide customer cost estimates and are not converted to orders or billed.
-                    </p>
-                  </div>
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                  <span className="text-[10px] text-slate-500 block">Estimated Value</span>
+                  <span className="font-mono font-extrabold text-[#0284C7] text-sm">
+                    NPR {quotations.reduce((sum, q) => sum + q.grandTotal, 0).toLocaleString()}
+                  </span>
                 </div>
               </div>
-
-              {quotations.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                  No pending quotations. Click "+ Create Quotation / Order" above to generate a client quotation.
-                </div>
-              ) : (
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
-                      <tr>
-                        <th className="p-3">Quotation # & Date</th>
-                        <th className="p-3">Customer</th>
-                        <th className="p-3">Validity Expiry</th>
-                        <th className="p-3">Items Count</th>
-                        <th className="p-3 text-right">Grand Total (Inc VAT)</th>
-                        <th className="p-3 text-center">Status</th>
-                        <th className="p-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {quotations.map(quot => (
-                        <tr key={quot.id} className="hover:bg-slate-50/70">
-                          <td className="p-3">
-                            <span className="font-bold font-mono text-slate-900 block">{quot.quotationNumber}</span>
-                            <span className="text-[11px] text-slate-400 block">{quot.date}</span>
-                            {quot.jobCardNumber && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-bold font-mono">
-                                  JC: {quot.jobCardNumber}
-                                </span>
-                                {quot.isAccidentInsuranceEstimate && (
-                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">
-                                    Accident Claim
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 font-semibold text-slate-800">
-                            <div>{quot.customerName}</div>
-                            {quot.vehicleReg && (
-                              <div className="text-[11px] text-slate-500 font-mono">
-                                {quot.vehicleReg} {quot.vehicleModel ? `• ${quot.vehicleModel}` : ''}
-                              </div>
-                            )}
-                            {quot.insuranceCompany && (
-                              <div className="text-[10px] text-purple-700 font-medium">
-                                Insurer: {quot.insuranceCompany}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 font-mono text-[11px] text-slate-600">{quot.expiryDate}</td>
-                          <td className="p-3 font-mono text-[11px] text-slate-600">{quot.items.length} parts</td>
-                          <td className="p-3 text-right">
-                            <span className="font-mono font-bold text-slate-900 block">
-                              NPR {quot.grandTotal.toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              (Subtotal: NPR {quot.subtotal.toLocaleString()})
-                            </span>
-                          </td>
-                          <td className="p-3 text-center">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                              quot.status === 'Converted to Order'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : quot.status === 'Sent'
-                                ? 'bg-blue-100 text-blue-800'
-                                : quot.status === 'Expired'
-                                ? 'bg-rose-100 text-rose-800'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}>
-                              {quot.status}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <div className="flex items-center justify-end space-x-1.5">
-                              {quot.jobCardNumber && onViewJobCard && (
-                                <button
-                                  onClick={() => onViewJobCard(quot.jobCardNumber!)}
-                                  className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition-colors"
-                                  title="Directly access linked Job Card"
-                                >
-                                  <Wrench className="w-3 h-3" />
-                                  <span>Job Card</span>
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setViewQuotation(quot)}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
-                              >
-                                <Eye className="w-3 h-3" />
-                                <span>Slip</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
-          )}
+
+            {quotations.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                No quotations recorded yet. Repair quotations generated from Job Cards will appear here.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+                    <tr>
+                      <th className="p-3">Quotation # & Date</th>
+                      <th className="p-3">Customer & Vehicle</th>
+                      <th className="p-3">Validity Expiry</th>
+                      <th className="p-3">Items Count</th>
+                      <th className="p-3 text-right">Grand Total (Inc VAT)</th>
+                      <th className="p-3 text-center">Status</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {quotations.map(quot => (
+                      <tr key={quot.id} className="hover:bg-slate-50/70">
+                        <td className="p-3">
+                          <span className="font-bold font-mono text-slate-900 block">{quot.quotationNumber}</span>
+                          <span className="text-[11px] text-slate-400 block">{quot.date}</span>
+                          {quot.jobCardNumber && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className="px-1.5 py-0.5 rounded bg-sky-100 text-[#0F3D5E] text-[10px] font-bold font-mono">
+                                JC: {quot.jobCardNumber}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800">
+                          <div>{quot.customerName}</div>
+                          {quot.vehicleReg && (
+                            <div className="text-[11px] text-slate-500 font-mono">
+                              {quot.vehicleReg} {quot.vehicleModel ? `• ${quot.vehicleModel}` : ''}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono text-[11px] text-slate-600">{quot.expiryDate}</td>
+                        <td className="p-3 font-mono text-[11px] text-slate-600">{quot.items.length} parts</td>
+                        <td className="p-3 text-right">
+                          <span className="font-mono font-bold text-slate-900 block">
+                            NPR {quot.grandTotal.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            (Subtotal: NPR {quot.subtotal.toLocaleString()})
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            quot.status === 'Converted to Order'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : quot.status === 'Sent'
+                              ? 'bg-sky-100 text-sky-800'
+                              : quot.status === 'Expired'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {quot.status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            {quot.jobCardNumber && onViewJobCard && (
+                              <button
+                                onClick={() => onViewJobCard(quot.jobCardNumber!)}
+                                className="px-2.5 py-1 bg-sky-100 hover:bg-sky-200 text-[#0F3D5E] rounded-lg text-[11px] font-bold flex items-center space-x-1 transition-colors"
+                                title="Directly access linked Job Card"
+                              >
+                                <Wrench className="w-3 h-3" />
+                                <span>Job Card</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setViewQuotation(quot)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>Slip</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1741,13 +1716,12 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL: CREATE OTC ORDER & QUOTATION */}
+      {/* MODAL: NEW OTC SPARES SALES ORDER & DISPATCH */}
       <OtcOrderModal
         isOpen={isNewOrderModal}
         onClose={() => setIsNewOrderModal(false)}
         parts={parts}
         customers={customers}
-        onCreateQuotation={onCreateQuotation}
         onCreateSalesOrder={onCreateSalesOrder}
         onNotify={notify}
       />

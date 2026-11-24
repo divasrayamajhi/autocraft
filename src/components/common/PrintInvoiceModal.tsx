@@ -186,26 +186,26 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
 
         {/* Scrollable Preview Wrapper */}
         <div className="overflow-y-auto flex-1 bg-[#F1F5F9] p-4 sm:p-6">
-          {/* A4 Printable Sheet */}
+          {/* Single-Page A4 Printable Sheet (Tax Invoice + Detachable Vehicle Exit Gate Pass) */}
           <div
             ref={printAreaRef}
-            className="a4-sheet bg-[#FFFFFF] mx-auto max-w-[210mm] border border-[#E2E8F0] print:border-0 text-[#0F172A] text-xs"
+            className="a4-sheet invoice-single-a4 bg-[#FFFFFF] mx-auto max-w-[210mm] border border-[#E2E8F0] print:border-0 text-[#0F172A] text-xs"
           >
             {/* Top Brand Accent Bar */}
-            <div className="h-1.5 w-full bg-[#0F3D5E]" />
+            <div className="h-1.5 print:h-1 w-full bg-[#0F3D5E]" />
 
-            <div className="p-6 sm:p-8 print:p-0 print:pt-3 space-y-5">
+            <div className="p-5 sm:p-6 print:p-0 print:pt-1.5 space-y-3.5 print:space-y-2">
               {/* Two-Column Executive Masthead */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b-2 border-[#0F3D5E]">
-                <div className="space-y-1 max-w-[62%]">
-                  <h1 className="text-lg font-extrabold text-[#0F3D5E] tracking-tight uppercase leading-snug">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-3 print:gap-2 pb-3 print:pb-2 border-b-2 border-[#0F3D5E]">
+                <div className="space-y-0.5 max-w-[60%]">
+                  <h1 className="text-base print:text-sm font-extrabold text-[#0F3D5E] tracking-tight uppercase leading-tight">
                     {workshopName}
                   </h1>
                   {legalEntity && legalEntity !== workshopName && (
-                    <p className="text-[11px] font-semibold text-[#0F172A]">{legalEntity}</p>
+                    <p className="text-[11px] print:text-[10px] font-semibold text-[#0F172A]">{legalEntity}</p>
                   )}
-                  <p className="text-[11px] text-[#64748B] leading-relaxed">{workshopAddress}</p>
-                  <p className="text-[11px] text-[#64748B]">
+                  <p className="text-[11px] print:text-[10px] text-[#64748B] leading-snug">{workshopAddress}</p>
+                  <p className="text-[11px] print:text-[10px] text-[#64748B]">
                     Tel: <span className="text-[#0F172A] font-medium">{workshopPhone}</span>
                     {workshopEmail && (
                       <>
@@ -213,22 +213,30 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       </>
                     )}
                   </p>
-                  <p className="text-xs font-mono font-bold text-[#0F172A] pt-0.5">
+                  <p className="text-[11px] print:text-[10px] font-mono font-bold text-[#0F172A]">
                     Seller PAN / VAT No.: <span className="text-[#0F3D5E]">{workshopPan}</span>
                   </p>
                 </div>
 
-                <div className="sm:text-right flex flex-col sm:items-end space-y-1.5">
-                  <div className="inline-block px-3.5 py-1 border-2 border-[#0F3D5E] text-[#0F3D5E] font-extrabold text-sm tracking-widest uppercase">
-                    {docTitle}
+                <div className="sm:text-right flex flex-col sm:items-end space-y-1 print:space-y-0.5">
+                  <div className="flex items-center space-x-2">
+                    <div className="inline-block px-3 py-0.5 border-2 border-[#0F3D5E] text-[#0F3D5E] font-extrabold text-xs tracking-widest uppercase">
+                      {docTitle}
+                    </div>
+                    <span className={`inline-block px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border rounded ${statusBadge}`}>
+                      {effectiveStatus}
+                    </span>
                   </div>
-                  <p className="text-[10px] text-[#64748B]">
+                  <p className="text-[9px] text-[#64748B]">
                     Section 14, Nepal Value Added Tax Act, 2052
                   </p>
-                  <div className="pt-1 space-y-0.5 text-[11px]">
+                  <div className="space-y-0.5 text-[10px] leading-tight">
                     <div>
                       <span className="text-[#64748B]">Invoice No.: </span>
                       <span className="font-mono font-bold text-[#0F172A]">{invoice.invoiceNumber}</span>
+                      {' · '}
+                      <span className="text-[#64748B]">FY: </span>
+                      <span className="font-mono font-bold text-[#0F172A]">{fiscalYear}</span>
                     </div>
                     {isCreditNote && invoice.originalInvoiceNumber && (
                       <div>
@@ -245,36 +253,29 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       <span className="font-semibold text-[#0F172A]">{formattedDate}</span>
                       <span className="text-[#64748B] font-mono ml-1">({isoDate})</span>
                     </div>
-                    <div>
-                      <span className="text-[#64748B]">Fiscal Year: </span>
-                      <span className="font-mono font-bold text-[#0F172A]">{fiscalYear} B.S.</span>
-                    </div>
                   </div>
-                  <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded ${statusBadge}`}>
-                    {effectiveStatus}
-                  </span>
                 </div>
               </div>
 
               {/* Buyer & Vehicle Information Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="border border-[#E2E8F0] rounded-lg p-3.5 space-y-1">
+              <div className="grid grid-cols-2 gap-3 print:gap-2">
+                <div className="border border-[#E2E8F0] rounded-lg p-2.5 print:p-2 space-y-0.5">
                   <div className="flex items-center justify-between pb-1 border-b border-[#E2E8F0]">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#0284C7]">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-[#0284C7]">
                       {invoice.billedToType === 'Company' || invoice.companyName
                         ? 'Billed To (Company / VAT Buyer)'
                         : 'Billed To (Buyer Details)'}
                     </p>
                     {(invoice.billedToType === 'Company' || invoice.companyName) && (
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-sky-50 text-[#0F3D5E] border border-sky-200">
+                      <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase rounded bg-sky-50 text-[#0F3D5E] border border-sky-200">
                         Company Bill
                       </span>
                     )}
                   </div>
-                  <p className="text-xs font-bold text-[#0F172A] pt-1">
+                  <p className="text-[11px] font-bold text-[#0F172A] pt-0.5">
                     {invoice.companyName || invoice.customerName}
                   </p>
-                  <div className="grid grid-cols-[95px_1fr] gap-y-0.5 text-[11px]">
+                  <div className="grid grid-cols-[88px_1fr] gap-y-0.5 text-[10px] leading-tight">
                     <span className="text-[#64748B]">Buyer VAT/PAN:</span>
                     <span className="font-mono font-bold text-[#0F3D5E]">
                       {invoice.customerPan || invoice.customerPanVat || 'Consumer (Unregistered)'}
@@ -282,7 +283,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     {(invoice.companyAddress || invoice.customerAddress) && (
                       <>
                         <span className="text-[#64748B]">Address:</span>
-                        <span className="text-[#0F172A] leading-snug">
+                        <span className="text-[#0F172A] leading-tight">
                           {invoice.companyAddress || invoice.customerAddress}
                         </span>
                       </>
@@ -299,24 +300,21 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                         </>
                       )}
                     <span className="text-[#64748B]">Payment Mode:</span>
-                    <span className="font-semibold text-[#0F3D5E]">{invoice.paymentMethod || 'Cash'}</span>
-                    {invoice.paymentReference && (
-                      <>
-                        <span className="text-[#64748B]">Ref / Txn ID:</span>
-                        <span className="font-mono text-[#0F172A]">{invoice.paymentReference}</span>
-                      </>
-                    )}
+                    <span className="font-semibold text-[#0F3D5E]">
+                      {invoice.paymentMethod || 'Cash'}
+                      {invoice.paymentReference ? ` · Ref: ${invoice.paymentReference}` : ''}
+                    </span>
                   </div>
                 </div>
 
-                <div className="border border-[#E2E8F0] rounded-lg p-3.5 space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#0284C7] pb-1 border-b border-[#E2E8F0]">
+                <div className="border border-[#E2E8F0] rounded-lg p-2.5 print:p-2 space-y-0.5">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-[#0284C7] pb-1 border-b border-[#E2E8F0]">
                     Vehicle &amp; Job Reference
                   </p>
-                  <p className="text-xs font-mono font-bold text-[#0F172A] pt-1">
+                  <p className="text-[11px] font-mono font-bold text-[#0F172A] pt-0.5">
                     {invoice.vehicleReg || 'N/A'}
                   </p>
-                  <div className="grid grid-cols-[90px_1fr] gap-y-0.5 text-[11px]">
+                  <div className="grid grid-cols-[82px_1fr] gap-y-0.5 text-[10px] leading-tight">
                     <span className="text-[#64748B]">Vehicle:</span>
                     <span className="font-medium text-[#0F172A]">
                       {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Multi-Brand Vehicle'}
@@ -341,22 +339,22 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
 
               {/* Line Items Table */}
               <div>
-                <table className="w-full text-left border-collapse border border-[#CBD5E1] text-[11px]">
+                <table className="w-full text-left border-collapse border border-[#CBD5E1] text-[10px]">
                   <thead>
                     <tr className="bg-[#0F3D5E] text-white font-semibold">
-                      <th className="py-2 px-2.5 border-r border-white/20 w-10 text-center">S.N.</th>
-                      <th className="py-2 px-3 border-r border-white/20">Particulars / Description</th>
-                      <th className="py-2 px-2 border-r border-white/20 text-center w-20">HSN / SAC</th>
-                      <th className="py-2 px-2 border-r border-white/20 text-center w-12">Qty</th>
-                      <th className="py-2 px-2.5 border-r border-white/20 text-right w-24">Rate (NPR)</th>
-                      <th className="py-2 px-2.5 border-r border-white/20 text-right w-24">Taxable Amt</th>
-                      <th className="py-2 px-2.5 text-right w-24">Total (NPR)</th>
+                      <th className="py-1.5 print:py-1 px-2 border-r border-white/20 w-8 text-center">S.N.</th>
+                      <th className="py-1.5 print:py-1 px-2.5 border-r border-white/20">Particulars / Description</th>
+                      <th className="py-1.5 print:py-1 px-2 border-r border-white/20 text-center w-18">HSN / SAC</th>
+                      <th className="py-1.5 print:py-1 px-1.5 border-r border-white/20 text-center w-10">Qty</th>
+                      <th className="py-1.5 print:py-1 px-2 border-r border-white/20 text-right w-20">Rate (NPR)</th>
+                      <th className="py-1.5 print:py-1 px-2 border-r border-white/20 text-right w-22">Taxable Amt</th>
+                      <th className="py-1.5 print:py-1 px-2 text-right w-22">Total (NPR)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E2E8F0]">
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-6 text-center text-[#64748B]">
+                        <td colSpan={7} className="py-4 text-center text-[#64748B]">
                           No itemized lines recorded on this invoice.
                         </td>
                       </tr>
@@ -369,26 +367,26 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
 
                         return (
                           <tr key={item.id || index} className={index % 2 === 1 ? 'bg-[#F8FAFC]' : 'bg-[#FFFFFF]'}>
-                            <td className="py-2 px-2.5 border-r border-[#E2E8F0] text-center font-mono text-[#64748B]">
+                            <td className="py-1.5 print:py-1 px-2 border-r border-[#E2E8F0] text-center font-mono text-[#64748B]">
                               {index + 1}
                             </td>
-                            <td className="py-2 px-3 border-r border-[#E2E8F0]">
-                              <div className="font-semibold text-[#0F172A]">{item.description}</div>
-                              <div className="text-[10px] text-[#64748B]">{item.itemType || 'Service'}</div>
+                            <td className="py-1.5 print:py-1 px-2.5 border-r border-[#E2E8F0]">
+                              <span className="font-semibold text-[#0F172A]">{item.description}</span>
+                              <span className="text-[9px] text-[#64748B] ml-1.5">({item.itemType || 'Service'})</span>
                             </td>
-                            <td className="py-2 px-2 border-r border-[#E2E8F0] text-center font-mono text-[10px] text-[#64748B]">
+                            <td className="py-1.5 print:py-1 px-2 border-r border-[#E2E8F0] text-center font-mono text-[9px] text-[#64748B]">
                               {item.hsnSacCode || (item.itemType === 'Labor' ? '998714' : '87082900')}
                             </td>
-                            <td className="py-2 px-2 border-r border-[#E2E8F0] text-center font-mono tabular-nums">
+                            <td className="py-1.5 print:py-1 px-1.5 border-r border-[#E2E8F0] text-center font-mono tabular-nums">
                               {qty}
                             </td>
-                            <td className="py-2 px-2.5 border-r border-[#E2E8F0] text-right font-mono tabular-nums">
+                            <td className="py-1.5 print:py-1 px-2 border-r border-[#E2E8F0] text-right font-mono tabular-nums">
                               {formatNPR(rate)}
                             </td>
-                            <td className="py-2 px-2.5 border-r border-[#E2E8F0] text-right font-mono tabular-nums">
+                            <td className="py-1.5 print:py-1 px-2 border-r border-[#E2E8F0] text-right font-mono tabular-nums">
                               {formatNPR(lineTaxable)}
                             </td>
-                            <td className="py-2 px-2.5 text-right font-mono font-semibold text-[#0F172A] tabular-nums">
+                            <td className="py-1.5 print:py-1 px-2 text-right font-mono font-semibold text-[#0F172A] tabular-nums">
                               {formatNPR(lineTotal)}
                             </td>
                           </tr>
@@ -400,92 +398,89 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               </div>
 
               {/* Amount in Words + Accounting Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-start print-avoid-break">
+              <div className="grid grid-cols-12 gap-3 print:gap-2 items-start print-avoid-break">
                 {/* Left Column: Amount in Words, IRD CBMS & Payment QR */}
-                <div className="sm:col-span-7 space-y-3">
-                  <div className="border border-[#E2E8F0] rounded-lg p-3 bg-[#F8FAFC]">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                <div className="col-span-7 space-y-2 print:space-y-1.5">
+                  <div className="border border-[#E2E8F0] rounded-lg p-2 print:p-1.5 bg-[#F8FAFC]">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-[#64748B]">
                       Amount in Words
                     </p>
-                    <p className="text-xs font-bold text-[#0F172A] mt-0.5 leading-snug">
+                    <p className="text-[11px] print:text-[10px] font-bold text-[#0F172A] mt-0.5 leading-snug">
                       {numberToWordsNPR(Math.abs(grandTotal))}
                     </p>
                   </div>
 
-                  <div className="border border-[#E2E8F0] rounded-lg p-3 space-y-1.5">
+                  <div className="border border-[#E2E8F0] rounded-lg p-2 print:p-1.5 space-y-0.5">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-1.5 text-[11px] font-bold text-[#0F172A]">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
+                      <div className="flex items-center space-x-1.5 text-[10px] font-bold text-[#0F172A]">
+                        <CheckCircle2 className="w-3 h-3 text-[#16A34A]" />
                         <span>IRD CBMS E-Billing Verification</span>
                       </div>
                       {invoice.isLocked && (
-                        <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        <span className="inline-flex items-center space-x-1 text-[9px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                           <Lock className="w-2.5 h-2.5" />
                           <span>Immutable</span>
                         </span>
                       )}
                     </div>
-                    <p className="text-[10px] text-[#64748B] font-mono">
+                    <p className="text-[9px] text-[#64748B] font-mono">
                       Ack Ref: {invoice.irdSyncDetails?.cbmsAckNumber || `CBMS-${invoice.invoiceNumber}`} · FY {fiscalYear}
                     </p>
                   </div>
 
-                  <div className="flex items-center space-x-3 border border-[#E2E8F0] rounded-lg p-3">
-                    <div className="w-14 h-14 bg-[#0F3D5E] text-white p-1.5 rounded flex items-center justify-center flex-shrink-0">
-                      <QrCode className="w-11 h-11" />
+                  <div className="flex items-center space-x-2.5 border border-[#E2E8F0] rounded-lg p-2 print:p-1.5">
+                    <div className="w-10 h-10 bg-[#0F3D5E] text-white p-1 rounded flex items-center justify-center flex-shrink-0">
+                      <QrCode className="w-8 h-8" />
                     </div>
-                    <div className="space-y-0.5">
-                      <p className="font-bold text-[#0F172A] text-[11px]">Fonepay / NepalPay Dynamic QR</p>
-                      <p className="text-[10px] text-[#64748B]">
-                        Scan using mobile banking, eSewa, or Khalti to settle dues.
-                      </p>
-                      <p className="font-mono text-[10px] font-semibold text-[#0284C7]">
-                        Merchant: {workshopName}
+                    <div className="space-y-0.5 leading-tight">
+                      <p className="font-bold text-[#0F172A] text-[10px]">Fonepay / NepalPay Dynamic QR</p>
+                      <p className="text-[9px] text-[#64748B]">
+                        Scan using mobile banking, eSewa, or Khalti · Merchant: <span className="font-mono font-semibold text-[#0284C7]">{workshopName}</span>
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Right Column: Financial Breakdown Table */}
-                <div className="sm:col-span-5 border border-[#CBD5E1] rounded-lg overflow-hidden">
-                  <div className="divide-y divide-[#E2E8F0] text-[11px]">
-                    <div className="flex justify-between px-3.5 py-2">
+                <div className="col-span-5 border border-[#CBD5E1] rounded-lg overflow-hidden">
+                  <div className="divide-y divide-[#E2E8F0] text-[10px]">
+                    <div className="flex justify-between px-3 py-1.5 print:py-1">
                       <span className="text-[#64748B]">Gross Subtotal</span>
                       <span className="font-mono font-semibold text-[#0F172A] tabular-nums">
                         NPR {formatNPR(subTotal)}
                       </span>
                     </div>
                     {discountTotal > 0 && (
-                      <div className="flex justify-between px-3.5 py-2">
+                      <div className="flex justify-between px-3 py-1.5 print:py-1">
                         <span className="text-[#64748B]">Less: Discount</span>
                         <span className="font-mono font-semibold text-[#DC2626] tabular-nums">
                           - NPR {formatNPR(discountTotal)}
                         </span>
                       </div>
                     )}
-                    <div className="flex justify-between px-3.5 py-2">
+                    <div className="flex justify-between px-3 py-1.5 print:py-1">
                       <span className="text-[#64748B]">Taxable Amount</span>
                       <span className="font-mono font-semibold text-[#0F172A] tabular-nums">
                         NPR {formatNPR(taxableAmount)}
                       </span>
                     </div>
-                    <div className="flex justify-between px-3.5 py-2">
+                    <div className="flex justify-between px-3 py-1.5 print:py-1">
                       <span className="text-[#0F3D5E] font-semibold">Value Added Tax ({vatRate}%)</span>
                       <span className="font-mono font-bold text-[#0F3D5E] tabular-nums">
                         NPR {formatNPR(vatAmount)}
                       </span>
                     </div>
-                    <div className="flex justify-between px-3.5 py-2.5 bg-[#0F3D5E] text-white text-xs font-extrabold">
+                    <div className="flex justify-between px-3 py-2 print:py-1.5 bg-[#0F3D5E] text-white text-[11px] font-extrabold">
                       <span>Grand Total</span>
                       <span className="font-mono tabular-nums">NPR {formatNPR(grandTotal)}</span>
                     </div>
-                    <div className="flex justify-between px-3.5 py-2 bg-[#F8FAFC]">
+                    <div className="flex justify-between px-3 py-1.5 print:py-1 bg-[#F8FAFC]">
                       <span className="text-[#16A34A] font-semibold">Amount Paid</span>
                       <span className="font-mono font-semibold text-[#16A34A] tabular-nums">
                         NPR {formatNPR(paidAmount)}
                       </span>
                     </div>
-                    <div className="flex justify-between px-3.5 py-2 bg-[#FFFFFF]">
+                    <div className="flex justify-between px-3 py-1.5 print:py-1 bg-[#FFFFFF]">
                       <span className="font-bold text-[#0F172A]">Balance Due</span>
                       <span className={`font-mono font-bold tabular-nums ${effectiveBalanceDue > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
                         NPR {formatNPR(effectiveBalanceDue)}
@@ -496,57 +491,57 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
               </div>
 
               {/* Terms & 3-Column Signature Block */}
-              <div className="pt-4 border-t border-[#E2E8F0] space-y-6 print-avoid-break">
-                <div className="text-[10px] text-[#64748B] leading-relaxed">
+              <div className="pt-2.5 print:pt-1.5 border-t border-[#E2E8F0] space-y-4 print:space-y-2.5 print-avoid-break">
+                <div className="text-[9px] text-[#64748B] leading-snug">
                   <strong className="text-[#0F172A]">Terms &amp; Conditions:</strong> Goods and services once invoiced are subject to standard workshop warranty terms. Please verify vehicle items and gate pass prior to exit. E.&amp;O.E.
                 </div>
 
-                <div className="grid grid-cols-3 gap-6 pt-6 text-center text-[11px]">
+                <div className="grid grid-cols-3 gap-6 pt-4 print:pt-3 text-center text-[10px]">
                   <div>
-                    <div className="border-t border-[#94A3B8] pt-1.5 font-semibold text-[#0F172A]">
+                    <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
                       Prepared By
                     </div>
-                    <p className="text-[10px] text-[#64748B]">Billing Desk</p>
+                    <p className="text-[9px] text-[#64748B]">Billing Desk</p>
                   </div>
                   <div>
-                    <div className="border-t border-[#94A3B8] pt-1.5 font-semibold text-[#0F172A]">
+                    <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
                       Customer Signature
                     </div>
-                    <p className="text-[10px] text-[#64748B]">Vehicle Received in Good Order</p>
+                    <p className="text-[9px] text-[#64748B]">Vehicle Received in Good Order</p>
                   </div>
                   <div>
-                    <div className="border-t border-[#0F3D5E] pt-1.5 font-bold text-[#0F3D5E]">
+                    <div className="border-t border-[#0F3D5E] pt-1 font-bold text-[#0F3D5E]">
                       Authorized Signatory
                     </div>
-                    <p className="text-[10px] text-[#64748B]">For {workshopName}</p>
+                    <p className="text-[9px] text-[#64748B]">For {workshopName}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Compact Detachable Vehicle Exit Gate Pass Footer Section (replaces separate A4 Gate Pass) */}
+              {/* Compact Detachable Vehicle Exit Gate Pass Footer Section (Fits Together on Single A4 Sheet) */}
               {!isCreditNote && (
-                <div className="pt-4 mt-2 border-t-2 border-dashed border-[#94A3B8] print-avoid-break">
-                  <div className="flex items-center justify-between text-[9px] text-[#64748B] uppercase tracking-wider mb-2">
+                <div className="pt-2.5 print:pt-2 mt-1 border-t-2 border-dashed border-[#94A3B8] print-avoid-break">
+                  <div className="flex items-center justify-between text-[8.5px] text-[#64748B] uppercase tracking-wider mb-1.5 print:mb-1">
                     <span className="inline-flex items-center space-x-1 font-semibold">
-                      <Scissors className="w-3 h-3 text-[#64748B]" />
+                      <Scissors className="w-2.5 h-2.5 text-[#64748B]" />
                       <span>Detach Along Perforation — Present Slip to Main Gate Security</span>
                     </span>
                     <span className="font-mono font-bold text-[#0F3D5E]">{workshopName}</span>
                   </div>
 
                   <div className="border border-[#0F3D5E] rounded-lg overflow-hidden">
-                    <div className="bg-[#0F3D5E] text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="bg-[#0F3D5E] text-white px-2.5 py-1 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center space-x-1.5">
-                        <Shield className="w-3.5 h-3.5 text-[#0EA5E9]" />
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider">
+                        <Shield className="w-3 h-3 text-[#0EA5E9]" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider">
                           Vehicle Exit Gate Pass
                         </span>
-                        <span className="text-[10px] font-mono text-sky-200">
+                        <span className="text-[9px] font-mono text-sky-200">
                           #{gatePassNumber}
                         </span>
                       </div>
                       <span
-                        className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider ${
+                        className={`px-2 py-0.5 rounded text-[8.5px] font-extrabold uppercase tracking-wider ${
                           effectiveStatus === 'Paid'
                             ? 'bg-[#16A34A] text-white'
                             : 'bg-[#DC2626] text-white'
@@ -558,73 +553,73 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       </span>
                     </div>
 
-                    <div className="p-3 bg-[#FFFFFF] space-y-2.5 text-[10px]">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1.5">
+                    <div className="p-2.5 print:p-2 bg-[#FFFFFF] space-y-2 print:space-y-1.5 text-[9.5px] leading-tight">
+                      <div className="grid grid-cols-4 gap-x-2.5 gap-y-1">
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Vehicle Reg #</span>
-                          <span className="font-mono font-extrabold text-[#0F172A] text-[11px]">
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Vehicle Reg #</span>
+                          <span className="font-mono font-extrabold text-[#0F172A] text-[10px]">
                             {invoice.vehicleReg || 'N/A'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Make / Model</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Make / Model</span>
                           <span className="font-semibold text-[#0F172A]">
                             {[invoice.vehicleBrand, invoice.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Job Card / Invoice #</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Job Card / Invoice #</span>
                           <span className="font-mono font-semibold text-[#0F172A]">
                             {invoice.jobCardNumber || 'DIRECT'} · {invoice.invoiceNumber}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Date (B.S. / A.D.)</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Date (B.S. / A.D.)</span>
                           <span className="font-mono font-semibold text-[#0F3D5E]">
                             {bsDateObj.formatted} BS
                           </span>{' '}
                           <span className="text-[#64748B] font-mono">({isoDate})</span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Owner / Company</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Owner / Company</span>
                           <span className="font-semibold text-[#0F172A] truncate block">
                             {invoice.companyName || invoice.customerName}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Contact Phone</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Contact Phone</span>
                           <span className="font-mono text-[#0F172A]">
                             {invoice.companyPhone || invoice.customerPhone || 'N/A'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">VIN / Odometer</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">VIN / Odometer</span>
                           <span className="font-mono text-[#0F172A]">
                             {vinNumber ? `${vinNumber.slice(-8)}` : 'N/A'}
                             {odometer !== undefined && odometer > 0 ? ` · ${odometer.toLocaleString('en-IN')} km` : ''}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[#64748B] uppercase text-[9px] font-semibold block">Bill Total / Issued</span>
+                          <span className="text-[#64748B] uppercase text-[8px] font-semibold block">Bill Total / Issued</span>
                           <span className="font-mono font-bold text-[#0F172A]">
                             NPR {formatNPR(grandTotal)} · {gatePassTime}
                           </span>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-4 pt-3 mt-1 border-t border-[#E2E8F0] text-center">
+                      <div className="grid grid-cols-3 gap-4 pt-3 print:pt-2.5 border-t border-[#E2E8F0] text-center text-[9px]">
                         <div>
-                          <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
+                          <div className="border-t border-[#94A3B8] pt-0.5 font-semibold text-[#0F172A]">
                             Authorized By ({gatePassAuthBy})
                           </div>
                         </div>
                         <div>
-                          <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
+                          <div className="border-t border-[#94A3B8] pt-0.5 font-semibold text-[#0F172A]">
                             Main Gate Security Sign
                           </div>
                         </div>
                         <div>
-                          <div className="border-t border-[#94A3B8] pt-1 font-semibold text-[#0F172A]">
+                          <div className="border-t border-[#94A3B8] pt-0.5 font-semibold text-[#0F172A]">
                             Actual Exit Time: ____:____
                           </div>
                         </div>
