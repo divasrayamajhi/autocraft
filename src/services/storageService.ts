@@ -1632,6 +1632,60 @@ export class StorageService {
     this.saveToStorage(this.db);
   }
 
+  public applyRemoteDatabase(remotePartial: Partial<AppDatabase>): AppDatabase {
+    const merged = {
+      ...this.db,
+      ...remotePartial,
+      currentUser: this.db.currentUser,
+    };
+    this.db = this.normalizeDatabase(merged);
+    this.saveToStorage(this.db);
+    return { ...this.db };
+  }
+
+  public bindAuthenticatedUser(email: string | null, displayName: string | null): UserAccount {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const cleanDisplayName = (displayName || '').trim();
+    const users = Array.isArray(this.db.users) && this.db.users.length > 0
+      ? [...this.db.users]
+      : [...INITIAL_USERS];
+
+    let matched = users.find(
+      (u) => u.isActive && (u.email || '').trim().toLowerCase() === normalizedEmail
+    );
+
+    if (!matched) {
+      // Link primary Admin account (USR-01) to the authenticated workspace owner
+      const primaryIdx = users.findIndex((u) => u.id === 'USR-01' || u.role === 'Admin');
+      const baseAdmin = primaryIdx >= 0 ? users[primaryIdx] : INITIAL_USERS[0];
+      const linkedAdmin: UserAccount = {
+        ...baseAdmin,
+        name: cleanDisplayName ? `${cleanDisplayName} (Admin)` : baseAdmin.name,
+        email: email || baseAdmin.email,
+        role: 'Admin',
+        isActive: true,
+      };
+      if (primaryIdx >= 0) {
+        users[primaryIdx] = linkedAdmin;
+      } else {
+        users.unshift(linkedAdmin);
+      }
+      matched = linkedAdmin;
+    }
+
+    this.db = {
+      ...this.db,
+      users,
+      currentUser: matched,
+    };
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(AUTH_SESSION_KEY, 'true');
+      localStorage.setItem(ACTIVE_USER_KEY, matched.username);
+    }
+    this.saveToStorage(this.db);
+    return matched;
+  }
+
   public setCurrentUser(userId: string): UserAccount | null {
     return this.switchUser(userId);
   }
@@ -1700,13 +1754,11 @@ export class StorageService {
 
   public syncCloud(): Promise<{ success: boolean; timestamp: string }> {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const now = new Date().toISOString();
-        this.db.lastCloudSync = now;
-        this.db.isCloudSynced = true;
-        this.saveToStorage(this.db, true);
-        resolve({ success: true, timestamp: now });
-      }, 600);
+      const now = new Date().toISOString();
+      this.db.lastCloudSync = now;
+      this.db.isCloudSynced = true;
+      this.saveToStorage(this.db, true);
+      resolve({ success: true, timestamp: now });
     });
   }
 

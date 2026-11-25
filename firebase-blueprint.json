@@ -1,0 +1,422 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized workshop administrator record verified by Firebase UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "WorkshopProfileRecord": {
+      "title": "WorkshopProfileRecord",
+      "description": "Workshop legal identity, PAN/VAT registration, IRD configuration, and address.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "legalEntityName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "panVatNumber": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "address": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "city": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "contactNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 254 },
+        "fiscalYear": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "defaultVatRate": { "type": "number" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "name",
+        "legalEntityName",
+        "panVatNumber",
+        "address",
+        "city",
+        "contactNumber",
+        "email",
+        "fiscalYear",
+        "defaultVatRate",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StaffAccount": {
+      "title": "StaffAccount",
+      "description": "Admin-managed workshop staff account and RBAC permission matrix (PII-isolated).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "username": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 254 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "role": {
+          "type": "string",
+          "enum": ["Admin", "Service Advisor", "Billing Cashier", "Parts Manager", "Technician"]
+        },
+        "isActive": { "type": "boolean" },
+        "permissions": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "name",
+        "username",
+        "email",
+        "role",
+        "isActive",
+        "permissions",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkshopMasterItem": {
+      "title": "WorkshopMasterItem",
+      "description": "Service price book items, workshop bays, and technicians.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "masterType": { "type": "string", "enum": ["service_price", "bay", "technician"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "masterType", "name", "data", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "CustomerRecord": {
+      "title": "CustomerRecord",
+      "description": "Customer garage profile, contact details, vehicles, and service reminders (PII-isolated).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "email": { "type": "string", "maxLength": 254 },
+        "panVatNumber": { "type": "string", "maxLength": 40 },
+        "customerType": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "totalVisits": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "name",
+        "phone",
+        "customerType",
+        "totalVisits",
+        "totalSpent",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SparePartRecord": {
+      "title": "SparePartRecord",
+      "description": "Spare parts inventory master, stock counts, reorder levels, and pricing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "partNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "currentStock": { "type": "number" },
+        "minReorderLevel": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "partNumber",
+        "name",
+        "category",
+        "currentStock",
+        "minReorderLevel",
+        "sellingPrice",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "JobCardRecord": {
+      "title": "JobCardRecord",
+      "description": "Workshop service job card lifecycle, labor tasks, issued spare parts, and closure lock.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobCardNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "status": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "vehicleReg": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "isClosed": { "type": "boolean" },
+        "grandTotal": { "type": "number" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "jobCardNumber",
+        "status",
+        "customerName",
+        "vehicleReg",
+        "isClosed",
+        "grandTotal",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AppointmentRecord": {
+      "title": "AppointmentRecord",
+      "description": "Scheduled workshop vehicle service appointment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "vehicleReg": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "scheduledDate": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "status": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "customerName",
+        "vehicleReg",
+        "scheduledDate",
+        "status",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "InvoiceRecord": {
+      "title": "InvoiceRecord",
+      "description": "Nepal IRD 13% VAT Tax Invoice, OTC Invoice, or Credit Note with discount support.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "invoiceNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "status": { "type": "string", "enum": ["Paid", "Partially Paid", "Unpaid", "Voided"] },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "grandTotal": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "discountType": { "type": "string", "enum": ["percent", "amount"] },
+        "discountValue": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "isLocked": { "type": "boolean" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "invoiceNumber",
+        "status",
+        "customerName",
+        "grandTotal",
+        "balanceDue",
+        "discountAmount",
+        "isLocked",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GatePassRecord": {
+      "title": "GatePassRecord",
+      "description": "Workshop vehicle security exit gate pass linked to an invoice.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "passNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "invoiceNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "vehicleReg": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "status": { "type": "string", "enum": ["Cleared for Exit", "Exited", "On Hold"] },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "passNumber",
+        "invoiceNumber",
+        "vehicleReg",
+        "status",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PartsOperationRecord": {
+      "title": "PartsOperationRecord",
+      "description": "Parts quotations, OTC sales orders, sales returns, and purchase orders.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "opType": { "type": "string", "enum": ["quotation", "otc_order", "sales_return", "purchase_order"] },
+        "docNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "status": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "totalAmount": { "type": "number" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "opType",
+        "docNumber",
+        "status",
+        "totalAmount",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AccountingRecord": {
+      "title": "AccountingRecord",
+      "description": "GL accounts, double-entry journal vouchers, VAT ledger entries, and cashier daybook vouchers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recordType": { "type": "string", "enum": ["gl_account", "journal_entry", "vat_ledger", "cashier_voucher"] },
+        "docNumber": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "date": { "type": "string", "maxLength": 40 },
+        "amount": { "type": "number" },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "recordType",
+        "docNumber",
+        "date",
+        "amount",
+        "data",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WarrantyAndNotificationRecord": {
+      "title": "WarrantyAndNotificationRecord",
+      "description": "OEM warranty records, warranty claims, insurance claims, and pickup SMS notification logs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "itemType": { "type": "string", "enum": ["warranty_record", "warranty_claim", "insurance_claim", "ready_notification"] },
+        "status": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "data": { "type": "object" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "itemType", "status", "data", "ownerUid", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Trusted administrator UIDs managed exclusively by the bootstrapped admin."
+    },
+    "/workshop_profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/WorkshopProfileRecord" },
+      "description": "Workshop legal profile, PAN/VAT, and IRD configuration per tenant owner."
+    },
+    "/staff_accounts/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffAccount" },
+      "description": "PII-isolated workshop staff accounts and RBAC permission matrices."
+    },
+    "/workshop_masters/{masterId}": {
+      "schema": { "$ref": "#/entities/WorkshopMasterItem" },
+      "description": "Service price book items, service bays, and technicians."
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/CustomerRecord" },
+      "description": "PII-isolated customer garage directory, vehicles, and service reminders."
+    },
+    "/spare_parts/{partId}": {
+      "schema": { "$ref": "#/entities/SparePartRecord" },
+      "description": "Spare parts warehouse stock master."
+    },
+    "/job_cards/{jobCardId}": {
+      "schema": { "$ref": "#/entities/JobCardRecord" },
+      "description": "Vehicle workshop job cards with terminal closure protection."
+    },
+    "/appointments/{appointmentId}": {
+      "schema": { "$ref": "#/entities/AppointmentRecord" },
+      "description": "Scheduled service appointments."
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/InvoiceRecord" },
+      "description": "IRD Tax Invoices, OTC invoices, and Credit Notes."
+    },
+    "/gate_passes/{gatePassId}": {
+      "schema": { "$ref": "#/entities/GatePassRecord" },
+      "description": "Vehicle security gate passes."
+    },
+    "/parts_operations/{opId}": {
+      "schema": { "$ref": "#/entities/PartsOperationRecord" },
+      "description": "Parts quotations, OTC sales orders, returns, and vendor purchase orders."
+    },
+    "/accounting_records/{recordId}": {
+      "schema": { "$ref": "#/entities/AccountingRecord" },
+      "description": "General Ledger accounts, double-entry journal vouchers, VAT ledger, and cashier daybook."
+    },
+    "/warranty_and_notifications/{itemId}": {
+      "schema": { "$ref": "#/entities/WarrantyAndNotificationRecord" },
+      "description": "Warranty records, warranty claims, insurance claims, and pickup SMS notification logs."
+    }
+  }
+}

@@ -1,0 +1,727 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // 1. GLOBAL SAFETY NET (Default-Deny Catch-All)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 2. HARDENED PRIMITIVES & IDENTITY HELPERS
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Zero-lookup bootstrapped Admin check (safe inside allow list)
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'divasrayamajhi2@gmail.com';
+    }
+
+    // Full Admin check (bootstrapped Admin OR trusted /admins/{uid} document)
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidOptionalString(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isValidOptionalNumber(data, key) {
+      return !(key in data) || (data[key] is int || data[key] is float);
+    }
+
+    function isValidNumber(val) {
+      return val is int || val is float;
+    }
+
+    function isOwner(ownerUid) {
+      return isVerifiedUser() && ownerUid == request.auth.uid;
+    }
+
+    function hasValidOwnerOnCreate(data) {
+      return isValidId(data.ownerUid) && (data.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    function hasImmutableBaseFields() {
+      return incoming().ownerUid == existing().ownerUid
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+    }
+
+    function hasValidCreateTimestamps(data) {
+      return data.createdAt == request.time && data.updatedAt == request.time;
+    }
+
+    // =========================================================================
+    // 3. ENTITY VALIDATION BLUEPRINTS (Anti-Update-Gap)
+    // =========================================================================
+    function isValidAdminUser(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == adminId
+        && isValidString(data.email, 3, 254)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWorkshopProfile(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'legalEntityName', 'panVatNumber', 'address', 'city',
+          'contactNumber', 'email', 'fiscalYear', 'defaultVatRate', 'data',
+          'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'legalEntityName', 'panVatNumber', 'address', 'city',
+          'contactNumber', 'email', 'fiscalYear', 'defaultVatRate', 'data',
+          'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.name, 1, 160)
+        && isValidString(data.legalEntityName, 1, 200)
+        && isValidString(data.panVatNumber, 1, 40)
+        && isValidString(data.address, 1, 240)
+        && isValidString(data.city, 1, 100)
+        && isValidString(data.contactNumber, 1, 80)
+        && isValidString(data.email, 3, 254)
+        && isValidString(data.fiscalYear, 1, 30)
+        && isValidNumber(data.defaultVatRate)
+        && data.defaultVatRate >= 0 && data.defaultVatRate <= 100
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStaffAccount(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'username', 'email', 'role', 'isActive',
+          'permissions', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'username', 'email', 'phone', 'role', 'isActive',
+          'permissions', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.name, 1, 120)
+        && isValidString(data.username, 1, 64)
+        && isValidString(data.email, 3, 254)
+        && isValidOptionalString(data, 'phone', 40)
+        && data.role in ['Admin', 'Service Advisor', 'Billing Cashier', 'Parts Manager', 'Technician']
+        && data.isActive is bool
+        && data.permissions is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWorkshopMaster(data) {
+      return data.keys().hasAll(['id', 'masterType', 'name', 'data', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'masterType', 'name', 'data', 'ownerUid', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.masterType in ['service_price', 'bay', 'technician']
+        && isValidString(data.name, 1, 200)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'phone', 'customerType', 'totalVisits', 'totalSpent',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'phone', 'email', 'panVatNumber', 'customerType',
+          'totalVisits', 'totalSpent', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.name, 1, 160)
+        && isValidString(data.phone, 0, 40)
+        && isValidOptionalString(data, 'email', 254)
+        && isValidOptionalString(data, 'panVatNumber', 40)
+        && isValidString(data.customerType, 1, 60)
+        && isValidNumber(data.totalVisits)
+        && isValidNumber(data.totalSpent)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSparePart(data) {
+      return data.keys().hasAll([
+          'id', 'partNumber', 'name', 'category', 'currentStock',
+          'minReorderLevel', 'sellingPrice', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'partNumber', 'name', 'category', 'currentStock',
+          'minReorderLevel', 'sellingPrice', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.partNumber, 1, 80)
+        && isValidString(data.name, 1, 200)
+        && isValidString(data.category, 1, 80)
+        && isValidNumber(data.currentStock)
+        && isValidNumber(data.minReorderLevel)
+        && isValidNumber(data.sellingPrice)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidJobCard(data) {
+      return data.keys().hasAll([
+          'id', 'jobCardNumber', 'status', 'customerName', 'vehicleReg',
+          'isClosed', 'grandTotal', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'jobCardNumber', 'status', 'customerName', 'vehicleReg',
+          'isClosed', 'grandTotal', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.jobCardNumber, 1, 80)
+        && isValidString(data.status, 1, 80)
+        && isValidString(data.customerName, 1, 160)
+        && isValidString(data.vehicleReg, 1, 60)
+        && data.isClosed is bool
+        && isValidNumber(data.grandTotal)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll([
+          'id', 'customerName', 'vehicleReg', 'scheduledDate', 'status',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'customerName', 'vehicleReg', 'scheduledDate', 'status',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.customerName, 1, 160)
+        && isValidString(data.vehicleReg, 1, 60)
+        && isValidString(data.scheduledDate, 1, 40)
+        && isValidString(data.status, 1, 60)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll([
+          'id', 'invoiceNumber', 'status', 'customerName', 'grandTotal',
+          'balanceDue', 'discountAmount', 'isLocked', 'data',
+          'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'invoiceNumber', 'status', 'customerName', 'grandTotal',
+          'balanceDue', 'discountType', 'discountValue', 'discountAmount',
+          'isLocked', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.invoiceNumber, 1, 80)
+        && data.status in ['Paid', 'Partially Paid', 'Unpaid', 'Voided']
+        && isValidString(data.customerName, 1, 160)
+        && isValidNumber(data.grandTotal)
+        && isValidNumber(data.balanceDue)
+        && (!('discountType' in data) || data.discountType in ['percent', 'amount'])
+        && isValidOptionalNumber(data, 'discountValue')
+        && isValidNumber(data.discountAmount)
+        && data.isLocked is bool
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGatePass(data) {
+      return data.keys().hasAll([
+          'id', 'passNumber', 'invoiceNumber', 'vehicleReg', 'status',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'passNumber', 'invoiceNumber', 'vehicleReg', 'status',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.passNumber, 1, 80)
+        && isValidString(data.invoiceNumber, 1, 80)
+        && isValidString(data.vehicleReg, 1, 60)
+        && data.status in ['Cleared for Exit', 'Exited', 'On Hold']
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPartsOperation(data) {
+      return data.keys().hasAll([
+          'id', 'opType', 'docNumber', 'status', 'totalAmount',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'opType', 'docNumber', 'status', 'totalAmount',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.opType in ['quotation', 'otc_order', 'sales_return', 'purchase_order']
+        && isValidString(data.docNumber, 1, 80)
+        && isValidString(data.status, 1, 80)
+        && isValidNumber(data.totalAmount)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAccountingRecord(data) {
+      return data.keys().hasAll([
+          'id', 'recordType', 'docNumber', 'date', 'amount',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'recordType', 'docNumber', 'date', 'amount',
+          'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.recordType in ['gl_account', 'journal_entry', 'vat_ledger', 'cashier_voucher']
+        && isValidString(data.docNumber, 1, 80)
+        && isValidString(data.date, 0, 40)
+        && isValidNumber(data.amount)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWarrantyAndNotification(data) {
+      return data.keys().hasAll([
+          'id', 'itemType', 'status', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'itemType', 'status', 'data', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.itemType in ['warranty_record', 'warranty_claim', 'insurance_claim', 'ready_notification']
+        && isValidString(data.status, 1, 80)
+        && data.data is map
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // 4. COLLECTION RULES (13 Hardened Collections)
+    // =========================================================================
+
+    // 4.1 Trusted Admin Registry (Bootstrapped Admin Only)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isBootstrappedAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(adminId)
+        && isBootstrappedAdmin()
+        && isValidAdminUser(incoming(), adminId)
+        && hasValidCreateTimestamps(incoming());
+      allow update: if isValidId(adminId)
+        && isBootstrappedAdmin()
+        && isValidAdminUser(incoming(), adminId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+      allow delete: if isValidId(adminId) && isBootstrappedAdmin();
+    }
+
+    // 4.2 Workshop Profiles (PII-Isolated)
+    match /workshop_profiles/{profileId} {
+      allow get: if isValidId(profileId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(profileId)
+        && isVerifiedUser()
+        && isValidWorkshopProfile(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(profileId)
+        && isVerifiedUser()
+        && isValidWorkshopProfile(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'legalEntityName', 'panVatNumber', 'address', 'city',
+              'contactNumber', 'email', 'fiscalYear', 'defaultVatRate', 'data', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(profileId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.3 Staff Accounts & RBAC (PII-Isolated)
+    match /staff_accounts/{staffId} {
+      allow get: if isValidId(staffId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(staffId)
+        && isVerifiedUser()
+        && isValidStaffAccount(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(staffId)
+        && isVerifiedUser()
+        && isValidStaffAccount(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'username', 'email', 'phone', 'role', 'isActive', 'permissions', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(staffId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.4 Workshop Master Items (Service Price Book, Bays, Technicians)
+    match /workshop_masters/{masterId} {
+      allow get: if isValidId(masterId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(masterId)
+        && isVerifiedUser()
+        && isValidWorkshopMaster(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(masterId)
+        && isVerifiedUser()
+        && isValidWorkshopMaster(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().masterType == existing().masterType
+            && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'data', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(masterId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.5 Customers & Vehicle Garages (PII-Isolated)
+    match /customers/{customerId} {
+      allow get: if isValidId(customerId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(customerId)
+        && isVerifiedUser()
+        && isValidCustomer(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(customerId)
+        && isVerifiedUser()
+        && isValidCustomer(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'phone', 'email', 'panVatNumber', 'customerType',
+              'totalVisits', 'totalSpent', 'data', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(customerId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.6 Spare Parts Inventory Master
+    match /spare_parts/{partId} {
+      allow get: if isValidId(partId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(partId)
+        && isVerifiedUser()
+        && isValidSparePart(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(partId)
+        && isVerifiedUser()
+        && isValidSparePart(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && (
+              // Action: Stock Level Adjustment
+              incoming().diff(existing()).affectedKeys().hasOnly(['currentStock', 'data', 'updatedAt']) ||
+              // Action: Catalog & Pricing Update
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'partNumber', 'name', 'category', 'currentStock', 'minReorderLevel', 'sellingPrice', 'data', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isValidId(partId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.7 Workshop Job Cards (Terminal State Lock on Closed Job Cards)
+    match /job_cards/{jobCardId} {
+      allow get: if isValidId(jobCardId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(jobCardId)
+        && isVerifiedUser()
+        && isValidJobCard(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(jobCardId)
+        && isVerifiedUser()
+        && isValidJobCard(incoming())
+        && hasImmutableBaseFields()
+        && (
+          // Admin can always update or reopen closed job cards
+          isAdmin() ||
+          // Non-admin owner can only update while job card is NOT terminally closed
+          (
+            isOwner(existing().ownerUid)
+            && existing().isClosed == false
+            && (
+              // Action: Workflow Stage / Progress Update
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'grandTotal', 'data', 'updatedAt']) ||
+              // Action: Close on Delivery & Billing
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'jobCardNumber', 'status', 'customerName', 'vehicleReg', 'isClosed', 'grandTotal', 'data', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isValidId(jobCardId) && isVerifiedUser()
+        && (isAdmin() || (isOwner(existing().ownerUid) && existing().isClosed == false));
+    }
+
+    // 4.8 Service Appointments (Terminal State Lock on Cancelled)
+    match /appointments/{appointmentId} {
+      allow get: if isValidId(appointmentId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(appointmentId)
+        && isVerifiedUser()
+        && isValidAppointment(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(appointmentId)
+        && isVerifiedUser()
+        && isValidAppointment(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && existing().status != 'Cancelled'
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'customerName', 'vehicleReg', 'scheduledDate', 'status', 'data', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(appointmentId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.9 IRD Tax Invoices, OTC Invoices & Credit Notes (Action-Based Updates)
+    match /invoices/{invoiceId} {
+      allow get: if isValidId(invoiceId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(invoiceId)
+        && isVerifiedUser()
+        && isValidInvoice(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(invoiceId)
+        && isVerifiedUser()
+        && isValidInvoice(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && existing().status != 'Voided'
+            && (
+              // Action: Record Payment Settlement
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'balanceDue', 'data', 'updatedAt']) ||
+              // Action: Apply Invoice Discount (% or NPR)
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'status', 'grandTotal', 'balanceDue', 'discountType', 'discountValue', 'discountAmount', 'data', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isValidId(invoiceId) && isVerifiedUser()
+        && (isAdmin() || (isOwner(existing().ownerUid) && existing().isLocked == false));
+    }
+
+    // 4.10 Vehicle Gate Passes (Terminal State Lock on Exited)
+    match /gate_passes/{gatePassId} {
+      allow get: if isValidId(gatePassId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(gatePassId)
+        && isVerifiedUser()
+        && isValidGatePass(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(gatePassId)
+        && isVerifiedUser()
+        && isValidGatePass(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && existing().status != 'Exited'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'data', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(gatePassId) && isVerifiedUser()
+        && (isAdmin() || (isOwner(existing().ownerUid) && existing().status != 'Exited'));
+    }
+
+    // 4.11 Parts Operations (Quotations, OTC Sales Orders, Returns, Purchase Orders)
+    match /parts_operations/{opId} {
+      allow get: if isValidId(opId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(opId)
+        && isVerifiedUser()
+        && isValidPartsOperation(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(opId)
+        && isVerifiedUser()
+        && isValidPartsOperation(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().opType == existing().opType
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'docNumber', 'status', 'totalAmount', 'data', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(opId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.12 Accounting Records (GL Accounts, Journal Vouchers, VAT Ledger, Cashier Vouchers)
+    match /accounting_records/{recordId} {
+      allow get: if isValidId(recordId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(recordId)
+        && isVerifiedUser()
+        && isValidAccountingRecord(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(recordId)
+        && isVerifiedUser()
+        && isValidAccountingRecord(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().recordType == existing().recordType
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'docNumber', 'date', 'amount', 'data', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(recordId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.13 Warranty & Pickup Notifications
+    match /warranty_and_notifications/{itemId} {
+      allow get: if isValidId(itemId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(itemId)
+        && isVerifiedUser()
+        && isValidWarrantyAndNotification(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(itemId)
+        && isVerifiedUser()
+        && isValidWarrantyAndNotification(incoming())
+        && hasImmutableBaseFields()
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().itemType == existing().itemType
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'data', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(itemId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+  }
+}

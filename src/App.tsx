@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { auth } from './firebase';
+import { firestoreSync } from './services/firestoreSyncService';
 import { 
   storage, 
   AppDatabase 
@@ -68,11 +71,18 @@ import {
   toNepalBsDate,
 } from './utils/accountingEngine';
 import { adToBs } from './utils/nepaliDate';
-import { Bell, Lock, MessageSquare, Send, Unlock, X } from 'lucide-react';
+import { Bell, Loader2, Lock, MessageSquare, Send, Unlock, Wrench, X } from 'lucide-react';
 
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => storage.isAuthenticated());
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [isCloudHydrating, setIsCloudHydrating] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [fatalSyncError, setFatalSyncError] = useState<Error | null>(null);
+  const cloudSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAuthenticated = Boolean(firebaseUser && firebaseUser.emailVerified);
+
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
@@ -92,6 +102,10 @@ export default function App() {
     nonce: number;
   } | null>(null);
 
+  if (fatalSyncError) {
+    throw fatalSyncError;
+  }
+
   const showLifecycleToast = (title: string, message: string, variant: 'locked' | 'reopened') => {
     setLifecycleToast({ title, message, variant });
   };
@@ -106,15 +120,122 @@ export default function App() {
   useEscapeKey(isMobileNavOpen, () => setIsMobileNavOpen(false));
   useEscapeKey(Boolean(printGatePass), () => setPrintGatePass(null));
 
+  // Schedule debounced diff-sync to Firestore whenever workshop state changes
+  const scheduleCloudSync = useCallback((uid: string, allowDeletes = true) => {
+    if (cloudSyncTimerRef.current) {
+      clearTimeout(cloudSyncTimerRef.current);
+    }
+    cloudSyncTimerRef.current = setTimeout(() => {
+      cloudSyncTimerRef.current = null;
+      void firestoreSync
+        .syncDatabaseDiff(uid, storage.getDatabase(), { allowDeletes })
+        .then((res) => {
+          storage.saveDatabase({
+            lastCloudSync: res.timestamp,
+            isCloudSynced: true,
+          });
+          setDb(storage.getDatabase());
+        })
+        .catch((err) => {
+          console.error('Firestore background sync error:', err);
+          setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
+        });
+    }, 280);
+  }, []);
+
+  // Firebase Authentication & Cloud Firestore Hydration Lifecycle
   useEffect(() => {
-    let mounted = true;
-    void storage.hydrateFromIndexedDb().then((hydrated) => {
-      if (mounted && hydrated) {
-        setDb(hydrated);
+    let active = true;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (!active) return;
+
+      if (cloudSyncTimerRef.current) {
+        clearTimeout(cloudSyncTimerRef.current);
+        cloudSyncTimerRef.current = null;
+      }
+
+      if (!fbUser) {
+        firestoreSync.resetTracking();
+        setFirebaseUser(null);
+        setIsCloudHydrating(false);
+        setAuthReady(true);
+        return;
+      }
+
+      if (!fbUser.emailVerified) {
+        setAuthError('Your Google account email must be verified to access AutoCraft Pro.');
+        firestoreSync.resetTracking();
+        setFirebaseUser(null);
+        setIsCloudHydrating(false);
+        setAuthReady(true);
+        void signOut(auth);
+        return;
+      }
+
+      setAuthError(null);
+      setFirebaseUser(fbUser);
+      setIsCloudHydrating(true);
+      setAuthReady(true);
+
+      try {
+        const loaded = await firestoreSync.loadWorkspace(fbUser.uid);
+        if (!active) return;
+
+        if (loaded.exists && loaded.partialDb) {
+          storage.applyRemoteDatabase(loaded.partialDb);
+          storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+          const syncedState = storage.getDatabase();
+          setDb(syncedState);
+          // Persist any bound profile adjustment (e.g. linked Admin email) if changed
+          void firestoreSync.syncDatabaseDiff(fbUser.uid, syncedState, { allowDeletes: false });
+        } else {
+          // Brand-new cloud workspace: hydrate local cache if present, bind user, and seed Firestore
+          await storage.hydrateFromIndexedDb();
+          if (!active) return;
+          storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+          const initialState = storage.getDatabase();
+          const seeded = await firestoreSync.syncDatabaseDiff(fbUser.uid, initialState, {
+            allowDeletes: false,
+          });
+          if (!active) return;
+          storage.saveDatabase({
+            lastCloudSync: seeded.timestamp,
+            isCloudSynced: true,
+          });
+          setDb(storage.getDatabase());
+        }
+
+        // Start real-time Firestore listeners only after auth & initial hydration succeed
+        firestoreSync.startRealtimeListeners(
+          fbUser.uid,
+          (remotePartial) => {
+            if (!active) return;
+            const merged = storage.applyRemoteDatabase(remotePartial);
+            setDb(merged);
+          },
+          (err) => {
+            if (!active) return;
+            setFatalSyncError(err);
+          }
+        );
+      } catch (err) {
+        if (!active) return;
+        setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        if (active) {
+          setIsCloudHydrating(false);
+        }
       }
     });
+
     return () => {
-      mounted = false;
+      active = false;
+      unsubscribeAuth();
+      if (cloudSyncTimerRef.current) {
+        clearTimeout(cloudSyncTimerRef.current);
+      }
+      firestoreSync.stopRealtimeListeners();
     };
   }, []);
 
@@ -176,23 +297,29 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isAuthenticated]);
 
-  // Sync state changes with persistence
+  // Sync state changes with local cache & Cloud Firestore persistence
   const updateDb = (partial: Partial<AppDatabase>) => {
-    storage.saveDatabase(partial);
+    storage.saveDatabase({
+      ...partial,
+      ...(firebaseUser ? { isCloudSynced: false } : {}),
+    });
     setDb(storage.getDatabase());
+    if (firebaseUser?.uid) {
+      scheduleCloudSync(firebaseUser.uid, true);
+    }
   };
 
   const currentUser = db.currentUser;
 
   // --- AUTHENTICATION HANDLERS ---
-  const handleLoginSuccess = (_user: UserAccount) => {
-    setIsAuthenticated(true);
-    setDb(storage.getDatabase());
-  };
-
   const handleLogout = () => {
+    if (cloudSyncTimerRef.current) {
+      clearTimeout(cloudSyncTimerRef.current);
+      cloudSyncTimerRef.current = null;
+    }
+    firestoreSync.resetTracking();
     storage.logout();
-    setIsAuthenticated(false);
+    void signOut(auth);
   };
 
   // Badges Calculation for Navigation
@@ -1876,29 +2003,72 @@ export default function App() {
 
   // --- CLOUD SYNC & RESTORE ---
   const handleSyncCloud = async () => {
+    if (firebaseUser?.uid) {
+      const syncRes = await firestoreSync.syncDatabaseDiff(
+        firebaseUser.uid,
+        storage.getDatabase(),
+        { allowDeletes: true, forceAll: true }
+      );
+      storage.saveDatabase({
+        lastCloudSync: syncRes.timestamp,
+        isCloudSynced: true,
+      });
+      setDb(storage.getDatabase());
+      return { success: true, timestamp: syncRes.timestamp };
+    }
     const res = await storage.syncCloud();
     setDb(storage.getDatabase());
     return res;
   };
 
   const handleResetDemo = () => {
-    const fresh = storage.resetToDemo();
-    setDb(fresh);
+    storage.resetToDemo();
+    if (firebaseUser) {
+      storage.bindAuthenticatedUser(firebaseUser.email, firebaseUser.displayName);
+      const next = storage.getDatabase();
+      setDb(next);
+      scheduleCloudSync(firebaseUser.uid, true);
+    } else {
+      setDb(storage.getDatabase());
+    }
   };
 
   const handleImportBackup = (json: string) => {
     const ok = storage.importBackupJson(json);
     if (ok) {
+      if (firebaseUser) {
+        storage.bindAuthenticatedUser(firebaseUser.email, firebaseUser.displayName);
+        scheduleCloudSync(firebaseUser.uid, true);
+      }
       setDb(storage.getDatabase());
     }
     return ok;
   };
 
+  if (!authReady || isCloudHydrating) {
+    return (
+      <div className="min-h-screen bg-[#F1F5F9] flex items-center justify-center p-6 font-sans text-[#0F172A]">
+        <div className="bg-white rounded-2xl shadow-lg border border-[#E2E8F0] px-8 py-7 max-w-sm w-full text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#0F3D5E] text-white flex items-center justify-center mx-auto shadow-sm">
+            <Wrench className="w-5 h-5 text-[#0EA5E9]" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-[#0F172A] tracking-tight">AutoCraft Pro</h2>
+            <p className="text-xs text-[#64748B]">
+              {isCloudHydrating ? 'Loading your workshop workspace...' : 'Verifying session...'}
+            </p>
+          </div>
+          <Loader2 className="w-5 h-5 animate-spin text-[#0EA5E9] mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <AuthScreen
         workshopProfile={db.profile}
-        onLoginSuccess={handleLoginSuccess}
+        authError={authError}
       />
     );
   }
