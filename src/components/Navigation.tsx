@@ -149,12 +149,12 @@ export const Navigation: React.FC<NavigationProps> = ({
   const visibleItems = navItems.filter(item => item.allowedRoles.includes(userRole));
 
   const renderSidebarContent = () => (
-    <div className="flex flex-col h-full bg-[#0F3D5E] text-white">
+    <div className="flex flex-col h-full bg-gradient-to-b from-[#0F3D5E] via-[#0D3552] to-[#0A2B43] text-white">
       {/* Workshop Brand Header */}
-      <div className="px-4 py-4 border-b border-white/10">
+      <div className="px-4 py-4 border-b border-white/10 bg-white/[0.02]">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-[#0EA5E9] text-white flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-[#0EA5E9] text-white flex items-center justify-center flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_4px_12px_rgba(14,165,233,0.35)]">
               <Wrench className="w-4 h-4" />
             </div>
             <div className="min-w-0 flex-1">
@@ -238,9 +238,9 @@ export const Navigation: React.FC<NavigationProps> = ({
       </nav>
 
       {/* User Profile & Sync Footer */}
-      <div className="p-3 border-t border-white/10 space-y-2 bg-[#0B2F49]">
+      <div className="p-3 border-t border-white/10 space-y-2 bg-[#082236]/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
         {currentUser && (
-          <div className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10">
+          <div className="flex items-center justify-between p-2 rounded-lg bg-white/[0.06] border border-white/10 shadow-inner">
             <div className="flex items-center space-x-2.5 min-w-0">
               <div className="w-8 h-8 rounded-lg bg-[#0EA5E9]/20 text-sky-200 border border-[#0EA5E9]/40 flex items-center justify-center font-bold text-xs uppercase flex-shrink-0">
                 {currentUser.name.slice(0, 2)}
@@ -298,7 +298,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
       <aside
         id="app-fixed-sidebar"
-        className={`fixed top-0 left-0 bottom-0 z-40 w-64 xl:w-72 bg-[#0F3D5E] border-r border-white/10 flex flex-col select-none transition-transform duration-200 ease-in-out print:hidden ${
+        className={`fixed top-0 left-0 bottom-0 z-40 w-64 xl:w-72 bg-[#0F3D5E] border-r border-white/10 shadow-[4px_0_24px_-6px_rgba(15,23,42,0.28)] flex flex-col select-none transition-transform duration-200 ease-in-out print:hidden ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >

@@ -999,7 +999,36 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   const handleMoveToStage = (jc: JobCard, targetStage: JobCardStatus, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (jc.isLocked || jc.status === targetStage) return;
-    const updatedJc: JobCard = { ...jc, status: targetStage };
+
+    const hasLinkedInvoice =
+      Boolean(jc.invoiceId || jc.invoiceNumber) ||
+      (invoices || []).some(
+        (inv) =>
+          inv.invoiceType !== 'Credit Note' &&
+          !String(inv.invoiceNumber || '').toUpperCase().startsWith('CN-') &&
+          ((inv.jobCardId && inv.jobCardId === jc.id) ||
+            (inv.jobCardNumber && inv.jobCardNumber === jc.jobCardNumber))
+      );
+
+    // Automatically close & lock if marked Delivered AND an invoice is already generated
+    const updatedJc: JobCard =
+      targetStage === 'Delivered' && hasLinkedInvoice
+        ? {
+            ...jc,
+            status: 'Delivered',
+            isLocked: true,
+            lockedAt: new Date().toISOString(),
+            lockedBy: currentUser?.name || 'System Auto-Close',
+            lockHash:
+              jc.lockHash ||
+              `NPL-JC-${jc.jobCardNumber}-${Date.now().toString(36).toUpperCase()}-${Math.random()
+                .toString(36)
+                .substring(2, 8)
+                .toUpperCase()}`,
+            reopenedByAdmin: false,
+          }
+        : { ...jc, status: targetStage };
+
     onUpdateJobCard(updatedJc);
     syncBayForStage(updatedJc, targetStage);
   };
@@ -1412,12 +1441,12 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                               setDragOverColumn(null);
                             }}
                             onClick={() => setSelectedJobCard(jc)}
-                            className={`bg-[#FFFFFF] rounded-lg p-3.5 border transition cursor-pointer group ${
+                            className={`bg-[#FFFFFF] rounded-xl p-3.5 border transition-all duration-150 cursor-pointer group ${
                               isDragging
-                                ? 'opacity-50 border-[#0EA5E9]'
+                                ? 'opacity-50 border-[#0EA5E9] shadow-lg'
                                 : jc.isLocked
-                                  ? 'border-amber-300 bg-amber-50/30 hover:border-amber-400'
-                                  : 'border-[#E2E8F0] hover:border-[#0EA5E9]'
+                                  ? 'border-amber-300 bg-amber-50/35 hover:border-amber-400 shadow-xs hover:shadow-md'
+                                  : 'border-[#E2E8F0] hover:border-[#0EA5E9] shadow-xs hover:shadow-md hover:-translate-y-0.5'
                             }`}
                           >
                             {/* Row 1: Job Card # & Lock/Drag */}
@@ -1442,9 +1471,12 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                                   {jc.serviceBillingType === 'Free Service' ? 'FREE' : 'PAID'}
                                 </span>
                                 {jc.isLocked && (
-                                  <span className="text-[10px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1">
+                                  <span
+                                    title={currentUser.role === 'Admin' ? 'Closed & Locked — Admin can reopen' : 'Closed & Locked — Only Admin can reopen'}
+                                    className="text-[10px] font-semibold text-[#B45309] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center space-x-1"
+                                  >
                                     <Lock className="w-2.5 h-2.5" />
-                                    <span>Invoiced</span>
+                                    <span>Closed</span>
                                   </span>
                                 )}
                               </div>
@@ -1593,12 +1625,15 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                     </td>
                     <td className="p-3.5 text-center">
                       {jc.isLocked ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center space-x-1">
+                        <span
+                          title="Closed & Locked — Only Admin can reopen"
+                          className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 inline-flex items-center space-x-1"
+                        >
                           <Lock className="w-3 h-3" />
-                          <span>Sealed</span>
+                          <span>Closed &amp; Locked</span>
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-400">Open</span>
+                        <span className="text-[11px] font-medium text-[#16A34A]">Open</span>
                       )}
                     </td>
                     <td className="p-3.5 text-right font-mono font-bold text-slate-900">
@@ -1606,10 +1641,21 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
                     </td>
                     <td className="p-3.5 text-center">
                       <button
+                        type="button"
                         onClick={() => setSelectedJobCard(jc)}
-                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg transition"
+                        className={`px-3 py-1.5 font-semibold rounded-lg transition whitespace-nowrap ${
+                          jc.isLocked
+                            ? currentUser.role === 'Admin'
+                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                            : 'bg-sky-50 hover:bg-sky-100 text-[#0284C7] border border-sky-200'
+                        }`}
                       >
-                        Inspect & Edit
+                        {jc.isLocked
+                          ? currentUser.role === 'Admin'
+                            ? 'View / Re-Open'
+                            : 'View (Locked)'
+                          : 'Inspect & Edit'}
                       </button>
                     </td>
                   </tr>

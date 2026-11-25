@@ -112,6 +112,221 @@
   .font-mono {
     font-variant-numeric: tabular-nums;
   }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
+/* ==========================================================================
+   AutoCraft Pro — Architectural UI Depth & Tactile Button System (Screen Only)
+   Preserves exact brand palette (#0F3D5E, #0EA5E9, #F1F5F9, #FFFFFF) while
+   establishing clear Z-axis elevation: recessed inputs -> canvas -> elevated
+   surfaces -> tactile buttons -> floating modals.
+   ========================================================================== */
+@media screen {
+  body {
+    background-image:
+      radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.065), transparent 40%),
+      radial-gradient(circle at 90% 100%, rgba(15, 61, 94, 0.055), transparent 42%);
+    background-attachment: fixed;
+  }
+
+  /* 1. Universal Tactile Button Physics & Accessibility */
+  button {
+    transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    line-height: 1.25;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #0EA5E9;
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled):active {
+    transform: translateY(1px) scale(0.99);
+  }
+
+  /* Primary Brand Cyan Buttons */
+  button[class*="bg-[#0EA5E9]"]:not(:disabled),
+  button[class*="bg-indigo-600"]:not(:disabled),
+  button[class*="bg-sky-600"]:not(:disabled),
+  button[class*="bg-[#0284C7]"]:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      0 1px 2px rgba(15, 61, 94, 0.16),
+      0 4px 10px -2px rgba(14, 165, 233, 0.34);
+  }
+
+  button[class*="bg-[#0EA5E9]"]:not(:disabled):hover,
+  button[class*="bg-indigo-600"]:not(:disabled):hover,
+  button[class*="bg-sky-600"]:not(:disabled):hover,
+  button[class*="bg-[#0284C7]"]:not(:disabled):hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.32),
+      0 2px 4px rgba(15, 61, 94, 0.2),
+      0 6px 14px -3px rgba(2, 132, 199, 0.42);
+    transform: translateY(-0.5px);
+  }
+
+  button[class*="bg-[#0EA5E9]"]:not(:disabled):active,
+  button[class*="bg-indigo-600"]:not(:disabled):active,
+  button[class*="bg-sky-600"]:not(:disabled):active,
+  button[class*="bg-[#0284C7]"]:not(:disabled):active {
+    box-shadow: inset 0 2px 4px rgba(10, 43, 67, 0.24);
+    transform: translateY(1px);
+  }
+
+  /* Deep Petrol Buttons */
+  button[class*="bg-[#0F3D5E]"]:not(:disabled),
+  button[class*="bg-slate-900"]:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 1px 2px rgba(15, 23, 42, 0.2),
+      0 4px 10px -2px rgba(15, 61, 94, 0.32);
+  }
+
+  button[class*="bg-[#0F3D5E]"]:not(:disabled):hover,
+  button[class*="bg-slate-900"]:not(:disabled):hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 2px 5px rgba(15, 23, 42, 0.24),
+      0 7px 14px -3px rgba(15, 61, 94, 0.38);
+    transform: translateY(-0.5px);
+  }
+
+  button[class*="bg-[#0F3D5E]"]:not(:disabled):active,
+  button[class*="bg-slate-900"]:not(:disabled):active {
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.28);
+    transform: translateY(1px);
+  }
+
+  /* Semantic Success, Warning & Danger Filled Buttons */
+  button[class*="bg-[#16A34A]"]:not(:disabled),
+  button[class*="bg-emerald-600"]:not(:disabled),
+  button[class*="bg-[#DC2626]"]:not(:disabled),
+  button[class*="bg-rose-600"]:not(:disabled),
+  button[class*="bg-amber-600"]:not(:disabled),
+  button[class*="bg-amber-700"]:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      0 1px 2px rgba(15, 23, 42, 0.16),
+      0 3px 8px -2px rgba(15, 23, 42, 0.2);
+  }
+
+  button[class*="bg-[#16A34A]"]:not(:disabled):hover,
+  button[class*="bg-emerald-600"]:not(:disabled):hover,
+  button[class*="bg-[#DC2626]"]:not(:disabled):hover,
+  button[class*="bg-rose-600"]:not(:disabled):hover,
+  button[class*="bg-amber-600"]:not(:disabled):hover,
+  button[class*="bg-amber-700"]:not(:disabled):hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      0 3px 6px rgba(15, 23, 42, 0.2),
+      0 6px 14px -3px rgba(15, 23, 42, 0.24);
+    transform: translateY(-0.5px);
+  }
+
+  /* Crisp Outlined / White Surface Buttons */
+  button[class*="border"][class*="bg-white"]:not(:disabled),
+  button[class*="border"][class*="bg-[#FFFFFF]"]:not(:disabled),
+  button[class*="border"][class*="bg-[#F1F5F9]"]:not(:disabled) {
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+  }
+
+  button[class*="border"][class*="bg-white"]:not(:disabled):hover,
+  button[class*="border"][class*="bg-[#FFFFFF]"]:not(:disabled):hover,
+  button[class*="border"][class*="bg-[#F1F5F9]"]:not(:disabled):hover {
+    border-color: #CBD5E1;
+    box-shadow:
+      0 2px 5px rgba(15, 23, 42, 0.08),
+      inset 0 -1px 0 rgba(15, 23, 42, 0.05);
+    transform: translateY(-0.5px);
+  }
+
+  /* Soft Tinted Action Buttons */
+  button[class*="bg-sky-50"]:not(:disabled),
+  button[class*="bg-indigo-50"]:not(:disabled),
+  button[class*="bg-emerald-50"]:not(:disabled),
+  button[class*="bg-amber-50"]:not(:disabled),
+  button[class*="bg-rose-50"]:not(:disabled) {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  button[class*="bg-sky-50"]:not(:disabled):hover,
+  button[class*="bg-indigo-50"]:not(:disabled):hover,
+  button[class*="bg-emerald-50"]:not(:disabled):hover,
+  button[class*="bg-amber-50"]:not(:disabled):hover,
+  button[class*="bg-rose-50"]:not(:disabled):hover {
+    box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.08);
+    transform: translateY(-0.5px);
+  }
+
+  button:disabled {
+    opacity: 0.55;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  /* 2. Architectural Surface Elevation (Main Workspace Cards & Panels) */
+  main [class*="rounded-xl"][class*="border"][class*="bg-white"],
+  main [class*="rounded-xl"][class*="border"][class*="bg-[#FFFFFF]"],
+  main [class*="rounded-2xl"][class*="border"][class*="bg-white"],
+  main [class*="rounded-2xl"][class*="border"][class*="bg-[#FFFFFF]"] {
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.05),
+      0 6px 16px -6px rgba(15, 23, 42, 0.07);
+  }
+
+  main [class*="rounded-xl"][class*="border"][class*="bg-white"][class*="cursor-pointer"]:hover,
+  main [class*="rounded-xl"][class*="border"][class*="bg-[#FFFFFF]"][class*="cursor-pointer"]:hover,
+  main [class*="rounded-2xl"][class*="border"][class*="bg-white"][class*="cursor-pointer"]:hover,
+  main [class*="rounded-2xl"][class*="border"][class*="bg-[#FFFFFF]"][class*="cursor-pointer"]:hover {
+    box-shadow:
+      0 4px 10px -2px rgba(15, 23, 42, 0.08),
+      0 12px 24px -8px rgba(15, 61, 94, 0.12);
+  }
+
+  /* 3. Subtle Recessed Depth on Form Controls */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="date"],
+  input[type="search"],
+  select,
+  textarea {
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.045);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  /* 4. Crisp Table Header Separation */
+  main table thead th {
+    box-shadow: inset 0 -1px 0 #E2E8F0;
+  }
+
+  /* 5. Floating Modal Elevation */
+  .fixed.inset-0 > div[class*="rounded-"] {
+    box-shadow:
+      0 24px 56px -12px rgba(15, 23, 42, 0.30),
+      0 0 0 1px rgba(15, 23, 42, 0.06);
+  }
 }
 
 /* Subtle custom scrollbars for Kanban & tables */

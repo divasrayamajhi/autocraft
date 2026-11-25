@@ -75,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const unreadCount = readyNotifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className="sticky top-0 z-20 bg-[#FFFFFF] border-b border-[#E2E8F0] print:hidden">
+    <header className="sticky top-0 z-20 bg-[#FFFFFF]/95 backdrop-blur-md border-b border-[#E2E8F0] shadow-[0_1px_3px_rgba(15,23,42,0.05),0_4px_12px_-4px_rgba(15,23,42,0.04)] print:hidden">
       <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
         {/* Left: Mobile Toggle + Page Context & Workshop Meta */}
         <div className="flex items-center space-x-3 min-w-0">
@@ -236,7 +236,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             type="button"
             onClick={onOpenCloudModal}
-            className="hidden md:inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] border border-[#E2E8F0] transition"
+            className="hidden md:inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC] border border-[#E2E8F0] transition whitespace-nowrap"
             title="Backup & Sync Storage"
           >
             <Cloud className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-[#16A34A]' : 'text-[#F59E0B]'}`} />
@@ -249,7 +249,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               aria-label="Switch User Role"
               value={currentUser.id}
               onChange={(e) => onSwitchUser(e.target.value)}
-              className="appearance-none bg-[#F1F5F9] hover:bg-[#E2E8F0]/70 border border-[#E2E8F0] text-[#0F172A] text-xs font-semibold rounded-lg pl-3 pr-8 py-2 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+              className="appearance-none bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] text-xs font-semibold rounded-lg pl-3 pr-8 py-2 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
             >
               {(users || []).map((user) => (
                 <option key={user.id} value={user.id}>
@@ -265,7 +265,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               id="navbar-btn-new-account"
               type="button"
               onClick={onOpenNewAccountModal}
-              className="hidden md:flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-[#0F3D5E] hover:bg-[#F1F5F9] border border-[#E2E8F0] transition"
+              className="hidden md:flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F3D5E] hover:bg-[#F8FAFC] border border-[#E2E8F0] transition whitespace-nowrap"
               title="Create New User Account"
             >
               <UserPlus className="w-3.5 h-3.5 text-[#0EA5E9]" />
@@ -277,7 +277,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             id="navbar-btn-logout"
             type="button"
             onClick={onLogout}
-            className="flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-[#DC2626] hover:bg-red-50 border border-[#E2E8F0] hover:border-red-200 transition"
+            className="flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white text-[#DC2626] hover:bg-red-50 border border-[#E2E8F0] hover:border-red-200 transition whitespace-nowrap"
             title="Log Out of System"
           >
             <LogOut className="w-3.5 h-3.5" />

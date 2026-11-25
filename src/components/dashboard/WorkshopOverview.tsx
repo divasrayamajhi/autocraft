@@ -128,7 +128,7 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
       <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#E2E8F0] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[#0284C7]">
-            FY {profile.fiscalYear} B.S. · PAN {profile.panVatNumber} · Nepal IRD 13% VAT
+            AutoCraft Pro · FY {profile.fiscalYear} B.S. · PAN {profile.panVatNumber} · Nepal IRD 13% VAT
           </p>
           <h2 className="text-xl font-bold text-[#0F172A] mt-0.5 tracking-tight">
             {profile.name}
@@ -140,8 +140,9 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
 
         <div className="flex items-center space-x-2">
           <button
+            type="button"
             onClick={onNewIntake}
-            className="px-4 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5"
+            className="px-4 py-2.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span>New Vehicle Intake</span>
@@ -153,32 +154,32 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div 
           onClick={() => onNavigateTab('jobcards')}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-pointer group"
+          className="bg-white p-4.5 rounded-2xl border border-[#E2E8F0] hover:border-[#0EA5E9]/60 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer group"
         >
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Vehicles in Workshop</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition">
+            <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">Vehicles in Workshop</span>
+            <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-100 text-[#0284C7] flex items-center justify-center group-hover:scale-105 transition">
               <Car className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 font-mono mt-2">{activeJobCards.length}</div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center space-x-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="text-2xl font-black text-[#0F172A] font-mono mt-2">{activeJobCards.length}</div>
+          <div className="text-[11px] text-[#64748B] mt-1 flex items-center space-x-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
             <span>{deliveredCards.length} vehicles delivered</span>
           </div>
         </div>
 
         <div 
           onClick={() => onNavigateTab('billing')}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm hover:border-emerald-300 transition cursor-pointer group"
+          className="bg-white p-4.5 rounded-2xl border border-[#E2E8F0] hover:border-[#16A34A]/60 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer group"
         >
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Payments Collected</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition">
+            <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">Payments Collected</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 text-[#16A34A] flex items-center justify-center group-hover:scale-105 transition">
               <QrCode className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-emerald-600 font-mono mt-2">Rs. {collectedRevenue.toLocaleString()}</div>
+          <div className="text-2xl font-black text-[#16A34A] font-mono mt-2">Rs. {collectedRevenue.toLocaleString()}</div>
           <div className="text-[11px] text-emerald-700 mt-1 flex items-center space-x-1">
             <Zap className="w-3.5 h-3.5" />
             <span>Fonepay, NepalPay, eSewa</span>
@@ -187,32 +188,32 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
 
         <div 
           onClick={() => onNavigateTab('accounting')}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-pointer group"
+          className="bg-white p-4.5 rounded-2xl border border-[#E2E8F0] hover:border-[#0EA5E9]/60 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer group"
         >
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Nepal 13% VAT Output</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center group-hover:scale-110 transition">
+            <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">Nepal 13% VAT Output</span>
+            <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-100 text-[#0F3D5E] flex items-center justify-center group-hover:scale-105 transition">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-indigo-700 font-mono mt-2">Rs. {totalVat13Collected.toLocaleString()}</div>
-          <div className="text-[11px] text-slate-500 mt-1">
+          <div className="text-2xl font-black text-[#0F3D5E] font-mono mt-2">Rs. {totalVat13Collected.toLocaleString()}</div>
+          <div className="text-[11px] text-[#64748B] mt-1">
             <span>Due to IRD: 25th of month</span>
           </div>
         </div>
 
         <div 
           onClick={() => onNavigateTab('inventory')}
-          className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm hover:border-amber-300 transition cursor-pointer group"
+          className="bg-white p-4.5 rounded-2xl border border-[#E2E8F0] hover:border-[#F59E0B]/60 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer group"
         >
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Spares Low Stock Alert</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition">
+            <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">Spares Low Stock Alert</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-105 transition">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-amber-600 font-mono mt-2">{lowStockParts.length} SKUs</div>
-          <div className="text-[11px] text-slate-500 mt-1">
+          <div className="text-[11px] text-[#64748B] mt-1">
             <span>Critical replenishment required</span>
           </div>
         </div>
@@ -221,18 +222,18 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
       {/* Second Row: Workshop Bay Occupancy & Ongoing Repairs */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Bay Allocation Grid */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-          <div className="flex justify-between items-center border-b pb-3">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-[#E2E8F0] p-6 space-y-4">
+          <div className="flex justify-between items-center border-b border-[#E2E8F0] pb-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-1.5">
-                <Wrench className="w-4 h-4 text-indigo-600" />
-                <span>Live Workshop Bay Allocation & Occupancy</span>
+              <h3 className="text-sm font-bold text-[#0F172A] flex items-center space-x-1.5">
+                <Wrench className="w-4 h-4 text-[#0284C7]" />
+                <span>Live Workshop Bay Allocation &amp; Occupancy</span>
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[#64748B]">
                 Real-time technician utilization across workshop bays.
               </p>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-100 text-[#0F3D5E]">
               6 Active Service Bays
             </span>
           </div>
@@ -246,16 +247,16 @@ export const WorkshopOverview: React.FC<WorkshopOverviewProps> = ({
                 <div
                   key={b.bay}
                   onClick={() => occupyingJc && onSelectJobCard(occupyingJc)}
-                  className={`p-3.5 rounded-xl border transition ${
+                  className={`p-3.5 rounded-xl border transition-all duration-150 ${
                     isOccupied 
-                      ? 'border-indigo-300 bg-indigo-50/40 cursor-pointer hover:shadow-md' 
-                      : 'border-slate-200 bg-slate-50/50'
+                      ? 'border-sky-300 bg-gradient-to-b from-white to-sky-50/60 cursor-pointer shadow-xs hover:shadow-md hover:-translate-y-0.5' 
+                      : 'border-[#E2E8F0] bg-[#F8FAFC]'
                   }`}
                 >
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[11px] font-bold text-slate-800">Bay {i + 1}</span>
+                    <span className="text-[11px] font-bold text-[#0F172A]">Bay {i + 1}</span>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                      isOccupied ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+                      isOccupied ? 'bg-[#0F3D5E] text-white' : 'bg-slate-200 text-slate-600'
                     }`}>
                       {isOccupied ? 'OCCUPIED' : 'VACANT'}
                     </span>

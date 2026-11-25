@@ -67,7 +67,7 @@ import {
   toNepalBsDate,
 } from './utils/accountingEngine';
 import { adToBs } from './utils/nepaliDate';
-import { Bell, MessageSquare, Send, X } from 'lucide-react';
+import { Bell, Lock, MessageSquare, Send, Unlock, X } from 'lucide-react';
 
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
@@ -79,8 +79,23 @@ export default function App() {
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [printGatePass, setPrintGatePass] = useState<GatePass | null>(null);
   const [activeReadyToast, setActiveReadyToast] = useState<ReadyNotificationLog | null>(null);
+  const [lifecycleToast, setLifecycleToast] = useState<{
+    title: string;
+    message: string;
+    variant: 'locked' | 'reopened';
+  } | null>(null);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [quickIntakeTrigger, setQuickIntakeTrigger] = useState(0);
+
+  const showLifecycleToast = (title: string, message: string, variant: 'locked' | 'reopened') => {
+    setLifecycleToast({ title, message, variant });
+  };
+
+  useEffect(() => {
+    if (!lifecycleToast) return;
+    const timer = window.setTimeout(() => setLifecycleToast(null), 5500);
+    return () => window.clearTimeout(timer);
+  }, [lifecycleToast]);
 
   // Register global ESC listener & close top-level overlays via LIFO stack
   useEscapeKey(isMobileNavOpen, () => setIsMobileNavOpen(false));
@@ -231,10 +246,99 @@ export default function App() {
     updateDb({ jobCards: updatedCards, customers: syncedCustomers });
   };
 
+  const hasLinkedRegularInvoice = (jc: JobCard, invoicesList: Invoice[] = db.invoices || []) => {
+    if (jc.invoiceId || jc.invoiceNumber) return true;
+    return invoicesList.some(
+      (inv) =>
+        !isCreditNoteInvoice(inv) &&
+        ((inv.jobCardId && inv.jobCardId === jc.id) ||
+          (inv.jobCardNumber && inv.jobCardNumber === jc.jobCardNumber))
+    );
+  };
+
+  const sealDeliveredInvoicedJobCard = (jc: JobCard, actorName: string): JobCard => {
+    const nowIso = new Date().toISOString();
+    return {
+      ...jc,
+      status: 'Delivered',
+      isLocked: true,
+      lockedAt: nowIso,
+      lockedBy: actorName,
+      lockHash:
+        jc.lockHash ||
+        `NPL-JC-${jc.jobCardNumber}-${Date.now().toString(36).toUpperCase()}-${Math.random()
+          .toString(36)
+          .substring(2, 8)
+          .toUpperCase()}`,
+      reopenedByAdmin: false,
+    };
+  };
+
   const handleUpdateJobCard = (updatedJc: JobCard) => {
-    const updatedCards = db.jobCards.map(jc => jc.id === updatedJc.id ? updatedJc : jc);
-    const syncedCustomers = syncJobCardContactToCustomers(updatedJc, db.customers || []);
-    updateDb({ jobCards: updatedCards, customers: syncedCustomers });
+    const prevJc = (db.jobCards || []).find((jc) => jc.id === updatedJc.id);
+
+    // Hard role enforcement: Once closed & locked, ONLY Admin can reopen or modify a Job Card
+    if (prevJc?.isLocked && currentUser.role !== 'Admin') {
+      return;
+    }
+
+    const isAdminReopening = Boolean(
+      prevJc?.isLocked && !updatedJc.isLocked && currentUser.role === 'Admin'
+    );
+
+    // Auto-close & lock when vehicle is marked Delivered AND an invoice is already generated
+    let finalJc: JobCard = updatedJc;
+    let didAutoClose = false;
+    if (
+      !isAdminReopening &&
+      updatedJc.status === 'Delivered' &&
+      hasLinkedRegularInvoice(updatedJc, db.invoices || []) &&
+      !updatedJc.isLocked
+    ) {
+      finalJc = sealDeliveredInvoicedJobCard(updatedJc, currentUser?.name || 'System Auto-Close');
+      didAutoClose = true;
+    } else if (
+      !isAdminReopening &&
+      updatedJc.isLocked &&
+      !prevJc?.isLocked &&
+      !updatedJc.lockedAt
+    ) {
+      finalJc = {
+        ...updatedJc,
+        lockedAt: new Date().toISOString(),
+        lockedBy: updatedJc.lockedBy || currentUser?.name || 'Workshop Staff',
+      };
+    }
+
+    const updatedCards = db.jobCards.map((jc) => (jc.id === finalJc.id ? finalJc : jc));
+    const syncedCustomers = syncJobCardContactToCustomers(finalJc, db.customers || []);
+
+    // Release bay automatically if Delivered or Ready for Billing
+    const updatedBays =
+      finalJc.status === 'Delivered' || finalJc.status === 'Ready for Billing'
+        ? (db.bays || []).map((b) =>
+            b.currentJobCardId === finalJc.id ||
+            (finalJc.bayNumber && (b.name === finalJc.bayNumber || b.bayNumber === finalJc.bayNumber))
+              ? { ...b, status: 'Available' as const, currentJobCardId: undefined, currentVehicleReg: undefined }
+              : b
+          )
+        : db.bays;
+
+    updateDb({ jobCards: updatedCards, customers: syncedCustomers, bays: updatedBays });
+
+    if (didAutoClose) {
+      showLifecycleToast(
+        `Job Card ${finalJc.jobCardNumber} Closed & Locked`,
+        'Vehicle marked Delivered with Tax Invoice generated. Job Card is now closed — only an Admin can reopen it.',
+        'locked'
+      );
+    } else if (isAdminReopening) {
+      showLifecycleToast(
+        `Job Card ${finalJc.jobCardNumber} Re-Opened by Admin`,
+        `Unlocked by ${currentUser.name} for authorized adjustments. Marking Delivered or generating a new invoice will auto-close it again.`,
+        'reopened'
+      );
+    }
   };
 
   const handleCreateAppointment = (newApt: Appointment) => {
@@ -438,10 +542,20 @@ export default function App() {
       status: inv.status,
     }));
 
+    const closeTimestamp = new Date().toISOString();
     const updatedJc: JobCard = { 
       ...jc, 
       status: 'Delivered',
       isLocked: true,
+      lockedAt: closeTimestamp,
+      lockedBy: currentUser?.name || 'System Auto-Close',
+      lockHash:
+        jc.lockHash ||
+        `NPL-JC-${jc.jobCardNumber}-${Date.now().toString(36).toUpperCase()}-${Math.random()
+          .toString(36)
+          .substring(2, 8)
+          .toUpperCase()}`,
+      reopenedByAdmin: false,
       invoiceId: newInvoice.id,
       invoiceNumber: newInvoice.invoiceNumber,
       billedLaborIds: mergedBilledLaborIds,
@@ -551,6 +665,11 @@ export default function App() {
       journalEntries: updatedJournalEntries,
       glAccounts: updatedGlAccounts
     });
+    showLifecycleToast(
+      `Job Card ${updatedJc.jobCardNumber} Closed & Locked`,
+      `Vehicle marked Delivered and IRD Tax Invoice ${newInvoice.invoiceNumber} generated. Only an Admin can reopen this Job Card.`,
+      'locked'
+    );
     setActiveTab('billing');
     setPrintInvoice(newInvoice);
   };
@@ -606,21 +725,43 @@ export default function App() {
     };
     const updatedGatePasses = [vehicleGatePass, ...(db.gatePasses || [])];
 
-    // Automatically complete and deliver the job card if linked
+    // Automatically mark Delivered, close & lock the linked job card and release its bay
     let updatedCards = db.jobCards;
+    let updatedBays = db.bays;
+    let closedJobCardNumber: string | null = null;
     if (newInv.jobCardId || newInv.jobCardNumber) {
+      const closeIso = now.toISOString();
       updatedCards = db.jobCards.map(jc => {
         if (jc.id === newInv.jobCardId || jc.jobCardNumber === newInv.jobCardNumber) {
+          closedJobCardNumber = jc.jobCardNumber;
           return {
             ...jc,
             status: 'Delivered',
             isLocked: true,
+            lockedAt: closeIso,
+            lockedBy: currentUser?.name || 'System Auto-Close',
+            lockHash:
+              jc.lockHash ||
+              `NPL-JC-${jc.jobCardNumber}-${Date.now().toString(36).toUpperCase()}-${Math.random()
+                .toString(36)
+                .substring(2, 8)
+                .toUpperCase()}`,
+            reopenedByAdmin: false,
             invoiceId: newInv.id,
             invoiceNumber: newInv.invoiceNumber
           };
         }
         return jc;
       });
+      if (correspondingJc) {
+        updatedBays = (db.bays || []).map((b) =>
+          b.currentJobCardId === correspondingJc.id ||
+          (correspondingJc.bayNumber &&
+            (b.name === correspondingJc.bayNumber || b.bayNumber === correspondingJc.bayNumber))
+            ? { ...b, status: 'Available' as const, currentJobCardId: undefined, currentVehicleReg: undefined }
+            : b
+        );
+      }
     }
 
     // Automatically update customer directory: aggregate lifetime totalSpent, last visit date, and vehicle garage records
@@ -669,10 +810,18 @@ export default function App() {
       invoices: updated,
       gatePasses: updatedGatePasses,
       jobCards: updatedCards,
+      bays: updatedBays,
       customers: updatedCustomers,
       journalEntries: updatedJournalEntries,
       glAccounts: updatedGlAccounts
     });
+    if (closedJobCardNumber) {
+      showLifecycleToast(
+        `Job Card ${closedJobCardNumber} Closed & Locked`,
+        `Vehicle marked Delivered and Tax Invoice ${newInv.invoiceNumber} generated. Only an Admin can reopen this Job Card.`,
+        'locked'
+      );
+    }
   };
 
   const handleUpdateInvoice = (updatedInv: Invoice) => {
@@ -1844,9 +1993,44 @@ export default function App() {
         />
       )}
 
+      {/* Job Card Auto-Close / Admin Re-Open Confirmation Toast */}
+      {lifecycleToast && (
+        <div
+          className={`fixed bottom-4 left-4 lg:left-[18.5rem] z-[60] max-w-md w-[calc(100%-2rem)] bg-white rounded-xl shadow-2xl border overflow-hidden ${
+            lifecycleToast.variant === 'locked' ? 'border-amber-300' : 'border-emerald-300'
+          }`}
+        >
+          <div
+            className={`px-4 py-2.5 flex items-center justify-between text-white ${
+              lifecycleToast.variant === 'locked' ? 'bg-[#0F3D5E]' : 'bg-[#16A34A]'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {lifecycleToast.variant === 'locked' ? (
+                <Lock className="w-4 h-4 text-amber-300" />
+              ) : (
+                <Unlock className="w-4 h-4 text-white" />
+              )}
+              <span className="text-xs font-bold">{lifecycleToast.title}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLifecycleToast(null)}
+              className="text-white/75 hover:text-white p-0.5 rounded"
+              aria-label="Close lifecycle notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="px-4 py-3 text-xs text-[#0F172A] leading-relaxed">
+            {lifecycleToast.message}
+          </div>
+        </div>
+      )}
+
       {/* Non-Blocking Vehicle Ready & Pickup SMS Notification Banner */}
       {activeReadyToast && (
-        <div className="fixed bottom-4 right-4 z-[60] max-w-md w-[calc(100%-2rem)] bg-white border border-[#16A34A] rounded-xl shadow-xl overflow-hidden">
+        <div className="fixed bottom-4 right-4 z-[60] max-w-md w-[calc(100%-2rem)] bg-white border border-[#16A34A] rounded-xl shadow-2xl overflow-hidden">
           <div className="bg-[#0F3D5E] text-white px-4 py-2.5 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Bell className="w-4 h-4 text-[#0EA5E9]" />
@@ -1874,7 +2058,7 @@ export default function App() {
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <a
                 href={`sms:${(activeReadyToast.recipientPhone || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(activeReadyToast.message)}`}
-                className="px-3 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1.5 transition"
+                className="px-3 py-1.5 bg-[#0F3D5E] hover:bg-[#0c314c] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1.5 transition shadow-sm"
               >
                 <Send className="w-3 h-3" />
                 <span>SMS Customer ({activeReadyToast.recipientPhone})</span>
@@ -1883,7 +2067,7 @@ export default function App() {
                 href={`https://wa.me/${(activeReadyToast.recipientPhone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(activeReadyToast.message)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="px-2.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition"
+                className="px-2.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 transition shadow-sm"
               >
                 <MessageSquare className="w-3 h-3" />
                 <span>WhatsApp</span>
