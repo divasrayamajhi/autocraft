@@ -363,12 +363,52 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "itemType", "status", "data", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "TenantWorkspace": {
+      "title": "TenantWorkspace",
+      "description": "Multi-tenant company subdomain workspace metadata scoped by ownerUid.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 63, "pattern": "^[a-z0-9](?:[a-z0-9\\-]{0,61}[a-z0-9])?$" },
+        "subdomain": { "type": "string", "minLength": 2, "maxLength": 63, "pattern": "^[a-z0-9](?:[a-z0-9\\-]{0,61}[a-z0-9])?$" },
+        "companyName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "isActive": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "subdomain", "companyName", "isActive", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "TenantIntegrationRecord": {
+      "title": "TenantIntegrationRecord",
+      "description": "Per-tenant external integration configuration with masked key hints (no plaintext secrets).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tenantSubdomain": { "type": "string", "minLength": 2, "maxLength": 63, "pattern": "^[a-z0-9\\-]+$" },
+        "provider": { "type": "string", "enum": ["ird_cbms", "sparrow_sms", "fonepay", "connectips"] },
+        "endpoint": { "type": "string", "maxLength": 240 },
+        "keyHint": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "isActive": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tenantSubdomain", "provider", "keyHint", "isActive", "ownerUid", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminUser" },
       "description": "Trusted administrator UIDs managed exclusively by the bootstrapped admin."
+    },
+    "/tenants/{tenantId}": {
+      "schema": { "$ref": "#/entities/TenantWorkspace" },
+      "description": "Multi-tenant company workspaces keyed by subdomain."
+    },
+    "/tenant_integrations/{integrationId}": {
+      "schema": { "$ref": "#/entities/TenantIntegrationRecord" },
+      "description": "Owner-isolated external integration settings with masked key hints."
     },
     "/workshop_profiles/{profileId}": {
       "schema": { "$ref": "#/entities/WorkshopProfileRecord" },

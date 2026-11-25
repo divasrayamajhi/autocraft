@@ -1,9 +1,9 @@
-import { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import {
   findOrClaimTenantUser,
   findTenantBySubdomain,
-  TenantRow,
-  TenantUserRow,
+  type TenantRow,
+  type TenantUserRow,
 } from '../db.ts';
 import { verifyFirebaseIdToken } from '../firebaseAdmin.ts';
 

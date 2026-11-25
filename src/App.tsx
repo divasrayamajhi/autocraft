@@ -172,9 +172,23 @@ export default function App() {
         return;
       }
 
-      // Wait if company onboarding is currently registering the tenant in PostgreSQL
+      // Wait if company onboarding is currently registering the tenant in Firestore
       await waitForOnboardingIfActive();
       if (!active || !auth.currentUser) return;
+
+      if (!fbUser.emailVerified) {
+        setAuthError(
+          'Please verify your email address before signing in, or use Continue with Google for instant access.'
+        );
+        firestoreSync.resetTracking();
+        setFirebaseUser(null);
+        setTenantSessionReady(false);
+        setActiveTenant(null);
+        setIsCloudHydrating(false);
+        setAuthReady(true);
+        void signOut(auth);
+        return;
+      }
 
       setAuthError(null);
       setFirebaseUser(fbUser);
@@ -182,59 +196,38 @@ export default function App() {
       setAuthReady(true);
 
       try {
-        // Verify subdomain tenant isolation & (tenant_id, firebase_uid) membership on the backend
+        // Resolve or auto-provision the user's tenant workspace directly in Cloud Firestore
         const dashboard = await apiClient.getDashboard();
         if (!active) return;
         setActiveTenant(dashboard.tenant);
         setTenantSessionReady(true);
 
-        if (fbUser.emailVerified) {
-          const loaded = await firestoreSync.loadWorkspace(fbUser.uid);
-          if (!active) return;
+        const loaded = await firestoreSync.loadWorkspace(fbUser.uid);
+        if (!active) return;
 
-          if (loaded.exists && loaded.partialDb) {
-            storage.applyRemoteDatabase(loaded.partialDb);
-            storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
-            const syncedState = storage.getDatabase();
-            setDb(syncedState);
-            void firestoreSync.syncDatabaseDiff(fbUser.uid, syncedState, { allowDeletes: false });
-          } else {
-            await storage.hydrateFromIndexedDb();
-            if (!active) return;
-            storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
-            const initialState = storage.getDatabase();
-            const seeded = await firestoreSync.syncDatabaseDiff(fbUser.uid, initialState, {
-              allowDeletes: false,
-            });
-            if (!active) return;
-            storage.saveDatabase({
-              lastCloudSync: seeded.timestamp,
-              isCloudSynced: true,
-            });
-            setDb(storage.getDatabase());
-          }
-
-          firestoreSync.startRealtimeListeners(
-            fbUser.uid,
-            (remotePartial) => {
-              if (!active) return;
-              const merged = storage.applyRemoteDatabase(remotePartial);
-              setDb(merged);
-            },
-            (err) => {
-              if (!active) return;
-              setFatalSyncError(err);
-            }
-          );
+        if (loaded.exists && loaded.partialDb) {
+          storage.applyRemoteDatabase(loaded.partialDb);
+          storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+          const syncedState = storage.getDatabase();
+          setDb(syncedState);
+          void firestoreSync.syncDatabaseDiff(fbUser.uid, syncedState, { allowDeletes: false });
         } else {
-          // Email/Password account authenticated with multi-tenant API backend
           await storage.hydrateFromIndexedDb();
           if (!active) return;
           storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+          const initialState = storage.getDatabase();
+          const seeded = await firestoreSync.syncDatabaseDiff(fbUser.uid, initialState, {
+            allowDeletes: false,
+          });
+          if (!active) return;
+          storage.saveDatabase({
+            lastCloudSync: seeded.timestamp,
+            isCloudSynced: true,
+          });
           setDb(storage.getDatabase());
         }
 
-        // Sync tenant company name into active profile if needed
+        // Sync tenant company name into active profile if a custom company workspace was onboarded
         const currentDb = storage.getDatabase();
         if (
           dashboard.tenant.companyName &&
@@ -250,55 +243,21 @@ export default function App() {
           setDb(storage.getDatabase());
         }
 
-        // Seed the tenant's SQL tables once if empty so paginated API views have immediate data
-        if (
-          dashboard.metrics.totalCustomers === 0 &&
-          dashboard.metrics.totalInventoryItems === 0
-        ) {
-          const snapshot = storage.getDatabase();
-          const customerPayload = (snapshot.customers || []).slice(0, 100).map((c) => ({
-            fullName: c.name,
-            phone: c.phone,
-            email: c.email,
-            vehicleDetails: (c.vehicles || []).map((v) => ({
-              registrationNumber: v.registrationNumber,
-              brand: v.brand,
-              model: v.model,
-              year: v.year,
-            })),
-          }));
-          const inventoryPayload = (snapshot.parts || []).slice(0, 100).map((p) => ({
-            sku: p.partNumber || p.sku || p.id,
-            itemName: p.name,
-            stockQty: p.currentStock,
-            unitPrice: p.sellingPrice,
-          }));
-          if (customerPayload.length > 0 || inventoryPayload.length > 0) {
-            void apiClient.seedTenantFromWorkspace(customerPayload, inventoryPayload).catch(() => {
-              // Non-blocking initial SQL seed
-            });
+        firestoreSync.startRealtimeListeners(
+          fbUser.uid,
+          (remotePartial) => {
+            if (!active) return;
+            const merged = storage.applyRemoteDatabase(remotePartial);
+            setDb(merged);
+          },
+          (err) => {
+            if (!active) return;
+            setFatalSyncError(err);
           }
-        }
+        );
       } catch (err) {
         if (!active) return;
-        const status =
-          typeof err === 'object' && err !== null && 'status' in err
-            ? Number((err as { status?: number }).status)
-            : 0;
-        if (status === 401 || status === 403 || status === 404) {
-          setAuthError(
-            err instanceof Error
-              ? err.message
-              : 'You do not have access to this company tenant workspace.'
-          );
-          firestoreSync.resetTracking();
-          setFirebaseUser(null);
-          setTenantSessionReady(false);
-          setActiveTenant(null);
-          void signOut(auth);
-        } else {
-          setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
-        }
+        setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         if (active) {
           setIsCloudHydrating(false);

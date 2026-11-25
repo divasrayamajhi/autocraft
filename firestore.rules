@@ -45,6 +45,10 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidSubdomain(sub) {
+      return sub is string && sub.size() >= 2 && sub.size() <= 63 && sub.matches('^[a-z0-9](?:[a-z0-9\\-]{0,61}[a-z0-9])?$');
+    }
+
     function isValidString(val, minLen, maxLen) {
       return val is string && val.size() >= minLen && val.size() <= maxLen;
     }
@@ -89,6 +93,34 @@ service cloud.firestore {
         && isValidId(data.uid)
         && data.uid == adminId
         && isValidString(data.email, 3, 254)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTenantWorkspace(data, tenantId) {
+      return data.keys().hasAll(['id', 'subdomain', 'companyName', 'isActive', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'subdomain', 'companyName', 'isActive', 'ownerUid', 'createdAt', 'updatedAt'])
+        && isValidSubdomain(data.id)
+        && isValidSubdomain(data.subdomain)
+        && data.id == tenantId
+        && data.subdomain == tenantId
+        && isValidString(data.companyName, 2, 160)
+        && data.isActive is bool
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTenantIntegration(data) {
+      return data.keys().hasAll(['id', 'tenantSubdomain', 'provider', 'keyHint', 'isActive', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tenantSubdomain', 'provider', 'endpoint', 'keyHint', 'isActive', 'ownerUid', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidSubdomain(data.tenantSubdomain)
+        && data.provider in ['ird_cbms', 'sparrow_sms', 'fonepay', 'connectips']
+        && isValidOptionalString(data, 'endpoint', 240)
+        && isValidString(data.keyHint, 1, 32)
+        && data.isActive is bool
+        && isValidId(data.ownerUid)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -346,7 +378,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 4. COLLECTION RULES (13 Hardened Collections)
+    // 4. COLLECTION RULES (15 Hardened Collections)
     // =========================================================================
 
     // 4.1 Trusted Admin Registry (Bootstrapped Admin Only)
@@ -367,7 +399,62 @@ service cloud.firestore {
       allow delete: if isValidId(adminId) && isBootstrappedAdmin();
     }
 
-    // 4.2 Workshop Profiles (PII-Isolated)
+    // 4.2 Multi-Tenant Company Workspaces (Owner-Isolated)
+    match /tenants/{tenantId} {
+      allow get: if isValidSubdomain(tenantId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidSubdomain(tenantId)
+        && isVerifiedUser()
+        && isValidTenantWorkspace(incoming(), tenantId)
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidSubdomain(tenantId)
+        && isVerifiedUser()
+        && isValidTenantWorkspace(incoming(), tenantId)
+        && hasImmutableBaseFields()
+        && incoming().subdomain == existing().subdomain
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['companyName', 'isActive', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidSubdomain(tenantId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.3 Per-Tenant Integration Settings (Masked Hints Only, Owner-Isolated)
+    match /tenant_integrations/{integrationId} {
+      allow get: if isValidId(integrationId) && isVerifiedUser()
+        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser()
+        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isValidId(integrationId)
+        && isVerifiedUser()
+        && isValidTenantIntegration(incoming())
+        && hasValidCreateTimestamps(incoming())
+        && hasValidOwnerOnCreate(incoming());
+      allow update: if isValidId(integrationId)
+        && isVerifiedUser()
+        && isValidTenantIntegration(incoming())
+        && hasImmutableBaseFields()
+        && incoming().tenantSubdomain == existing().tenantSubdomain
+        && incoming().provider == existing().provider
+        && (
+          isAdmin() ||
+          (
+            isOwner(existing().ownerUid)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['endpoint', 'keyHint', 'isActive', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(integrationId) && isVerifiedUser()
+        && (isOwner(existing().ownerUid) || isAdmin());
+    }
+
+    // 4.4 Workshop Profiles (PII-Isolated)
     match /workshop_profiles/{profileId} {
       allow get: if isValidId(profileId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -396,7 +483,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.3 Staff Accounts & RBAC (PII-Isolated)
+    // 4.5 Staff Accounts & RBAC (PII-Isolated)
     match /staff_accounts/{staffId} {
       allow get: if isValidId(staffId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -424,7 +511,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.4 Workshop Master Items (Service Price Book, Bays, Technicians)
+    // 4.6 Workshop Master Items (Service Price Book, Bays, Technicians)
     match /workshop_masters/{masterId} {
       allow get: if isValidId(masterId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -451,7 +538,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.5 Customers & Vehicle Garages (PII-Isolated)
+    // 4.7 Customers & Vehicle Garages (PII-Isolated)
     match /customers/{customerId} {
       allow get: if isValidId(customerId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -480,7 +567,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.6 Spare Parts Inventory Master
+    // 4.8 Spare Parts Inventory Master
     match /spare_parts/{partId} {
       allow get: if isValidId(partId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -513,7 +600,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.7 Workshop Job Cards (Terminal State Lock on Closed Job Cards)
+    // 4.9 Workshop Job Cards (Terminal State Lock on Closed Job Cards)
     match /job_cards/{jobCardId} {
       allow get: if isValidId(jobCardId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -549,7 +636,7 @@ service cloud.firestore {
         && (isAdmin() || (isOwner(existing().ownerUid) && existing().isClosed == false));
     }
 
-    // 4.8 Service Appointments (Terminal State Lock on Cancelled)
+    // 4.10 Service Appointments (Terminal State Lock on Cancelled)
     match /appointments/{appointmentId} {
       allow get: if isValidId(appointmentId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -578,7 +665,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.9 IRD Tax Invoices, OTC Invoices & Credit Notes (Action-Based Updates)
+    // 4.11 IRD Tax Invoices, OTC Invoices & Credit Notes (Action-Based Updates)
     match /invoices/{invoiceId} {
       allow get: if isValidId(invoiceId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -612,7 +699,7 @@ service cloud.firestore {
         && (isAdmin() || (isOwner(existing().ownerUid) && existing().isLocked == false));
     }
 
-    // 4.10 Vehicle Gate Passes (Terminal State Lock on Exited)
+    // 4.12 Vehicle Gate Passes (Terminal State Lock on Exited)
     match /gate_passes/{gatePassId} {
       allow get: if isValidId(gatePassId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -639,7 +726,7 @@ service cloud.firestore {
         && (isAdmin() || (isOwner(existing().ownerUid) && existing().status != 'Exited'));
     }
 
-    // 4.11 Parts Operations (Quotations, OTC Sales Orders, Returns, Purchase Orders)
+    // 4.13 Parts Operations (Quotations, OTC Sales Orders, Returns, Purchase Orders)
     match /parts_operations/{opId} {
       allow get: if isValidId(opId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -668,7 +755,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.12 Accounting Records (GL Accounts, Journal Vouchers, VAT Ledger, Cashier Vouchers)
+    // 4.14 Accounting Records (GL Accounts, Journal Vouchers, VAT Ledger, Cashier Vouchers)
     match /accounting_records/{recordId} {
       allow get: if isValidId(recordId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());
@@ -697,7 +784,7 @@ service cloud.firestore {
         && (isOwner(existing().ownerUid) || isAdmin());
     }
 
-    // 4.13 Warranty & Pickup Notifications
+    // 4.15 Warranty & Pickup Notifications
     match /warranty_and_notifications/{itemId} {
       allow get: if isValidId(itemId) && isVerifiedUser()
         && (existing().ownerUid == request.auth.uid || isAdmin());

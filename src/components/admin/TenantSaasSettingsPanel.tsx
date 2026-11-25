@@ -85,22 +85,9 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const res = await apiClient.seedTenantFromWorkspace(
-        customers.map((c) => ({
-          fullName: c.name,
-          phone: c.phone,
-          email: c.email,
-          vehicleDetails: c.vehicles || [],
-        })),
-        parts.map((p) => ({
-          sku: p.partNumber || p.sku,
-          itemName: p.name,
-          stockQty: p.currentStock,
-          unitPrice: p.sellingPrice,
-        }))
-      );
+      const res = await apiClient.seedTenantFromWorkspace();
       onNotify(
-        `Synced ${res.customersSynced} customers and ${res.inventorySynced} inventory SKUs to tenant workspace.`
+        `Synced ${res.customersSynced} customers and ${res.inventorySynced} inventory SKUs to Cloud Firestore.`
       );
       await loadAll();
     } catch (err) {
@@ -231,10 +218,10 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
           <KeyRound className="w-4 h-4 text-[#0284C7]" />
           <div>
             <h4 className="text-sm font-bold text-[#0F172A]">
-              Encrypted Tenant Integrations (AES-256-GCM)
+              Tenant Integration Registry (Firebase Firestore)
             </h4>
             <p className="text-xs text-[#64748B]">
-              Store per-company IRD CBMS, SMS Gateway, or Fonepay credentials encrypted on the backend.
+              Register per-company IRD CBMS, SMS Gateway, or Fonepay endpoints (stores masked key hints only).
             </p>
           </div>
         </div>
@@ -280,7 +267,10 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
                 <div className="flex items-center space-x-2.5">
                   <ShieldCheck className="w-4 h-4 text-[#16A34A]" />
                   <span className="font-mono font-bold text-[#0F172A]">{item.provider}</span>
-                  <span className="text-[11px] text-[#64748B]">Credentials encrypted at rest</span>
+                  <span className="text-[11px] text-[#64748B] font-mono">
+                    {item.keyHint ? `Key ${item.keyHint}` : 'Configured'}
+                    {item.endpoint ? ` · ${item.endpoint}` : ''}
+                  </span>
                 </div>
                 <button
                   type="button"

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express, { Request, Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import path from 'path';
 import {
   bulkSeedTenantRecords,
@@ -23,7 +23,7 @@ import {
   extractSubdomainFromRequest,
   requireTenantAuth,
   SUBDOMAIN_REGEX,
-  TenantAuthenticatedRequest,
+  type TenantAuthenticatedRequest,
 } from './src/server/middleware/tenantAuth.ts';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -189,7 +190,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setIsBusy(true);
     beginOnboarding();
     try {
-      await createUserWithEmailAndPassword(auth, ownerEmail.trim(), ownerPassword);
+      const cred = await createUserWithEmailAndPassword(auth, ownerEmail.trim(), ownerPassword);
+      setActiveTenantSubdomain(cleanSub);
+      if (!cred.user.emailVerified) {
+        await sendEmailVerification(cred.user);
+        await signOut(auth).catch(() => {});
+        setInfoMessage(
+          `Verification link sent to ${ownerEmail.trim()}. Please verify your email and sign in to activate "${cleanSub}.autocraftpro.com", or use Google Sign-In for instant access.`
+        );
+        return;
+      }
       await completeTenantRegistration(ownerEmail.trim());
     } catch (err) {
       setErrorMessage(mapFirebaseAuthError(err));
