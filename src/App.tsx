@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from './firebase';
 import { firestoreSync } from './services/firestoreSyncService';
+import {
+  apiClient,
+  TenantInfo,
+  waitForOnboardingIfActive,
+} from './services/apiClient';
 import { 
   storage, 
   AppDatabase 
@@ -76,12 +81,14 @@ import { Bell, Loader2, Lock, MessageSquare, Send, Unlock, Wrench, X } from 'luc
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [tenantSessionReady, setTenantSessionReady] = useState<boolean>(false);
+  const [, setActiveTenant] = useState<TenantInfo | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [isCloudHydrating, setIsCloudHydrating] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [fatalSyncError, setFatalSyncError] = useState<Error | null>(null);
   const cloudSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isAuthenticated = Boolean(firebaseUser && firebaseUser.emailVerified);
+  const isAuthenticated = Boolean(firebaseUser && tenantSessionReady);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -143,7 +150,7 @@ export default function App() {
     }, 280);
   }, []);
 
-  // Firebase Authentication & Cloud Firestore Hydration Lifecycle
+  // Firebase Authentication, Multi-Tenant API Verification & Cloud Hydration Lifecycle
   useEffect(() => {
     let active = true;
 
@@ -158,20 +165,16 @@ export default function App() {
       if (!fbUser) {
         firestoreSync.resetTracking();
         setFirebaseUser(null);
+        setTenantSessionReady(false);
+        setActiveTenant(null);
         setIsCloudHydrating(false);
         setAuthReady(true);
         return;
       }
 
-      if (!fbUser.emailVerified) {
-        setAuthError('Your Google account email must be verified to access AutoCraft Pro.');
-        firestoreSync.resetTracking();
-        setFirebaseUser(null);
-        setIsCloudHydrating(false);
-        setAuthReady(true);
-        void signOut(auth);
-        return;
-      }
+      // Wait if company onboarding is currently registering the tenant in PostgreSQL
+      await waitForOnboardingIfActive();
+      if (!active || !auth.currentUser) return;
 
       setAuthError(null);
       setFirebaseUser(fbUser);
@@ -179,49 +182,123 @@ export default function App() {
       setAuthReady(true);
 
       try {
-        const loaded = await firestoreSync.loadWorkspace(fbUser.uid);
+        // Verify subdomain tenant isolation & (tenant_id, firebase_uid) membership on the backend
+        const dashboard = await apiClient.getDashboard();
         if (!active) return;
+        setActiveTenant(dashboard.tenant);
+        setTenantSessionReady(true);
 
-        if (loaded.exists && loaded.partialDb) {
-          storage.applyRemoteDatabase(loaded.partialDb);
-          storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
-          const syncedState = storage.getDatabase();
-          setDb(syncedState);
-          // Persist any bound profile adjustment (e.g. linked Admin email) if changed
-          void firestoreSync.syncDatabaseDiff(fbUser.uid, syncedState, { allowDeletes: false });
+        if (fbUser.emailVerified) {
+          const loaded = await firestoreSync.loadWorkspace(fbUser.uid);
+          if (!active) return;
+
+          if (loaded.exists && loaded.partialDb) {
+            storage.applyRemoteDatabase(loaded.partialDb);
+            storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+            const syncedState = storage.getDatabase();
+            setDb(syncedState);
+            void firestoreSync.syncDatabaseDiff(fbUser.uid, syncedState, { allowDeletes: false });
+          } else {
+            await storage.hydrateFromIndexedDb();
+            if (!active) return;
+            storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+            const initialState = storage.getDatabase();
+            const seeded = await firestoreSync.syncDatabaseDiff(fbUser.uid, initialState, {
+              allowDeletes: false,
+            });
+            if (!active) return;
+            storage.saveDatabase({
+              lastCloudSync: seeded.timestamp,
+              isCloudSynced: true,
+            });
+            setDb(storage.getDatabase());
+          }
+
+          firestoreSync.startRealtimeListeners(
+            fbUser.uid,
+            (remotePartial) => {
+              if (!active) return;
+              const merged = storage.applyRemoteDatabase(remotePartial);
+              setDb(merged);
+            },
+            (err) => {
+              if (!active) return;
+              setFatalSyncError(err);
+            }
+          );
         } else {
-          // Brand-new cloud workspace: hydrate local cache if present, bind user, and seed Firestore
+          // Email/Password account authenticated with multi-tenant API backend
           await storage.hydrateFromIndexedDb();
           if (!active) return;
           storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
-          const initialState = storage.getDatabase();
-          const seeded = await firestoreSync.syncDatabaseDiff(fbUser.uid, initialState, {
-            allowDeletes: false,
-          });
-          if (!active) return;
+          setDb(storage.getDatabase());
+        }
+
+        // Sync tenant company name into active profile if needed
+        const currentDb = storage.getDatabase();
+        if (
+          dashboard.tenant.companyName &&
+          currentDb.profile.name !== dashboard.tenant.companyName &&
+          dashboard.tenant.subdomain !== 'lavish'
+        ) {
           storage.saveDatabase({
-            lastCloudSync: seeded.timestamp,
-            isCloudSynced: true,
+            profile: {
+              ...currentDb.profile,
+              name: dashboard.tenant.companyName,
+            },
           });
           setDb(storage.getDatabase());
         }
 
-        // Start real-time Firestore listeners only after auth & initial hydration succeed
-        firestoreSync.startRealtimeListeners(
-          fbUser.uid,
-          (remotePartial) => {
-            if (!active) return;
-            const merged = storage.applyRemoteDatabase(remotePartial);
-            setDb(merged);
-          },
-          (err) => {
-            if (!active) return;
-            setFatalSyncError(err);
+        // Seed the tenant's SQL tables once if empty so paginated API views have immediate data
+        if (
+          dashboard.metrics.totalCustomers === 0 &&
+          dashboard.metrics.totalInventoryItems === 0
+        ) {
+          const snapshot = storage.getDatabase();
+          const customerPayload = (snapshot.customers || []).slice(0, 100).map((c) => ({
+            fullName: c.name,
+            phone: c.phone,
+            email: c.email,
+            vehicleDetails: (c.vehicles || []).map((v) => ({
+              registrationNumber: v.registrationNumber,
+              brand: v.brand,
+              model: v.model,
+              year: v.year,
+            })),
+          }));
+          const inventoryPayload = (snapshot.parts || []).slice(0, 100).map((p) => ({
+            sku: p.partNumber || p.sku || p.id,
+            itemName: p.name,
+            stockQty: p.currentStock,
+            unitPrice: p.sellingPrice,
+          }));
+          if (customerPayload.length > 0 || inventoryPayload.length > 0) {
+            void apiClient.seedTenantFromWorkspace(customerPayload, inventoryPayload).catch(() => {
+              // Non-blocking initial SQL seed
+            });
           }
-        );
+        }
       } catch (err) {
         if (!active) return;
-        setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
+        const status =
+          typeof err === 'object' && err !== null && 'status' in err
+            ? Number((err as { status?: number }).status)
+            : 0;
+        if (status === 401 || status === 403 || status === 404) {
+          setAuthError(
+            err instanceof Error
+              ? err.message
+              : 'You do not have access to this company tenant workspace.'
+          );
+          firestoreSync.resetTracking();
+          setFirebaseUser(null);
+          setTenantSessionReady(false);
+          setActiveTenant(null);
+          void signOut(auth);
+        } else {
+          setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
+        }
       } finally {
         if (active) {
           setIsCloudHydrating(false);
@@ -299,12 +376,13 @@ export default function App() {
 
   // Sync state changes with local cache & Cloud Firestore persistence
   const updateDb = (partial: Partial<AppDatabase>) => {
+    const canSyncFirestore = Boolean(firebaseUser?.uid && firebaseUser.emailVerified);
     storage.saveDatabase({
       ...partial,
-      ...(firebaseUser ? { isCloudSynced: false } : {}),
+      ...(canSyncFirestore ? { isCloudSynced: false } : {}),
     });
     setDb(storage.getDatabase());
-    if (firebaseUser?.uid) {
+    if (canSyncFirestore && firebaseUser?.uid) {
       scheduleCloudSync(firebaseUser.uid, true);
     }
   };
@@ -318,6 +396,8 @@ export default function App() {
       cloudSyncTimerRef.current = null;
     }
     firestoreSync.resetTracking();
+    setTenantSessionReady(false);
+    setActiveTenant(null);
     storage.logout();
     void signOut(auth);
   };
@@ -2003,7 +2083,7 @@ export default function App() {
 
   // --- CLOUD SYNC & RESTORE ---
   const handleSyncCloud = async () => {
-    if (firebaseUser?.uid) {
+    if (firebaseUser?.uid && firebaseUser.emailVerified) {
       const syncRes = await firestoreSync.syncDatabaseDiff(
         firebaseUser.uid,
         storage.getDatabase(),
@@ -2027,7 +2107,9 @@ export default function App() {
       storage.bindAuthenticatedUser(firebaseUser.email, firebaseUser.displayName);
       const next = storage.getDatabase();
       setDb(next);
-      scheduleCloudSync(firebaseUser.uid, true);
+      if (firebaseUser.emailVerified) {
+        scheduleCloudSync(firebaseUser.uid, true);
+      }
     } else {
       setDb(storage.getDatabase());
     }
@@ -2038,7 +2120,9 @@ export default function App() {
     if (ok) {
       if (firebaseUser) {
         storage.bindAuthenticatedUser(firebaseUser.email, firebaseUser.displayName);
-        scheduleCloudSync(firebaseUser.uid, true);
+        if (firebaseUser.emailVerified) {
+          scheduleCloudSync(firebaseUser.uid, true);
+        }
       }
       setDb(storage.getDatabase());
     }
@@ -2069,6 +2153,7 @@ export default function App() {
       <AuthScreen
         workshopProfile={db.profile}
         authError={authError}
+        onTenantRegistered={(tenant) => setActiveTenant(tenant)}
       />
     );
   }

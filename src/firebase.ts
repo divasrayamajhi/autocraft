@@ -1,14 +1,23 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseAppletConfig from '../firebase-applet-config.json';
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'divasrayamajhi2@gmail.com';
 
-const app = initializeApp(firebaseConfig);
+const envMeta = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
 
-// CRITICAL: Always pass firebaseConfig.firestoreDatabaseId so Firestore targets the provisioned database
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const resolvedFirebaseConfig = {
+  ...firebaseAppletConfig,
+  apiKey: envMeta.VITE_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
+  authDomain: envMeta.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain,
+  projectId: envMeta.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
+};
+
+const app = initializeApp(resolvedFirebaseConfig);
+
+// CRITICAL: Always pass firebaseAppletConfig.firestoreDatabaseId so Firestore targets the provisioned database
+export const db = getFirestore(app, firebaseAppletConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -66,7 +75,7 @@ export function handleFirestoreError(
 }
 
 export function getFirebaseUpgradeLink(): string {
-  return `https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/databases/${firebaseConfig.firestoreDatabaseId}/data?openUpgradeDialog=true`;
+  return `https://console.firebase.google.com/project/${resolvedFirebaseConfig.projectId}/firestore/databases/${firebaseAppletConfig.firestoreDatabaseId}/data?openUpgradeDialog=true`;
 }
 
 async function testConnection(): Promise<void> {

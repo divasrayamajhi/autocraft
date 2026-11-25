@@ -18,6 +18,7 @@ import {
   Server
 } from 'lucide-react';
 import { DraggableTabBar } from '../common/DraggableTabBar';
+import { TenantSaasSettingsPanel } from './TenantSaasSettingsPanel';
 import { 
   UserAccount, 
   WorkshopProfile, 
@@ -50,7 +51,7 @@ interface AdminMasterSettingsProps {
   onUpdateTechnicians: (technicians: Technician[]) => void;
 }
 
-type AdminSubTab = 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'profile' | 'ird_config';
+type AdminSubTab = 'staff' | 'services' | 'bays' | 'technicians' | 'parts' | 'profile' | 'ird_config' | 'tenant_saas';
 
 export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   profile,
@@ -262,7 +263,8 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
           { id: 'bays', label: 'Workshop Bays & Lifts', icon: Layers },
           { id: 'technicians', label: 'Technician Master', icon: Wrench },
           { id: 'profile', label: 'Workshop Profile', icon: Building2 },
-          { id: 'ird_config', label: 'Nepal IRD E-Billing (13% VAT)', icon: FileCheck }
+          { id: 'ird_config', label: 'Nepal IRD E-Billing (13% VAT)', icon: FileCheck },
+          { id: 'tenant_saas', label: 'SaaS Tenant & Integrations', icon: Server }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.id;
@@ -821,6 +823,15 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* SUBTAB: MULTI-TENANT SAAS & ENCRYPTED INTEGRATIONS */}
+      {activeSubTab === 'tenant_saas' && (
+        <TenantSaasSettingsPanel
+          customers={safeCustomers}
+          parts={safeParts}
+          onNotify={showNotification}
+        />
       )}
 
       {/* MODAL: STAFF USER EDIT / CREATE EXTRA USER (ADMIN ONLY) */}
