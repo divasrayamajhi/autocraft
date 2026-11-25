@@ -74,7 +74,7 @@ interface InventoryManagementProps {
   onCreateSalesOrder?: (order: PartsSalesOrder) => void;
   onDispatchOrder?: (orderId: string, isPartial: boolean) => void;
   onCreateSalesReturn?: (returnData: PartsSalesReturn) => void;
-  onViewJobCard?: (jcNumber: string) => void;
+  onViewJobCard?: (jcNumber: string, jcId?: string) => void;
   onViewInvoice?: (invoice: Invoice) => void;
   onGenerateOtcInvoice?: (order: PartsSalesOrder) => void;
 }
@@ -1380,8 +1380,10 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                             </div>
                           )}
                         </td>
-                        <td className="p-3 font-mono text-[11px] text-slate-600">{quot.expiryDate}</td>
-                        <td className="p-3 font-mono text-[11px] text-slate-600">{quot.items.length} parts</td>
+                        <td className="p-3 font-mono text-[11px] text-slate-600">{quot.expiryDate || '—'}</td>
+                        <td className="p-3 font-mono text-[11px] text-slate-600">
+                          {quot.items.length} parts{quot.laborItems && quot.laborItems.length > 0 ? ` · ${quot.laborItems.length} labor` : ''}
+                        </td>
                         <td className="p-3 text-right">
                           <span className="font-mono font-bold text-slate-900 block">
                             NPR {quot.grandTotal.toLocaleString()}
@@ -1405,17 +1407,19 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end space-x-1.5">
-                            {quot.jobCardNumber && onViewJobCard && (
+                            {(quot.jobCardNumber || quot.jobCardId) && onViewJobCard && (
                               <button
-                                onClick={() => onViewJobCard(quot.jobCardNumber!)}
+                                type="button"
+                                onClick={() => onViewJobCard(quot.jobCardNumber || '', quot.jobCardId)}
                                 className="px-2.5 py-1 bg-sky-100 hover:bg-sky-200 text-[#0F3D5E] rounded-lg text-[11px] font-bold flex items-center space-x-1 transition-colors"
-                                title="Directly access linked Job Card"
+                                title="Open the linked Job Card from which this quotation was generated"
                               >
                                 <Wrench className="w-3 h-3" />
                                 <span>Job Card</span>
                               </button>
                             )}
                             <button
+                              type="button"
                               onClick={() => setViewQuotation(quot)}
                               className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors"
                             >

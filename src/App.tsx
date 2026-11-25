@@ -86,6 +86,11 @@ export default function App() {
   } | null>(null);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [quickIntakeTrigger, setQuickIntakeTrigger] = useState(0);
+  const [pendingOpenJobCardRef, setPendingOpenJobCardRef] = useState<{
+    jobCardId?: string;
+    jobCardNumber?: string;
+    nonce: number;
+  } | null>(null);
 
   const showLifecycleToast = (title: string, message: string, variant: 'locked' | 'reopened') => {
     setLifecycleToast({ title, message, variant });
@@ -1767,7 +1772,14 @@ export default function App() {
               warrantyClaims={db.warrantyClaims}
               profile={db.profile}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onSelectJobCard={() => setActiveTab('jobcards')}
+              onSelectJobCard={(jc) => {
+                setPendingOpenJobCardRef({
+                  jobCardId: jc.id,
+                  jobCardNumber: jc.jobCardNumber,
+                  nonce: Date.now(),
+                });
+                setActiveTab('jobcards');
+              }}
               onNewIntake={() => setActiveTab('jobcards')}
             />
           )}
@@ -1793,7 +1805,14 @@ export default function App() {
               onCreateSalesOrder={handleCreateSalesOrder}
               onDispatchOrder={handleDispatchOrder}
               onCreateSalesReturn={handleCreateSalesReturn}
-              onViewJobCard={() => setActiveTab('jobcards')}
+              onViewJobCard={(jobCardNumber, jobCardId) => {
+                setPendingOpenJobCardRef({
+                  jobCardId,
+                  jobCardNumber,
+                  nonce: Date.now(),
+                });
+                setActiveTab('jobcards');
+              }}
               onViewInvoice={(inv) => setPrintInvoice(inv)}
               onGenerateOtcInvoice={handleGenerateOtcInvoice}
             />
@@ -1829,6 +1848,8 @@ export default function App() {
               onCreateCreditNote={handleCreateCreditNote}
               onTriggerReadyNotification={handleTriggerReadyNotification}
               openIntakeTrigger={quickIntakeTrigger}
+              initialOpenJobCardRef={pendingOpenJobCardRef}
+              onConsumeInitialOpenJobCard={() => setPendingOpenJobCardRef(null)}
             />
           )}
 

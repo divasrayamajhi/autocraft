@@ -2143,6 +2143,7 @@ export const JobCardDetailModal: React.FC<JobCardDetailModalProps> = ({
         <AccidentQuotationModal
           jobCard={currentJobCard}
           availableParts={availableParts}
+          servicePrices={servicePrices}
           profile={profile}
           onClose={() => setIsAccidentQuotationOpen(false)}
           onSaveQuotation={(quotation) => {

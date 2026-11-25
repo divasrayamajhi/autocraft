@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Plus,
+  Search,
   Trash2,
   ShoppingBag,
   CheckCircle2,
@@ -57,20 +58,17 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   const [companyAddress, setCompanyAddress] = useState<string>('');
   const [companyPhone, setCompanyPhone] = useState<string>('');
 
-  // Active line item selection
-  const [selectedPartId, setSelectedPartId] = useState<string>(parts[0]?.id || '');
-  const [quantity, setQuantity] = useState<number>(1);
+  // Search-first spares selection by Part Number / SKU
+  const [partSearchInput, setPartSearchInput] = useState<string>('');
+  const [partSearchTerm, setPartSearchTerm] = useState<string>('');
+  const [hasSearchedParts, setHasSearchedParts] = useState<boolean>(false);
+  const [rowQtyById, setRowQtyById] = useState<Record<string, number>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
   // Cart
   const [cartItems, setCartItems] = useState<PartsQuotationItem[]>([]);
 
   useEscapeKey(isOpen, onClose);
-
-  if (!isOpen) return null;
-
-  // Selected customer object
-  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
   // Discount % based on tier
   const getTierDiscountPercent = (tier: string) => {
@@ -84,6 +82,45 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     }
   };
 
+  const discountPercent = getTierDiscountPercent(pricingTier);
+
+  // Filtered spares search results prioritized by Part Number / SKU match
+  const searchResults = useMemo(() => {
+    if (!hasSearchedParts) return [];
+    const q = partSearchTerm.trim().toLowerCase();
+    if (!q) return parts;
+    const matched = parts.filter((p) => {
+      const partNo = (p.partNumber || '').toLowerCase();
+      const sku = (p.sku || '').toLowerCase();
+      const oem = (p.oemNumber || '').toLowerCase();
+      const barcode = (p.barcode || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return (
+        partNo.includes(q) ||
+        sku.includes(q) ||
+        oem.includes(q) ||
+        barcode.includes(q) ||
+        name.includes(q)
+      );
+    });
+    // Prioritize exact / prefix matches on Part Number and SKU
+    return matched.sort((a, b) => {
+      const aPartNo = (a.partNumber || '').toLowerCase();
+      const bPartNo = (b.partNumber || '').toLowerCase();
+      const aSku = (a.sku || '').toLowerCase();
+      const bSku = (b.sku || '').toLowerCase();
+      const aScore =
+        aPartNo === q || aSku === q ? 0 : aPartNo.startsWith(q) || aSku.startsWith(q) ? 1 : 2;
+      const bScore =
+        bPartNo === q || bSku === q ? 0 : bPartNo.startsWith(q) || bSku.startsWith(q) ? 1 : 2;
+      return aScore - bScore;
+    });
+  }, [hasSearchedParts, partSearchTerm, parts]);
+
+  if (!isOpen) return null;
+
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
+
   const handleCustomerChange = (custId: string) => {
     setSelectedCustomerId(custId);
     if (custId !== 'walkin') {
@@ -94,29 +131,21 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     }
   };
 
-  const activePart = parts.find((p) => p.id === selectedPartId) || parts[0];
-  const discountPercent = getTierDiscountPercent(pricingTier);
-  const basePrice = activePart ? activePart.sellingPrice : 0;
-  const unitDiscount = (basePrice * discountPercent) / 100;
-  const netUnitPrice = Math.max(0, basePrice - unitDiscount);
+  const handleSearchParts = () => {
+    setFormError(null);
+    setPartSearchTerm(partSearchInput.trim());
+    setHasSearchedParts(true);
+  };
 
-  // Live stock evaluation for the currently selected spare part
-  const inCartQtyForActive = activePart
-    ? cartItems.filter((item) => item.partId === activePart.id).reduce((sum, item) => sum + item.quantity, 0)
-    : 0;
-  const availableStock = activePart ? Math.max(0, activePart.currentStock - inCartQtyForActive) : 0;
-  const remainingAfterAdd = availableStock - quantity;
-  const minReorder = activePart?.minReorderLevel ?? 5;
+  const handleClearSearch = () => {
+    setPartSearchInput('');
+    setPartSearchTerm('');
+    setHasSearchedParts(false);
+    setFormError(null);
+  };
 
-  const isOutOfStock = Boolean(activePart && activePart.currentStock <= 0);
-  const isInsufficientStock = Boolean(activePart && !isOutOfStock && (availableStock <= 0 || quantity > availableStock));
-  const isLowStockWarning = Boolean(
-    activePart &&
-      !isOutOfStock &&
-      !isInsufficientStock &&
-      (remainingAfterAdd <= minReorder || activePart.currentStock <= minReorder)
-  );
-  const canAddSelectedPart = Boolean(activePart && quantity > 0 && !isOutOfStock && !isInsufficientStock);
+  const getInCartQty = (partId: string) =>
+    cartItems.filter((item) => item.partId === partId).reduce((sum, item) => sum + item.quantity, 0);
 
   // Check if any cart line item violates current warehouse stock
   const cartStockViolations = cartItems.filter((item) => {
@@ -124,64 +153,66 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     return !livePart || item.quantity > livePart.currentStock;
   });
 
-  const handleAddToCart = () => {
+  const handleAddPartToCart = (part: SparePart) => {
     setFormError(null);
-    if (!activePart) {
-      setFormError('Please select a valid spare part SKU.');
-      return;
-    }
+    const reqQty = rowQtyById[part.id] ?? 1;
+    const inCartQty = getInCartQty(part.id);
+    const availableStock = Math.max(0, part.currentStock - inCartQty);
 
-    if (quantity <= 0) {
+    if (reqQty <= 0) {
       setFormError('Order quantity must be at least 1.');
       return;
     }
 
-    if (activePart.currentStock <= 0) {
-      setFormError(`Out of Stock: ${activePart.name} has 0 ${activePart.unit} available in inventory.`);
+    if (part.currentStock <= 0) {
+      setFormError(`Out of Stock: ${part.name} (${part.partNumber || part.sku}) has 0 ${part.unit} available in inventory.`);
       return;
     }
 
-    if (quantity > availableStock) {
+    if (reqQty > availableStock) {
       setFormError(
-        `Low in Stock: Requested ${quantity} ${activePart.unit} of ${activePart.name}, but only ${availableStock} ${activePart.unit} available in stock.`
+        `Low in Stock: Requested ${reqQty} ${part.unit} of ${part.name} (${part.partNumber || part.sku}), but only ${availableStock} ${part.unit} available in stock.`
       );
       return;
     }
 
-    const itemTotal = netUnitPrice * quantity;
-    const existingIndex = cartItems.findIndex((item) => item.partId === activePart.id);
+    const basePrice = part.sellingPrice;
+    const unitDiscount = (basePrice * discountPercent) / 100;
+    const netUnitPrice = round2(Math.max(0, basePrice - unitDiscount));
+    const itemTotal = round2(netUnitPrice * reqQty);
+    const existingIndex = cartItems.findIndex((item) => item.partId === part.id);
 
     if (existingIndex >= 0) {
       const updated = [...cartItems];
-      const newQty = updated[existingIndex].quantity + quantity;
-      if (newQty > activePart.currentStock) {
+      const newQty = updated[existingIndex].quantity + reqQty;
+      if (newQty > part.currentStock) {
         setFormError(
-          `Low in Stock: Total order quantity (${newQty} ${activePart.unit}) exceeds available stock (${activePart.currentStock} ${activePart.unit}).`
+          `Low in Stock: Total order quantity (${newQty} ${part.unit}) exceeds available stock (${part.currentStock} ${part.unit}).`
         );
         return;
       }
       updated[existingIndex] = {
         ...updated[existingIndex],
         quantity: newQty,
-        total: updated[existingIndex].unitPrice * newQty
+        total: round2(updated[existingIndex].unitPrice * newQty)
       };
       setCartItems(updated);
     } else {
       const newItem: PartsQuotationItem = {
-        partId: activePart.id,
-        partName: activePart.name,
-        sku: activePart.sku,
-        quantity,
+        partId: part.id,
+        partName: part.name,
+        sku: part.partNumber || part.sku,
+        quantity: reqQty,
         unitPrice: netUnitPrice,
-        discount: unitDiscount * quantity,
+        discount: round2(unitDiscount * reqQty),
         vatRate: 13,
         total: itemTotal
       };
       setCartItems([...cartItems, newItem]);
     }
 
-    setQuantity(1);
-    onNotify(`Added ${quantity} × ${activePart.name} to OTC order.`);
+    setRowQtyById((prev) => ({ ...prev, [part.id]: 1 }));
+    onNotify(`Added ${reqQty} × ${part.name} (${part.partNumber || part.sku}) to OTC order.`);
   };
 
   const handleRemoveFromCart = (index: number) => {
@@ -199,7 +230,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     setFormError(null);
 
     if (cartItems.length === 0) {
-      setFormError('Please add at least one spare part item before confirming OTC dispatch.');
+      setFormError('Please search and add at least one spare part item before confirming OTC dispatch.');
       return;
     }
 
@@ -265,7 +296,10 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     }
     onNotify(`OTC Order ${salesOrder.orderNumber} dispatched & IRD Tax Invoice generated.`);
     setCartItems([]);
-    setQuantity(1);
+    setPartSearchInput('');
+    setPartSearchTerm('');
+    setHasSearchedParts(false);
+    setRowQtyById({});
     setFormError(null);
     onClose();
   };
@@ -284,7 +318,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                 New OTC Spares Sales Order &amp; Dispatch
               </h3>
               <p className="text-[11px] text-[#64748B]">
-                Over-the-counter direct spare parts sale with live stock verification, immediate inventory deduction &amp; 13% Nepal VAT.
+                Over-the-counter direct spare parts sale with part-number search, live stock verification, immediate inventory deduction &amp; 13% Nepal VAT.
               </p>
             </div>
           </div>
@@ -439,120 +473,191 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
             </div>
           </div>
 
-          {/* Add Part Section with Real-Time Stock Validation & Stock Notifications */}
+          {/* Search-First Spare Part Selection by Part Number / SKU */}
           <div className="p-3.5 bg-[#F0F9FF] rounded-xl border border-[#BAE6FD] space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-bold text-[#0F3D5E]">Select Spares &amp; Add to OTC Dispatch</span>
-              {activePart && (
-                <span className="text-[11px] font-mono font-semibold text-[#0284C7]">
-                  Available: {availableStock} {activePart.unit} (Warehouse: {activePart.currentStock})
-                </span>
-              )}
+              <span className="text-[11px] text-[#0284C7] font-medium">
+                Search by Part Number or SKU, then click Add
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-              <div className="md:col-span-6">
-                <label className="block font-semibold text-[#0F172A] mb-1">Select Spare Part SKU</label>
-                <select
-                  value={selectedPartId}
-                  onChange={(e) => {
-                    setSelectedPartId(e.target.value);
-                    setFormError(null);
-                  }}
-                  className="w-full border border-[#CBD5E1] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-mono focus:ring-2 focus:ring-[#0EA5E9]"
-                >
-                  {parts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.sku} - {p.name} (Stock: {p.currentStock} {p.unit} | NPR {p.sellingPrice})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block font-semibold text-[#0F172A] mb-1">Order Qty</label>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="number"
-                  min={1}
-                  value={quantity}
-                  onChange={(e) => {
-                    const parsed = parseInt(e.target.value, 10);
-                    setQuantity(isNaN(parsed) ? 0 : Math.max(0, parsed));
-                    setFormError(null);
+                  type="text"
+                  value={partSearchInput}
+                  onChange={(e) => setPartSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearchParts();
+                    }
                   }}
-                  className={`w-full font-mono border rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] text-center font-bold focus:ring-2 ${
-                    isOutOfStock || isInsufficientStock
-                      ? 'border-[#DC2626] text-[#DC2626] focus:ring-[#DC2626]'
-                      : isLowStockWarning
-                        ? 'border-[#F59E0B] text-[#B45309] focus:ring-[#F59E0B]'
-                        : 'border-[#CBD5E1] text-[#0F172A] focus:ring-[#0EA5E9]'
-                  }`}
+                  placeholder="Enter Part Number, SKU, OEM #, or Part Name..."
+                  className="w-full border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-2 outline-none bg-[#FFFFFF] font-mono text-xs text-[#0F172A] placeholder:font-sans focus:ring-2 focus:ring-[#0EA5E9]"
                 />
               </div>
-
-              <div className="md:col-span-2">
-                <label className="block font-semibold text-[#0F172A] mb-1">Net Price</label>
-                <div className="font-mono text-xs font-bold text-[#0F172A] py-2 px-2 bg-[#FFFFFF] rounded-lg border border-[#E2E8F0]">
-                  NPR {netUnitPrice.toLocaleString()}
-                  {discountPercent > 0 && (
-                    <span className="text-[10px] text-[#16A34A] block">(-{discountPercent}%)</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="md:col-span-2">
+              <div className="flex items-center space-x-1.5 shrink-0">
                 <button
                   type="button"
-                  onClick={handleAddToCart}
-                  disabled={!canAddSelectedPart}
-                  className={`w-full py-2 rounded-lg font-bold flex items-center justify-center space-x-1 transition-colors ${
-                    canAddSelectedPart
-                      ? 'bg-[#0EA5E9] hover:bg-[#0284C7] text-white'
-                      : 'bg-[#CBD5E1] text-[#64748B] cursor-not-allowed'
-                  }`}
+                  onClick={handleSearchParts}
+                  className="px-4 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg font-bold flex items-center space-x-1.5 transition whitespace-nowrap"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add</span>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Search</span>
                 </button>
+                {hasSearchedParts && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="px-3 py-2 bg-white border border-[#CBD5E1] text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] rounded-lg font-semibold transition whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Live Stock Status Notification Bar */}
-            {activePart && (
-              <>
-                {isOutOfStock ? (
-                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[#DC2626] text-[11px] font-semibold">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>
-                      Out of Stock — 0 {activePart.unit} available for <strong>{activePart.name}</strong>. Please replenish inventory before OTC dispatch.
+            {/* Search Results Displayed Below with Add Button on Right */}
+            {!hasSearchedParts ? (
+              <div className="p-3 bg-white/80 border border-dashed border-[#BAE6FD] rounded-lg text-[11px] text-[#64748B] text-center">
+                Enter a Part Number or SKU above and click <strong>Search</strong> to view matching spares and add them to this OTC dispatch.
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="p-3 bg-white border border-amber-200 rounded-lg text-[11px] text-[#B45309] flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-[#F59E0B]" />
+                <span>
+                  No spare parts found matching <strong>&ldquo;{partSearchTerm}&rdquo;</strong>. Verify the Part Number or SKU and try again.
+                </span>
+              </div>
+            ) : (
+              <div className="bg-white border border-[#CBD5E1] rounded-lg overflow-hidden">
+                <div className="px-3 py-1.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between text-[11px] text-[#64748B]">
+                  <span>
+                    Showing <strong className="text-[#0F172A]">{searchResults.length}</strong> matching spare part{searchResults.length !== 1 ? 's' : ''}
+                    {partSearchTerm ? ` for "${partSearchTerm}"` : ' (all stock)'}
+                  </span>
+                  {discountPercent > 0 && (
+                    <span className="font-semibold text-[#16A34A]">
+                      {pricingTier} Tier (-{discountPercent}% Applied)
                     </span>
-                  </div>
-                ) : isInsufficientStock ? (
-                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[#DC2626] text-[11px] font-semibold">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>
-                      Low in Stock — Only <strong>{availableStock} {activePart.unit}</strong> available in stock
-                      {inCartQtyForActive > 0 ? ` (${inCartQtyForActive} already in order)` : ''}, cannot fulfill requested order of <strong>{quantity} {activePart.unit}</strong>. Please lower the quantity.
-                    </span>
-                  </div>
-                ) : isLowStockWarning ? (
-                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[#B45309] text-[11px] font-semibold">
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[#F59E0B]" />
-                    <span>
-                      Low Stock Warning — <strong>{availableStock} {activePart.unit}</strong> available; only{' '}
-                      <strong>{Math.max(0, remainingAfterAdd)} {activePart.unit}</strong> will remain after this sale (at or below reorder threshold of {minReorder} {activePart.unit}).
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-start space-x-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[#16A34A] text-[11px] font-semibold">
-                    <PackageCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>
-                      In Stock — Sufficient stock available (<strong>{availableStock} {activePart.unit}</strong> ready;{' '}
-                      <strong>{Math.max(0, remainingAfterAdd)} {activePart.unit}</strong> remaining after this order).
-                    </span>
-                  </div>
-                )}
-              </>
+                  )}
+                </div>
+                <div className="divide-y divide-[#E2E8F0] max-h-56 overflow-y-auto scrollbar-clean">
+                  {searchResults.map((part) => {
+                    const rowQty = rowQtyById[part.id] ?? 1;
+                    const inCartQty = getInCartQty(part.id);
+                    const availableStock = Math.max(0, part.currentStock - inCartQty);
+                    const remainingAfter = availableStock - rowQty;
+                    const minReorder = part.minReorderLevel ?? 5;
+
+                    const isOut = part.currentStock <= 0;
+                    const isInsufficient = !isOut && (availableStock <= 0 || rowQty > availableStock);
+                    const isLowWarn = !isOut && !isInsufficient && (remainingAfter <= minReorder || part.currentStock <= minReorder);
+                    const canAdd = rowQty > 0 && !isOut && !isInsufficient;
+
+                    const netUnit = round2(Math.max(0, part.sellingPrice - (part.sellingPrice * discountPercent) / 100));
+
+                    return (
+                      <div
+                        key={part.id}
+                        className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-[#F8FAFC] transition"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono font-bold text-[#0F3D5E] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded text-[10px]">
+                              Part #: {part.partNumber || part.sku}
+                            </span>
+                            {part.sku && part.sku !== part.partNumber && (
+                              <span className="font-mono text-[10px] text-[#64748B]">
+                                SKU: {part.sku}
+                              </span>
+                            )}
+                            <span className="font-bold text-[#0F172A] text-xs truncate">
+                              {part.name}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="font-mono font-bold text-[#0F172A]">
+                              NPR {netUnit.toLocaleString()} / {part.unit}
+                            </span>
+                            {discountPercent > 0 && (
+                              <span className="text-[10px] text-[#64748B] line-through font-mono">
+                                NPR {part.sellingPrice.toLocaleString()}
+                              </span>
+                            )}
+                            <span>·</span>
+                            {isOut ? (
+                              <span className="text-[#DC2626] font-bold inline-flex items-center space-x-1">
+                                <AlertCircle className="w-3 h-3" />
+                                <span>Out of Stock (0 {part.unit})</span>
+                              </span>
+                            ) : isInsufficient ? (
+                              <span className="text-[#DC2626] font-bold inline-flex items-center space-x-1">
+                                <AlertCircle className="w-3 h-3" />
+                                <span>Low in Stock — Only {availableStock} {part.unit} avail</span>
+                              </span>
+                            ) : isLowWarn ? (
+                              <span className="text-[#B45309] font-semibold inline-flex items-center space-x-1">
+                                <AlertTriangle className="w-3 h-3 text-[#F59E0B]" />
+                                <span>Low Stock ({availableStock} {part.unit} avail · {Math.max(0, remainingAfter)} left)</span>
+                              </span>
+                            ) : (
+                              <span className="text-[#16A34A] font-semibold inline-flex items-center space-x-1">
+                                <PackageCheck className="w-3 h-3" />
+                                <span>In Stock ({availableStock} {part.unit} avail)</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right Side: Quantity + Add Button */}
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <div className="flex items-center space-x-1">
+                            <span className="text-[10px] font-semibold text-[#64748B]">Qty</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={rowQty}
+                              onChange={(e) => {
+                                const parsed = parseInt(e.target.value, 10);
+                                setRowQtyById((prev) => ({
+                                  ...prev,
+                                  [part.id]: isNaN(parsed) ? 0 : Math.max(0, parsed)
+                                }));
+                                setFormError(null);
+                              }}
+                              className={`w-16 font-mono border rounded-lg px-2 py-1.5 outline-none bg-[#FFFFFF] text-center font-bold focus:ring-2 ${
+                                isOut || isInsufficient
+                                  ? 'border-[#DC2626] text-[#DC2626] focus:ring-[#DC2626]'
+                                  : isLowWarn
+                                    ? 'border-[#F59E0B] text-[#B45309] focus:ring-[#F59E0B]'
+                                    : 'border-[#CBD5E1] text-[#0F172A] focus:ring-[#0EA5E9]'
+                              }`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAddPartToCart(part)}
+                            disabled={!canAdd}
+                            className={`px-3.5 py-1.5 rounded-lg font-bold flex items-center space-x-1 transition whitespace-nowrap ${
+                              canAdd
+                                ? 'bg-[#0EA5E9] hover:bg-[#0284C7] text-white'
+                                : 'bg-[#CBD5E1] text-[#64748B] cursor-not-allowed'
+                            }`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
 
@@ -565,14 +670,14 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
 
             {cartItems.length === 0 ? (
               <div className="p-6 text-center border-2 border-dashed border-[#E2E8F0] rounded-xl text-[#64748B]">
-                No spare parts added to this OTC order yet. Choose a part above and click &ldquo;Add&rdquo;.
+                No spare parts added to this OTC order yet. Search by Part Number above and click &ldquo;Add&rdquo;.
               </div>
             ) : (
               <div className="border border-[#E2E8F0] rounded-xl overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] font-semibold text-[#64748B]">
                     <tr>
-                      <th className="p-2.5">Item / SKU</th>
+                      <th className="p-2.5">Item / Part #</th>
                       <th className="p-2.5 text-center">Qty</th>
                       <th className="p-2.5 text-center">Stock Status</th>
                       <th className="p-2.5 text-right">Unit Price</th>
@@ -655,7 +760,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] hover:bg-[#F1F5F9]"
+            className="px-4 py-2 bg-white border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] hover:bg-[#F1F5F9]"
           >
             Cancel
           </button>
@@ -663,7 +768,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
             type="button"
             onClick={handleSubmit}
             disabled={cartItems.length === 0 || cartStockViolations.length > 0}
-            className={`px-5 py-2 rounded-lg font-bold text-white flex items-center space-x-1.5 transition-all ${
+            className={`px-5 py-2 rounded-lg font-bold text-white flex items-center space-x-1.5 transition-all whitespace-nowrap ${
               cartItems.length === 0 || cartStockViolations.length > 0
                 ? 'bg-[#CBD5E1] text-[#64748B] cursor-not-allowed'
                 : 'bg-[#0EA5E9] hover:bg-[#0284C7]'

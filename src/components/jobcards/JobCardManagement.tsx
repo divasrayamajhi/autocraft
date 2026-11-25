@@ -88,6 +88,8 @@ interface JobCardManagementProps {
   ) => void;
   onTriggerReadyNotification?: (jc: JobCard) => void;
   openIntakeTrigger?: number;
+  initialOpenJobCardRef?: { jobCardId?: string; jobCardNumber?: string; nonce: number } | null;
+  onConsumeInitialOpenJobCard?: () => void;
 }
 
 const KANBAN_COLUMNS: { id: JobCardStatus; title: string; accent: string; badgeBg: string }[] = [
@@ -123,7 +125,9 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
   onCreateQuotation,
   onCreateCreditNote,
   onTriggerReadyNotification,
-  openIntakeTrigger
+  openIntakeTrigger,
+  initialOpenJobCardRef,
+  onConsumeInitialOpenJobCard
 }) => {
   const safeJobCards = jobCards || [];
   const safeAppointments = appointments || [];
@@ -444,6 +448,23 @@ export const JobCardManagement: React.FC<JobCardManagementProps> = ({
       setIsIntakeModalOpen(true);
     }
   }, [openIntakeTrigger]);
+
+  // Open a specific Job Card directly when requested from another view (e.g., Quotations tab)
+  useEffect(() => {
+    if (!initialOpenJobCardRef) return;
+    const { jobCardId, jobCardNumber } = initialOpenJobCardRef;
+    const matched = safeJobCards.find(
+      (jc) =>
+        (jobCardId && jc.id === jobCardId) ||
+        (jobCardNumber && jc.jobCardNumber === jobCardNumber)
+    );
+    if (matched) {
+      setSelectedJobCard(matched);
+      onConsumeInitialOpenJobCard?.();
+    } else if (safeJobCards.length > 0) {
+      onConsumeInitialOpenJobCard?.();
+    }
+  }, [initialOpenJobCardRef, safeJobCards, onConsumeInitialOpenJobCard]);
 
   // Generate official appointment confirmation message for SMS/WhatsApp
   const getAppointmentShareText = (apt: Appointment) => {

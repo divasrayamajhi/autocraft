@@ -1,206 +1,212 @@
-import React, { useState } from 'react';
-import { JobCard, SparePart, PartsQuotation, PartsQuotationItem, WorkshopProfile } from '../../types';
-import { 
-  FileSpreadsheet, 
-  ShieldCheck, 
-  Car, 
-  Plus, 
-  Trash2, 
-  X, 
-  Save, 
-  Printer, 
-  AlertTriangle,
-  Building2,
-  DollarSign
+import React, { useMemo, useState } from 'react';
+import {
+  JobCard,
+  SparePart,
+  PartsQuotation,
+  PartsQuotationItem,
+  WorkshopProfile,
+  ServicePriceItem
+} from '../../types';
+import {
+  FileSpreadsheet,
+  Plus,
+  Search,
+  Trash2,
+  X,
+  Save,
+  Printer,
+  AlertTriangle
 } from 'lucide-react';
 import { PrintQuotationModal } from './PrintQuotationModal';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
+import { generateUniqueId, round2 } from '../../utils/accountingEngine';
 
 interface AccidentQuotationModalProps {
   jobCard: JobCard;
   availableParts: SparePart[];
+  servicePrices?: ServicePriceItem[];
   profile?: WorkshopProfile;
   onClose: () => void;
   onSaveQuotation: (quotation: PartsQuotation) => void;
 }
 
-const NEPAL_INSURERS = [
-  'Shikhar Insurance Co. Ltd.',
-  'Siddhartha Premier Insurance',
-  'Himalayan Everest Insurance',
-  'NLG Insurance Co. Ltd.',
-  'Nepal Insurance Co. Ltd.',
-  'United Ajod Insurance',
-  'Sanima GIC Insurance',
-  'IGI Prudential Insurance'
-];
-
 export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
   jobCard,
   availableParts = [],
+  servicePrices = [],
   profile,
   onClose,
   onSaveQuotation
 }) => {
-  const [insuranceCompany, setInsuranceCompany] = useState(
-    jobCard.insuranceCompanyName || NEPAL_INSURERS[0]
-  );
-  const [claimNumber, setClaimNumber] = useState(
-    jobCard.insuranceClaimNumber || `CLM-ACC-${Date.now().toString().slice(-4)}`
-  );
-  const [surveyorName, setSurveyorName] = useState('Govinda Sharma (Licensed Surveyor)');
-  const [validityDays, setValidityDays] = useState(15);
-  const [notes, setNotes] = useState('Comprehensive accidental repair and insurance survey estimate. Subject to physical inspection and depreciation clauses.');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  // Initialize with parts from job card or common accident items
-  const [quotedParts, setQuotedParts] = useState<PartsQuotationItem[]>(() => {
-    const existingParts = (jobCard.partsRequested || jobCard.partsItems || []);
-    if (existingParts.length > 0) {
-      return existingParts.map(p => ({
-        partId: p.partId || `PART-${Date.now()}`,
-        partName: p.partName || p.name || 'Body Part',
-        sku: p.partNumber || 'OEM-ACC',
-        quantity: p.quantity || 1,
-        unitPrice: p.unitPrice || 0,
-        discount: p.discount || 0,
-        vatRate: 13,
-        total: (p.quantity || 1) * (p.unitPrice || 0)
-      }));
-    }
-    return [
-      {
-        partId: 'ACC-01',
-        partName: 'Front Bumper Assembly (Unpainted)',
-        sku: 'BMP-FR-889',
-        quantity: 1,
-        unitPrice: 14500,
-        discount: 0,
-        vatRate: 13,
-        total: 14500
-      },
-      {
-        partId: 'ACC-02',
-        partName: 'Headlamp RH Assembly (LED Projector)',
-        sku: 'HL-RH-772',
-        quantity: 1,
-        unitPrice: 22000,
-        discount: 0,
-        vatRate: 13,
-        total: 22000
-      }
-    ];
-  });
+  // Start clean with zero autofilled parts or labor costs
+  const [quotedParts, setQuotedParts] = useState<PartsQuotationItem[]>([]);
+  const [quotedLabor, setQuotedLabor] = useState<
+    Array<{ id: string; code?: string; description: string; hours: number; ratePerHour: number; totalAmount: number }>
+  >([]);
 
-  // Quoted Labor for Accident & Dent/Paint
-  const [quotedLabor, setQuotedLabor] = useState<Array<{ id: string; description: string; hours: number; ratePerHour: number; totalAmount: number }>>([
-    {
-      id: 'LBR-ACC-1',
-      description: 'Front Fender & Apron Alignment / Denting',
-      hours: 4.5,
-      ratePerHour: 1200,
-      totalAmount: 5400
-    },
-    {
-      id: 'LBR-ACC-2',
-      description: 'Bumper & RH Fender Paint Booth Oven Bake (2 Panels)',
-      hours: 6.0,
-      ratePerHour: 1200,
-      totalAmount: 7200
-    }
-  ]);
+  // Search-first Quick-Pick Workshop Stock (search first, then Add from results below)
+  const [stockSearchInput, setStockSearchInput] = useState('');
+  const [stockSearchTerm, setStockSearchTerm] = useState('');
+  const [hasSearchedStock, setHasSearchedStock] = useState(false);
+  const [stockQtyById, setStockQtyById] = useState<Record<string, number>>({});
 
-  // Form input states for adding custom part
+  // Search-first Labor Price Book (search labor cost first, then Add from results below)
+  const [laborSearchInput, setLaborSearchInput] = useState('');
+  const [laborSearchTerm, setLaborSearchTerm] = useState('');
+  const [hasSearchedLabor, setHasSearchedLabor] = useState(false);
+
+  // Optional custom part inputs (blank by default — no autofill)
   const [newPartName, setNewPartName] = useState('');
   const [newPartSku, setNewPartSku] = useState('');
-  const [newPartQty, setNewPartQty] = useState(1);
-  const [newPartPrice, setNewPartPrice] = useState(2500);
+  const [newPartQty, setNewPartQty] = useState<string>('1');
+  const [newPartPrice, setNewPartPrice] = useState<string>('');
 
-  // Form input states for adding custom labor
+  // Optional custom labor inputs (blank by default — no autofill)
   const [newLaborDesc, setNewLaborDesc] = useState('');
-  const [newLaborHours, setNewLaborHours] = useState(2);
-  const [newLaborRate, setNewLaborRate] = useState(1200);
+  const [newLaborRate, setNewLaborRate] = useState<string>('');
 
-  // Quick select existing inventory part
-  const [selectedStockPartId, setSelectedStockPartId] = useState('');
+  useEscapeKey(!isPrintModalOpen, onClose);
 
-  const handleAddStockPart = () => {
-    const part = availableParts.find(p => p.id === selectedStockPartId);
-    if (!part) return;
-    const newItem: PartsQuotationItem = {
-      partId: part.id,
-      partName: part.name,
-      sku: part.partNumber || part.sku,
-      quantity: 1,
-      unitPrice: part.sellingPrice,
-      discount: 0,
-      vatRate: 13,
-      total: part.sellingPrice
-    };
-    setQuotedParts([...quotedParts, newItem]);
-    setSelectedStockPartId('');
+  const stockSearchResults = useMemo(() => {
+    if (!hasSearchedStock) return [];
+    const q = stockSearchTerm.trim().toLowerCase();
+    if (!q) return availableParts;
+    return availableParts.filter(
+      (p) =>
+        (p.partNumber || '').toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.oemNumber || '').toLowerCase().includes(q) ||
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q)
+    );
+  }, [hasSearchedStock, stockSearchTerm, availableParts]);
+
+  const laborSearchResults = useMemo(() => {
+    if (!hasSearchedLabor) return [];
+    const q = laborSearchTerm.trim().toLowerCase();
+    if (!q) return servicePrices;
+    return servicePrices.filter(
+      (s) =>
+        (s.code || '').toLowerCase().includes(q) ||
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.category || '').toLowerCase().includes(q) ||
+        (s.description || '').toLowerCase().includes(q)
+    );
+  }, [hasSearchedLabor, laborSearchTerm, servicePrices]);
+
+  const handleSearchStock = () => {
+    setStockSearchTerm(stockSearchInput.trim());
+    setHasSearchedStock(true);
+  };
+
+  const handleSearchLabor = () => {
+    setLaborSearchTerm(laborSearchInput.trim());
+    setHasSearchedLabor(true);
+  };
+
+  const handleAddStockPart = (part: SparePart) => {
+    const qty = Math.max(1, stockQtyById[part.id] || 1);
+    const existingIdx = quotedParts.findIndex((p) => p.partId === part.id);
+    if (existingIdx >= 0) {
+      const updated = [...quotedParts];
+      const nextQty = updated[existingIdx].quantity + qty;
+      updated[existingIdx] = {
+        ...updated[existingIdx],
+        quantity: nextQty,
+        total: round2(nextQty * updated[existingIdx].unitPrice)
+      };
+      setQuotedParts(updated);
+    } else {
+      const newItem: PartsQuotationItem = {
+        partId: part.id,
+        partName: part.name,
+        sku: part.partNumber || part.sku,
+        quantity: qty,
+        unitPrice: part.sellingPrice,
+        discount: 0,
+        vatRate: 13,
+        total: round2(qty * part.sellingPrice)
+      };
+      setQuotedParts([...quotedParts, newItem]);
+    }
+    setStockQtyById((prev) => ({ ...prev, [part.id]: 1 }));
   };
 
   const handleAddManualPart = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPartName) return;
+    const trimmedName = newPartName.trim();
+    const parsedQty = Math.max(1, parseInt(newPartQty, 10) || 1);
+    const parsedPrice = Math.max(0, parseFloat(newPartPrice) || 0);
+    if (!trimmedName) return;
     const newItem: PartsQuotationItem = {
-      partId: `CUST-${Date.now().toString().slice(-4)}`,
-      partName: newPartName,
-      sku: newPartSku || 'ACC-REQ',
-      quantity: newPartQty,
-      unitPrice: newPartPrice,
+      partId: generateUniqueId('CUST'),
+      partName: trimmedName,
+      sku: newPartSku.trim() || 'CUSTOM',
+      quantity: parsedQty,
+      unitPrice: parsedPrice,
       discount: 0,
       vatRate: 13,
-      total: newPartQty * newPartPrice
+      total: round2(parsedQty * parsedPrice)
     };
     setQuotedParts([...quotedParts, newItem]);
     setNewPartName('');
     setNewPartSku('');
-    setNewPartQty(1);
-    setNewPartPrice(2500);
+    setNewPartQty('1');
+    setNewPartPrice('');
+  };
+
+  const handleAddCatalogLabor = (service: ServicePriceItem) => {
+    const fixedRate = round2(service.fixedPrice ?? service.baseLaborRate ?? 0);
+    const newLbr = {
+      id: generateUniqueId('LBR'),
+      code: service.code,
+      description: service.code ? `${service.code} — ${service.name}` : service.name,
+      hours: 1,
+      ratePerHour: fixedRate,
+      totalAmount: fixedRate
+    };
+    setQuotedLabor([...quotedLabor, newLbr]);
   };
 
   const handleAddManualLabor = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLaborDesc) return;
+    const trimmedDesc = newLaborDesc.trim();
+    const parsedRate = Math.max(0, parseFloat(newLaborRate) || 0);
+    if (!trimmedDesc) return;
     const newLbr = {
-      id: `LBR-${Date.now().toString().slice(-4)}`,
-      description: newLaborDesc,
-      hours: newLaborHours,
-      ratePerHour: newLaborRate,
-      totalAmount: newLaborHours * newLaborRate
+      id: generateUniqueId('LBR'),
+      description: trimmedDesc,
+      hours: 1,
+      ratePerHour: parsedRate,
+      totalAmount: round2(parsedRate)
     };
     setQuotedLabor([...quotedLabor, newLbr]);
     setNewLaborDesc('');
-    setNewLaborHours(2);
-    setNewLaborRate(1200);
+    setNewLaborRate('');
   };
 
   // Computations
-  const partsSubtotal = quotedParts.reduce((acc, p) => acc + p.total, 0);
-  const laborSubtotal = quotedLabor.reduce((acc, l) => acc + l.totalAmount, 0);
-  const totalTaxable = partsSubtotal + laborSubtotal;
-  const vatAmount = Math.round(totalTaxable * 0.13);
-  const grandTotal = totalTaxable + vatAmount;
-
-  // Insurance estimate breakdown (typically 80% insurance approved, 20% owner depreciation/salvage)
-  const estimatedSalvage = Math.round(partsSubtotal * 0.05); // 5% metal/plastic scrap deduction
-  const insuranceLiabilityEstimate = Math.round((grandTotal - estimatedSalvage) * 0.85);
-  const customerShareEstimate = grandTotal - insuranceLiabilityEstimate;
+  const partsSubtotal = round2(quotedParts.reduce((acc, p) => acc + p.total, 0));
+  const laborSubtotal = round2(quotedLabor.reduce((acc, l) => acc + l.totalAmount, 0));
+  const totalTaxable = round2(partsSubtotal + laborSubtotal);
+  const vatAmount = round2(totalTaxable * 0.13);
+  const grandTotal = round2(totalTaxable + vatAmount);
 
   const handleSave = () => {
-    const quotationNumber = `QUOT-ACC-81-${Math.floor(1000 + Math.random() * 9000)}`;
+    const quotationNumber = `QUOT-81-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date();
-    const expiry = new Date(now.getTime() + validityDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const todayStr = now.toISOString().slice(0, 10);
 
     const quotation: PartsQuotation = {
-      id: `PQ-${Date.now().toString().slice(-6)}`,
+      id: generateUniqueId('PQ'),
       quotationNumber,
       customerId: jobCard.customerId,
       customerName: jobCard.customerName,
       customerPhone: jobCard.customerPhone,
-      date: now.toISOString().slice(0, 10),
-      expiryDate: expiry,
+      date: todayStr,
+      expiryDate: todayStr,
       items: quotedParts,
       subtotal: totalTaxable,
       vatAmount,
@@ -213,14 +219,8 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
       vehicleModel: jobCard.vehicle.model,
       vinNumber: jobCard.vehicle.vinNumber || jobCard.vehicle.chassisNumber,
       engineNumber: jobCard.vehicle.engineNumber,
-      isAccidentInsuranceEstimate: true,
-      insuranceCompany,
-      claimNumber,
       laborItems: quotedLabor,
-      customerShareEstimated: customerShareEstimate,
-      insuranceShareEstimated: insuranceLiabilityEstimate,
-      estimatedSalvageDeduction: estimatedSalvage,
-      notes: `${notes} (Surveyor: ${surveyorName})`
+      notes: 'Preliminary vehicle repair quotation based on workshop inspection.'
     };
 
     onSaveQuotation(quotation);
@@ -228,318 +228,422 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/70 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col border border-[#E2E8F0] overflow-hidden">
         {/* Top Header */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-[#0F3D5E] text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-600 flex items-center justify-center text-white font-bold">
+            <div className="w-10 h-10 rounded-xl bg-[#0EA5E9] flex items-center justify-center text-white font-bold">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
                 <h3 className="text-base font-extrabold tracking-tight">
-                  Accident Vehicle Insurance & Customer Quotation
+                  Vehicle Repair &amp; Customer Quotation
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-white/15 text-sky-100 border border-white/20">
                   Pre-Approval Estimate
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                Linked to Job Card: <strong className="text-white">{jobCard.jobCardNumber}</strong> • {jobCard.vehicle.registrationNumber} ({jobCard.vehicle.brand} {jobCard.vehicle.model})
+              <p className="text-xs text-sky-200/85 mt-0.5">
+                Linked to Job Card: <strong className="text-white font-mono">{jobCard.jobCardNumber}</strong> • {jobCard.vehicle.registrationNumber} ({jobCard.vehicle.brand} {jobCard.vehicle.model}) • {jobCard.customerName}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Insurance & Surveyor Profile Context Bar */}
-        <div className="bg-slate-50 border-b border-slate-200 p-4 sm:px-6">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Insurance Company *</label>
-              <select
-                value={insuranceCompany}
-                onChange={e => setInsuranceCompany(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl p-2 bg-white font-semibold outline-none"
-              >
-                {NEPAL_INSURERS.map(ins => (
-                  <option key={ins} value={ins}>{ins}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Claim / Survey Docket # *</label>
-              <input
-                value={claimNumber}
-                onChange={e => setClaimNumber(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl p-2 bg-white font-mono font-bold outline-none uppercase"
-                placeholder="CLM-2081-445"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Deputed Surveyor Name</label>
-              <input
-                value={surveyorName}
-                onChange={e => setSurveyorName(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl p-2 bg-white outline-none"
-                placeholder="Licensed Surveyor"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Validity (Days)</label>
-              <input
-                type="number"
-                value={validityDays}
-                onChange={e => setValidityDays(parseInt(e.target.value) || 15)}
-                className="w-full border border-slate-300 rounded-xl p-2 bg-white font-mono font-bold outline-none"
-              />
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close quotation dialog"
+            className="p-1.5 text-sky-200 hover:text-white hover:bg-white/10 rounded-lg transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Quotation Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5 text-xs">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 text-xs">
           {/* SECTION 1: SPARE PARTS TO REPLACE */}
-          <div>
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200 mb-2">
-              <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
+              <h4 className="font-bold text-[#0F172A] text-sm flex items-center space-x-1.5">
                 <span>1. Estimated Replacement Spare Parts</span>
-                <span className="text-xs text-slate-500 font-normal">({quotedParts.length} line items)</span>
+                <span className="text-xs text-[#64748B] font-normal">({quotedParts.length} line items)</span>
               </h4>
-              <span className="font-mono font-bold text-teal-700">
+              <span className="font-mono font-bold text-[#0F3D5E]">
                 Parts Total: Rs. {partsSubtotal.toLocaleString()}
               </span>
             </div>
 
-            {/* Quick add from parts master */}
-            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold text-slate-600">Quick-Pick Workshop Stock:</span>
-              <select
-                value={selectedStockPartId}
-                onChange={e => setSelectedStockPartId(e.target.value)}
-                className="border border-slate-300 rounded-lg p-1.5 bg-white text-xs flex-1 min-w-[200px]"
-              >
-                <option value="">-- Choose Stock Part to Add --</option>
-                {availableParts.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.partNumber}) - Rs. {p.sellingPrice.toLocaleString()}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={handleAddStockPart}
-                disabled={!selectedStockPartId}
-                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg font-bold"
-              >
-                + Add Part
-              </button>
+            {/* Quick-Pick Workshop Stock: Search First -> Display Results Below -> Add */}
+            <div className="bg-[#F0F9FF] p-3 rounded-xl border border-[#BAE6FD] space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-[#0F3D5E]">Quick-Pick Workshop Stock</span>
+                <span className="text-[11px] text-[#0284C7]">Search by Part Number, SKU, or Name, then click Add</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={stockSearchInput}
+                    onChange={(e) => setStockSearchInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSearchStock();
+                      }
+                    }}
+                    placeholder="Enter Part Number, SKU, or Spare Part Name..."
+                    className="w-full border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-2 bg-white text-xs text-[#0F172A] outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  />
+                </div>
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleSearchStock}
+                    className="px-4 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg font-bold flex items-center space-x-1.5 transition whitespace-nowrap"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Search Stock</span>
+                  </button>
+                  {hasSearchedStock && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStockSearchInput('');
+                        setStockSearchTerm('');
+                        setHasSearchedStock(false);
+                      }}
+                      className="px-3 py-2 bg-white border border-[#CBD5E1] text-[#64748B] hover:text-[#0F172A] rounded-lg font-semibold transition whitespace-nowrap"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {hasSearchedStock && (
+                stockSearchResults.length === 0 ? (
+                  <div className="p-2.5 bg-white border border-amber-200 rounded-lg text-[11px] text-[#B45309] flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-[#F59E0B]" />
+                    <span>No workshop stock parts found matching &ldquo;{stockSearchTerm}&rdquo;.</span>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-[#CBD5E1] rounded-lg divide-y divide-[#E2E8F0] max-h-48 overflow-y-auto scrollbar-clean">
+                    {stockSearchResults.map((p) => (
+                      <div
+                        key={p.id}
+                        className="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-[#F8FAFC]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-[#0F3D5E]">
+                              {p.partNumber || p.sku}
+                            </span>
+                            <span className="font-bold text-[#0F172A] truncate">{p.name}</span>
+                          </div>
+                          <div className="text-[11px] text-[#64748B] mt-0.5 font-mono">
+                            Rate: <strong className="text-[#0F172A]">Rs. {p.sellingPrice.toLocaleString()}</strong> · Stock: {p.currentStock} {p.unit}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <input
+                            type="number"
+                            min={1}
+                            value={stockQtyById[p.id] ?? 1}
+                            onChange={(e) =>
+                              setStockQtyById((prev) => ({
+                                ...prev,
+                                [p.id]: Math.max(1, parseInt(e.target.value, 10) || 1)
+                              }))
+                            }
+                            className="w-14 border border-[#CBD5E1] rounded-lg px-2 py-1 text-center font-mono font-bold bg-white"
+                            aria-label="Quantity"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddStockPart(p)}
+                            className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-bold inline-flex items-center space-x-1 whitespace-nowrap"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
             </div>
 
             {/* Quoted parts table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-[#E2E8F0] rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                <thead className="bg-[#F8FAFC] text-[#475569] font-semibold border-b border-[#E2E8F0]">
                   <tr>
-                    <th className="p-2.5">Part Name & Specs</th>
-                    <th className="p-2.5">SKU / Code</th>
+                    <th className="p-2.5">Part Name &amp; Specs</th>
+                    <th className="p-2.5">Part # / SKU</th>
                     <th className="p-2.5 text-center">Qty</th>
                     <th className="p-2.5 text-right">Unit Rate (NPR)</th>
                     <th className="p-2.5 text-right">Total (NPR)</th>
                     <th className="p-2.5 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {quotedParts.map((p, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-2.5 font-medium text-slate-900">{p.partName}</td>
-                      <td className="p-2.5 font-mono text-teal-700">{p.sku}</td>
-                      <td className="p-2.5 text-center font-mono">{p.quantity}</td>
-                      <td className="p-2.5 text-right font-mono">Rs. {p.unitPrice.toLocaleString()}</td>
-                      <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                        Rs. {p.total.toLocaleString()}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setQuotedParts(quotedParts.filter((_, i) => i !== idx))}
-                          className="text-slate-400 hover:text-rose-600 p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {quotedParts.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-5 text-center text-[#64748B]">
+                        No spare parts added yet. Search workshop stock above or enter a custom spare part below.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    quotedParts.map((p, idx) => (
+                      <tr key={idx} className="hover:bg-[#F8FAFC]">
+                        <td className="p-2.5 font-medium text-[#0F172A]">{p.partName}</td>
+                        <td className="p-2.5 font-mono text-[#0284C7]">{p.sku}</td>
+                        <td className="p-2.5 text-center font-mono">{p.quantity}</td>
+                        <td className="p-2.5 text-right font-mono">Rs. {p.unitPrice.toLocaleString()}</td>
+                        <td className="p-2.5 text-right font-mono font-bold text-[#0F172A]">
+                          Rs. {p.total.toLocaleString()}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setQuotedParts(quotedParts.filter((_, i) => i !== idx))}
+                            className="text-[#64748B] hover:text-[#DC2626] p-1"
+                            aria-label="Remove part"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
 
-            {/* Custom Part Add Input Row */}
-            <form onSubmit={handleAddManualPart} className="mt-2 grid grid-cols-1 sm:grid-cols-5 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            {/* Optional Custom Part Add Row */}
+            <form onSubmit={handleAddManualPart} className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-[#F8FAFC] p-2.5 rounded-xl border border-[#E2E8F0]">
               <div className="sm:col-span-2">
                 <input
                   value={newPartName}
-                  onChange={e => setNewPartName(e.target.value)}
-                  placeholder="Custom Accident Part Name"
-                  className="w-full border border-slate-300 rounded-lg p-1.5 outline-none bg-white"
+                  onChange={(e) => setNewPartName(e.target.value)}
+                  placeholder="Custom / External Part Name"
+                  className="w-full border border-[#CBD5E1] rounded-lg p-2 outline-none bg-white"
                 />
               </div>
               <div>
                 <input
                   value={newPartSku}
-                  onChange={e => setNewPartSku(e.target.value.toUpperCase())}
-                  placeholder="OEM Part Code"
-                  className="w-full border border-slate-300 rounded-lg p-1.5 outline-none bg-white font-mono uppercase"
+                  onChange={(e) => setNewPartSku(e.target.value.toUpperCase())}
+                  placeholder="Part Number"
+                  className="w-full border border-[#CBD5E1] rounded-lg p-2 outline-none bg-white font-mono uppercase"
                 />
               </div>
-              <div className="flex space-x-1">
+              <div className="flex space-x-1.5">
                 <input
                   type="number"
                   min="1"
                   value={newPartQty}
-                  onChange={e => setNewPartQty(parseInt(e.target.value) || 1)}
+                  onChange={(e) => setNewPartQty(e.target.value)}
                   placeholder="Qty"
-                  className="w-16 border border-slate-300 rounded-lg p-1.5 outline-none bg-white font-mono"
+                  className="w-16 border border-[#CBD5E1] rounded-lg p-2 outline-none bg-white font-mono"
                 />
                 <input
                   type="number"
+                  min="0"
                   value={newPartPrice}
-                  onChange={e => setNewPartPrice(parseInt(e.target.value) || 0)}
-                  placeholder="Price"
-                  className="w-full border border-slate-300 rounded-lg p-1.5 outline-none bg-white font-mono"
+                  onChange={(e) => setNewPartPrice(e.target.value)}
+                  placeholder="Price (NPR)"
+                  className="w-full border border-[#CBD5E1] rounded-lg p-2 outline-none bg-white font-mono"
                 />
               </div>
               <button
                 type="submit"
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold"
+                disabled={!newPartName.trim()}
+                className="px-3 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg font-bold whitespace-nowrap"
               >
-                + Add Custom Item
+                + Add Custom Part
               </button>
             </form>
           </div>
 
           {/* SECTION 2: LABOR & DENT/PAINT */}
-          <div>
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200 mb-2">
-              <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
-                <span>2. Estimated Labor, Denting & Paint Oven Bake</span>
-                <span className="text-xs text-slate-500 font-normal">({quotedLabor.length} operations)</span>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
+              <h4 className="font-bold text-[#0F172A] text-sm flex items-center space-x-1.5">
+                <span>2. Estimated Labor, Denting &amp; Paint Oven Bake</span>
+                <span className="text-xs text-[#64748B] font-normal">({quotedLabor.length} operations)</span>
               </h4>
-              <span className="font-mono font-bold text-indigo-700">
+              <span className="font-mono font-bold text-[#0284C7]">
                 Labor Total: Rs. {laborSubtotal.toLocaleString()}
               </span>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            {/* Search-First Labor Cost Lookup */}
+            <div className="bg-[#F0F9FF] p-3 rounded-xl border border-[#BAE6FD] space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-[#0F3D5E]">Search Workshop Labor Price Book</span>
+                <span className="text-[11px] text-[#0284C7]">Search labor code or task name first, then click Add</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={laborSearchInput}
+                    onChange={(e) => setLaborSearchInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSearchLabor();
+                      }
+                    }}
+                    placeholder="Enter Labor Task Code, Service Name, or Dent/Paint..."
+                    className="w-full border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-2 bg-white text-xs text-[#0F172A] outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  />
+                </div>
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleSearchLabor}
+                    className="px-4 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg font-bold flex items-center space-x-1.5 transition whitespace-nowrap"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Search Labor</span>
+                  </button>
+                  {hasSearchedLabor && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLaborSearchInput('');
+                        setLaborSearchTerm('');
+                        setHasSearchedLabor(false);
+                      }}
+                      className="px-3 py-2 bg-white border border-[#CBD5E1] text-[#64748B] hover:text-[#0F172A] rounded-lg font-semibold transition whitespace-nowrap"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {hasSearchedLabor && (
+                laborSearchResults.length === 0 ? (
+                  <div className="p-2.5 bg-white border border-amber-200 rounded-lg text-[11px] text-[#B45309] flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-[#F59E0B]" />
+                    <span>No labor tasks found matching &ldquo;{laborSearchTerm}&rdquo;.</span>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-[#CBD5E1] rounded-lg divide-y divide-[#E2E8F0] max-h-48 overflow-y-auto scrollbar-clean">
+                    {laborSearchResults.map((srv) => {
+                      const fixedRate = round2(srv.fixedPrice ?? srv.baseLaborRate ?? 0);
+                      return (
+                        <div
+                          key={srv.id}
+                          className="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-[#F8FAFC]"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-[#0F3D5E]">
+                                {srv.code}
+                              </span>
+                              <span className="font-bold text-[#0F172A] truncate">{srv.name}</span>
+                            </div>
+                            <div className="text-[11px] text-[#64748B] mt-0.5">
+                              {srv.category} · Fixed Cost: <strong className="font-mono text-[#0F172A]">Rs. {fixedRate.toLocaleString()}</strong>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleAddCatalogLabor(srv)}
+                            className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-bold inline-flex items-center space-x-1 whitespace-nowrap shrink-0 self-end sm:self-center"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+            </div>
+
+            <div className="border border-[#E2E8F0] rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                <thead className="bg-[#F8FAFC] text-[#475569] font-semibold border-b border-[#E2E8F0]">
                   <tr>
                     <th className="p-2.5">Labor / Panel Repair Description</th>
-                    <th className="p-2.5 text-center">Hours</th>
-                    <th className="p-2.5 text-right">Hourly Rate</th>
-                    <th className="p-2.5 text-right">Amount (NPR)</th>
+                    <th className="p-2.5 text-right">Labor Cost (NPR)</th>
                     <th className="p-2.5 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {quotedLabor.map((l, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-2.5 font-medium text-slate-900">{l.description}</td>
-                      <td className="p-2.5 text-center font-mono">{l.hours} hrs</td>
-                      <td className="p-2.5 text-right font-mono">Rs. {l.ratePerHour.toLocaleString()}</td>
-                      <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                        Rs. {l.totalAmount.toLocaleString()}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setQuotedLabor(quotedLabor.filter((_, i) => i !== idx))}
-                          className="text-slate-400 hover:text-rose-600 p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {quotedLabor.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="p-5 text-center text-[#64748B]">
+                        No labor operations added yet. Search the workshop labor price book above or add a custom labor cost below.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    quotedLabor.map((l, idx) => (
+                      <tr key={l.id || idx} className="hover:bg-[#F8FAFC]">
+                        <td className="p-2.5 font-medium text-[#0F172A]">{l.description}</td>
+                        <td className="p-2.5 text-right font-mono font-bold text-[#0F172A]">
+                          Rs. {l.totalAmount.toLocaleString()}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setQuotedLabor(quotedLabor.filter((_, i) => i !== idx))}
+                            className="text-[#64748B] hover:text-[#DC2626] p-1"
+                            aria-label="Remove labor item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
 
-            {/* Custom Labor Input Row */}
-            <form onSubmit={handleAddManualLabor} className="mt-2 grid grid-cols-1 sm:grid-cols-5 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            {/* Optional Custom Labor Input Row */}
+            <form onSubmit={handleAddManualLabor} className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-[#F8FAFC] p-2.5 rounded-xl border border-[#E2E8F0]">
               <div className="sm:col-span-3">
                 <input
                   value={newLaborDesc}
-                  onChange={e => setNewLaborDesc(e.target.value)}
-                  placeholder="e.g., Rear Quarter Panel Dent Pulling & Primer"
-                  className="w-full border border-slate-300 rounded-lg p-1.5 outline-none bg-white"
+                  onChange={(e) => setNewLaborDesc(e.target.value)}
+                  placeholder="Custom Labor / Denting & Paint Description"
+                  className="w-full border border-[#CBD5E1] rounded-lg p-2 outline-none bg-white"
                 />
               </div>
-              <div className="flex space-x-1">
+              <div>
                 <input
                   type="number"
-                  step="0.5"
-                  value={newLaborHours}
-                  onChange={e => setNewLaborHours(parseFloat(e.target.value) || 1)}
-                  placeholder="Hours"
-                  className="w-20 border border-slate-300 rounded-lg p-1.5 outline-none bg-white font-mono"
-                />
-                <input
-                  type="number"
+                  min="0"
                   value={newLaborRate}
-                  onChange={e => setNewLaborRate(parseInt(e.target.value) || 1200)}
-                  placeholder="Rate"
-                  className="w-full border border-slate-300 rounded-lg p-1.5 outline-none bg-white font-mono"
+                  onChange={(e) => setNewLaborRate(e.target.value)}
+                  placeholder="Labor Cost (NPR)"
+                  className="w-full border border-[#CBD5E1] rounded-lg p-2 outline-none bg-white font-mono"
                 />
               </div>
               <button
                 type="submit"
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold"
+                disabled={!newLaborDesc.trim()}
+                className="px-3 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg font-bold whitespace-nowrap"
               >
-                + Add Labor Line
+                + Add Custom Labor
               </button>
             </form>
-          </div>
-
-          {/* Insurance Share & Depreciation Preview Card */}
-          <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2">
-            <h5 className="font-bold text-purple-950 flex items-center space-x-1.5 text-xs">
-              <ShieldCheck className="w-4 h-4 text-purple-700" />
-              <span>Projected Insurance Settlement vs. Customer Excess / Depreciation Split:</span>
-            </h5>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-white p-3 rounded-lg border border-purple-100">
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Estimated Insurance Share</span>
-                <span className="font-mono font-bold text-purple-800 text-sm">
-                  Rs. {insuranceLiabilityEstimate.toLocaleString()}
-                </span>
-                <span className="text-[10px] text-slate-500 block">Payable directly via Cashless Insurer</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Customer Liability (Deductible/Compulsory)</span>
-                <span className="font-mono font-bold text-slate-900 text-sm">
-                  Rs. {customerShareEstimate.toLocaleString()}
-                </span>
-                <span className="text-[10px] text-slate-500 block">Owner depreciation & policy excess</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">Scrap / Salvage Deduction</span>
-                <span className="font-mono font-bold text-amber-700 text-sm">
-                  Rs. {estimatedSalvage.toLocaleString()}
-                </span>
-                <span className="text-[10px] text-slate-500 block">Recovered old parts salvage value</span>
-              </div>
-            </div>
           </div>
 
           {/* Preliminary Estimate Disclaimer */}
@@ -550,37 +654,38 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
         </div>
 
         {/* Bottom Total & Dispatch Bar */}
-        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-6 text-xs">
+        <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-6 text-xs">
             <div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">Taxable Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">Rs. {totalTaxable.toLocaleString()}</span>
+              <span className="text-[10px] text-[#64748B] font-bold uppercase block">Taxable Subtotal</span>
+              <span className="font-mono font-bold text-[#0F172A]">Rs. {totalTaxable.toLocaleString()}</span>
             </div>
             <div>
-              <span className="text-[10px] text-indigo-500 font-bold uppercase block">Nepal 13% VAT</span>
-              <span className="font-mono font-bold text-indigo-700">Rs. {vatAmount.toLocaleString()}</span>
+              <span className="text-[10px] text-[#0284C7] font-bold uppercase block">Nepal 13% VAT</span>
+              <span className="font-mono font-bold text-[#0284C7]">Rs. {vatAmount.toLocaleString()}</span>
             </div>
-            <div className="pl-4 border-l border-slate-300">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Gross Quotation Amount</span>
-              <span className="font-mono font-black text-lg text-slate-900">
+            <div className="pl-4 border-l border-[#CBD5E1]">
+              <span className="text-[10px] text-[#64748B] font-bold uppercase block">Gross Quotation Amount</span>
+              <span className="font-mono font-black text-lg text-[#0F3D5E]">
                 Rs. {grandTotal.toLocaleString()}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded-xl font-semibold text-slate-700 text-xs hover:bg-slate-100"
+              className="px-4 py-2 bg-white border border-[#CBD5E1] rounded-lg font-semibold text-[#0F172A] text-xs hover:bg-[#F1F5F9] whitespace-nowrap"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => setIsPrintModalOpen(true)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
-              title="Print standard A4 Insurance Quotation"
+              disabled={quotedParts.length === 0 && quotedLabor.length === 0}
+              className="px-4 py-2 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition whitespace-nowrap"
+              title="Print standard A4 Repair Quotation"
             >
               <Printer className="w-4 h-4" />
               <span>Print A4 Quotation</span>
@@ -588,10 +693,11 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black shadow-md shadow-purple-900 transition flex items-center space-x-1.5"
+              disabled={quotedParts.length === 0 && quotedLabor.length === 0}
+              className="px-5 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg text-xs font-bold transition flex items-center space-x-1.5 whitespace-nowrap"
             >
               <Save className="w-4 h-4" />
-              <span>Save & Publish Accident Quotation</span>
+              <span>Save &amp; Publish Quotation</span>
             </button>
           </div>
         </div>
@@ -601,26 +707,25 @@ export const AccidentQuotationModal: React.FC<AccidentQuotationModalProps> = ({
       {isPrintModalOpen && (
         <PrintQuotationModal
           quotation={{
-            id: `QUOTE-${Date.now()}`,
+            id: generateUniqueId('QUOTE'),
             quotationNumber: `QT-${Date.now().toString().slice(-4)}`,
+            customerId: jobCard.customerId,
             jobCardId: jobCard.id,
             jobCardNumber: jobCard.jobCardNumber,
             customerName: jobCard.customerName,
             customerPhone: jobCard.customerPhone,
-            customerPan: jobCard.customerPan,
             vehicleReg: jobCard.vehicle.registrationNumber,
-            vehicleBrand: jobCard.vehicle.brand,
+            vehicleMake: jobCard.vehicle.brand,
             vehicleModel: jobCard.vehicle.model,
-            vehicleChassis: jobCard.vehicle.vinNumber || jobCard.vehicle.chassisNumber,
-            insuranceCompany,
-            insuranceClaimNumber: claimNumber,
-            surveyorName,
+            vinNumber: jobCard.vehicle.vinNumber || jobCard.vehicle.chassisNumber,
             items: quotedParts,
+            laborItems: quotedLabor,
             subtotal: totalTaxable,
             vatAmount,
-            totalAmount: grandTotal,
+            grandTotal,
             date: new Date().toISOString().split('T')[0],
-            status: 'Sent to Insurer'
+            expiryDate: new Date().toISOString().split('T')[0],
+            status: 'Sent'
           }}
           jobCard={jobCard}
           profile={profile}

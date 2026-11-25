@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { X, Printer, CheckCircle2, QrCode } from 'lucide-react';
 import { PartsQuotation, PartsSalesOrder, PartsSalesReturn, WorkshopProfile } from '../../types';
 import { printElement } from '../../utils/printDocument';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface InventoryDocSlipModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
   profile
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
+  useEscapeKey(isOpen, onClose);
   if (!isOpen) return null;
 
   const workshopName = profile?.name || profile?.legalEntityName || 'CONTINENTAL AUTO KRAFT';
@@ -84,39 +86,73 @@ export const InventoryDocSlipModal: React.FC<InventoryDocSlipModalProps> = ({
                   <span className="font-bold text-slate-900">{quotation.quotationNumber}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-slate-400 block">DATE / VALIDITY:</span>
-                  <span>{quotation.date} (Valid till {quotation.expiryDate})</span>
+                  <span className="text-slate-400 block">DATE:</span>
+                  <span>{quotation.date}</span>
                 </div>
               </div>
 
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span className="text-slate-400 text-[10px] block">CLIENT / PROSPECT:</span>
-                <span className="font-bold text-slate-900 text-xs">{quotation.customerName}</span>
+                <span className="text-slate-400 text-[10px] block">CLIENT / VEHICLE:</span>
+                <span className="font-bold text-slate-900 text-xs block">{quotation.customerName}</span>
+                {(quotation.vehicleReg || quotation.vehicleModel) && (
+                  <span className="text-[10px] text-slate-600 block mt-0.5">
+                    {quotation.vehicleReg}{quotation.vehicleModel ? ` • ${quotation.vehicleModel}` : ''}
+                    {quotation.jobCardNumber ? ` • JC: ${quotation.jobCardNumber}` : ''}
+                  </span>
+                )}
               </div>
 
-              <table className="w-full text-left text-[11px]">
-                <thead className="border-b border-slate-200 text-slate-500">
-                  <tr>
-                    <th className="py-1">Part SKU / Description</th>
-                    <th className="py-1 text-center">Qty</th>
-                    <th className="py-1 text-right">Rate</th>
-                    <th className="py-1 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {quotation.items.map((item, i) => (
-                    <tr key={i}>
-                      <td className="py-1.5">
-                        <span className="font-bold block">{item.partName}</span>
-                        <span className="text-[10px] text-slate-400">{item.sku}</span>
-                      </td>
-                      <td className="py-1.5 text-center">{item.quantity}</td>
-                      <td className="py-1.5 text-right font-mono">NPR {item.unitPrice.toLocaleString()}</td>
-                      <td className="py-1.5 text-right font-mono font-bold">NPR {item.total.toLocaleString()}</td>
+              {quotation.items.length > 0 && (
+                <table className="w-full text-left text-[11px]">
+                  <thead className="border-b border-slate-200 text-slate-500">
+                    <tr>
+                      <th className="py-1">Part SKU / Description</th>
+                      <th className="py-1 text-center">Qty</th>
+                      <th className="py-1 text-right">Rate</th>
+                      <th className="py-1 text-right">Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {quotation.items.map((item, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5">
+                          <span className="font-bold block">{item.partName}</span>
+                          <span className="text-[10px] text-slate-400">{item.sku}</span>
+                        </td>
+                        <td className="py-1.5 text-center">{item.quantity}</td>
+                        <td className="py-1.5 text-right font-mono">NPR {item.unitPrice.toLocaleString()}</td>
+                        <td className="py-1.5 text-right font-mono font-bold">NPR {item.total.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {quotation.laborItems && quotation.laborItems.length > 0 && (
+                <table className="w-full text-left text-[11px]">
+                  <thead className="border-b border-slate-200 text-slate-500">
+                    <tr>
+                      <th className="py-1">Labor / Bodywork Operation</th>
+                      <th className="py-1 text-center">Hrs</th>
+                      <th className="py-1 text-right">Rate</th>
+                      <th className="py-1 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {quotation.laborItems.map((lab, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5">
+                          <span className="font-bold block">{lab.description}</span>
+                          <span className="text-[10px] text-slate-400">{lab.category}</span>
+                        </td>
+                        <td className="py-1.5 text-center">{lab.hours}</td>
+                        <td className="py-1.5 text-right font-mono">NPR {lab.rate.toLocaleString()}</td>
+                        <td className="py-1.5 text-right font-mono font-bold">NPR {lab.total.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
 
               <div className="pt-2 border-t border-slate-200 space-y-1 text-right text-[11px]">
                 <div>Subtotal: NPR {quotation.subtotal.toLocaleString()}</div>
