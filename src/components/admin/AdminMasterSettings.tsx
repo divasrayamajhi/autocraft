@@ -29,6 +29,7 @@ import {
   UserRole,
   getDefaultPermissionsForRole
 } from '../../types';
+import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
 
 interface AdminMasterSettingsProps {
   profile: WorkshopProfile;
@@ -90,6 +91,8 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   // Staff edit modal state
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [isNewUserModal, setIsNewUserModal] = useState(false);
+  const [selectedModalRole, setSelectedModalRole] = useState<UserRole>('Service Advisor');
+  const [staffFormError, setStaffFormError] = useState<string | null>(null);
 
   // Service item edit modal state
   const [editingService, setEditingService] = useState<ServicePriceItem | null>(null);
@@ -102,37 +105,27 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   const [editingTech, setEditingTech] = useState<Technician | null>(null);
   const [isNewTechModal, setIsNewTechModal] = useState(false);
 
-  // Non-admin guard
-  if (userRole !== 'Admin' && !viewReadOnly) {
-    const adminUser = safeUsers.find(u => u.role === 'Admin') || { id: 'USR-01', name: 'Ramesh Shrestha' };
+  useEscapeKey(isNewUserModal, () => {
+    setIsNewUserModal(false);
+    setStaffFormError(null);
+  });
+  useEscapeKey(isNewServiceModal, () => setIsNewServiceModal(false));
+  useEscapeKey(Boolean(editingBay), () => setEditingBay(null));
+  useEscapeKey(isNewTechModal, () => setIsNewTechModal(false));
+
+  // Strict Admin-only guard — only Admin has defined role to create extra users and edit masters
+  if (userRole !== 'Admin') {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
+      <div className="bg-white rounded-2xl border border-[#E2E8F0] p-8 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
           <ShieldAlert className="w-6 h-6" />
         </div>
         <div>
-          <h3 className="text-lg font-bold text-slate-900">Admin Privileges Required</h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Master Settings (Staff RBAC, Service Price Book, Workshop Bays, and IRD E-Billing configurations) require Administrator permissions. Current Active Role: <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{userRole}</span>.
+          <h3 className="text-lg font-bold text-[#0F172A]">Administrator Access Required</h3>
+          <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
+            Master Settings — including creating extra user accounts under <strong>Staff &amp; Roles (RBAC)</strong>, Labor Price Book, Workshop Bays, and IRD E-Billing — are restricted strictly to the Main Administrator account. Current Role:{' '}
+            <span className="font-semibold text-[#0F172A] bg-[#F1F5F9] px-2 py-0.5 rounded">{userRole}</span>.
           </p>
-        </div>
-
-        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
-          {onSwitchUser && (
-            <button
-              onClick={() => onSwitchUser(adminUser.id)}
-              className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center space-x-2"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Switch to Administrator ({adminUser.name})</span>
-            </button>
-          )}
-          <button
-            onClick={() => setViewReadOnly(true)}
-            className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
-          >
-            Preview Settings (Read-Only)
-          </button>
         </div>
       </div>
     );
@@ -149,19 +142,54 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
     showNotification('Workshop Profile & Nepal IRD Configuration Updated Successfully');
   };
 
-  // Staff Handlers
+  // Staff Handlers (Admin-Only)
   const handleSaveUser = (user: UserAccount) => {
+    if (userRole !== 'Admin') return;
+    setStaffFormError(null);
+
+    const normalizedUsername = user.username.trim().toLowerCase();
+    const normalizedEmail = user.email.trim().toLowerCase();
+    const duplicate = safeUsers.find(
+      (u) =>
+        u.id !== user.id &&
+        ((u.username || '').toLowerCase() === normalizedUsername ||
+          (u.email || '').toLowerCase() === normalizedEmail)
+    );
+    if (duplicate) {
+      setStaffFormError('A user account with this username or email already exists.');
+      return;
+    }
+
     if (editingUser) {
-      const updated = users.map(u => u.id === user.id ? user : u);
+      const updated = safeUsers.map((u) => (u.id === user.id ? user : u));
       onUpdateUsers(updated);
-      showNotification(`Staff Member "${user.name}" Updated`);
+      showNotification(`Staff User "${user.name}" Updated`);
     } else {
-      const newUser = { ...user, id: `USR-${Date.now().toString().slice(-3)}` };
-      onUpdateUsers([...users, newUser]);
-      showNotification(`New Staff Member "${user.name}" Added`);
+      const newUser: UserAccount = { ...user, id: `USR-${Date.now().toString().slice(-4)}` };
+      onUpdateUsers([...safeUsers, newUser]);
+      showNotification(`New User Account "${user.name}" (@${newUser.username}) Created`);
     }
     setEditingUser(null);
     setIsNewUserModal(false);
+    setStaffFormError(null);
+  };
+
+  const handleToggleUserActive = (target: UserAccount) => {
+    if (userRole !== 'Admin' || target.id === 'USR-01') return;
+    const updated = safeUsers.map((u) =>
+      u.id === target.id ? { ...u, isActive: !u.isActive } : u
+    );
+    onUpdateUsers(updated);
+    showNotification(
+      `Account "@${target.username}" ${target.isActive ? 'Deactivated' : 'Re-Activated'}`
+    );
+  };
+
+  const handleDeleteUser = (target: UserAccount) => {
+    if (userRole !== 'Admin' || target.id === 'USR-01') return;
+    const updated = safeUsers.filter((u) => u.id !== target.id);
+    onUpdateUsers(updated);
+    showNotification(`Removed staff account "${target.name}" (@${target.username})`);
   };
 
   // Service Handlers
@@ -258,77 +286,122 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
       {/* SUBTAB 1: STAFF & USER ROLES (RBAC) */}
       {activeSubTab === 'staff' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-slate-900">Workshop Users & Access Control</h3>
-              <p className="text-xs text-slate-500">1 Full Admin with master edit privileges, and 4 specialized limited access personnel.</p>
+              <h3 className="text-base font-bold text-[#0F172A]">Workshop Users &amp; Role-Based Access Control (RBAC)</h3>
+              <p className="text-xs text-[#64748B]">
+                Only the Main Administrator can create extra staff user accounts and assign defined operational roles.
+              </p>
             </div>
             <button
+              type="button"
               onClick={() => {
                 setEditingUser(null);
+                setSelectedModalRole('Service Advisor');
+                setStaffFormError(null);
                 setIsNewUserModal(true);
               }}
-              className="inline-flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl text-xs font-bold shadow-sm transition"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Staff Member</span>
+              <span>Create Extra User</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {safeUsers.map((u) => (
-              <div key={u.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition flex flex-col justify-between">
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        u.role === 'Admin' ? 'bg-purple-100 text-purple-800' :
-                        u.role === 'Service Advisor' ? 'bg-blue-100 text-blue-800' :
-                        u.role === 'Technician' ? 'bg-amber-100 text-amber-800' :
-                        u.role === 'Inventory Manager' ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {u.role}
-                      </span>
-                      <h4 className="text-sm font-bold text-slate-900 mt-1.5">{u.name}</h4>
-                      <p className="text-xs text-slate-500 font-mono">@{u.username}</p>
+            {safeUsers.map((u) => {
+              const isPrimaryAdmin = u.id === 'USR-01';
+              return (
+                <div key={u.id} className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-sm hover:shadow transition flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            u.role === 'Admin' ? 'bg-sky-100 text-[#0F3D5E]' :
+                            u.role === 'Service Advisor' ? 'bg-blue-100 text-blue-800' :
+                            u.role === 'Technician' ? 'bg-amber-100 text-amber-800' :
+                            u.role === 'Inventory Manager' ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {u.role}
+                          </span>
+                          {isPrimaryAdmin && (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-[#0F3D5E] text-white uppercase">
+                              Main Account
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="text-sm font-bold text-[#0F172A] mt-1.5">{u.name}</h4>
+                        <p className="text-xs text-[#64748B] font-mono">@{u.username}</p>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingUser(u);
+                            setSelectedModalRole(u.role);
+                            setStaffFormError(null);
+                            setIsNewUserModal(true);
+                          }}
+                          className="p-1.5 text-[#64748B] hover:text-[#0284C7] hover:bg-sky-50 rounded-lg transition"
+                          title="Edit Staff Account"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        {!isPrimaryAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUser(u)}
+                            className="p-1.5 text-[#64748B] hover:text-[#DC2626] hover:bg-red-50 rounded-lg transition"
+                            title="Remove Staff Account"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setEditingUser(u);
-                        setIsNewUserModal(true);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                      title="Edit Staff Member"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
+
+                    <div className="mt-4 space-y-1 text-xs text-[#475569]">
+                      <p><span className="font-semibold text-[#64748B]">Email:</span> {u.email}</p>
+                      <p><span className="font-semibold text-[#64748B]">Phone:</span> {u.phone}</p>
+                      <p>
+                        <span className="font-semibold text-[#64748B]">Status:</span>{' '}
+                        <span className={u.isActive ? 'text-[#16A34A] font-semibold' : 'text-[#DC2626] font-semibold'}>
+                          {u.isActive ? 'Active' : 'Disabled'}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-[#E2E8F0]">
+                      <p className="text-[11px] font-bold text-[#0F172A] uppercase tracking-wide mb-1.5">Effective Permissions:</p>
+                      <div className="grid grid-cols-2 gap-1 text-[11px]">
+                        <span className={u.permissions.canEditMasters ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Edit Masters</span>
+                        <span className={u.permissions.canCreateJobCard ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Intake &amp; Job Card</span>
+                        <span className={u.permissions.canIssueBill ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Issue Tax Bills</span>
+                        <span className={u.permissions.canManageInventory ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Manage Spares</span>
+                        <span className={u.permissions.canViewFinancials ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• View Financials</span>
+                        <span className={u.permissions.canManageWarranty ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Warranty Claims</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-4 space-y-1 text-xs text-slate-600">
-                    <p><span className="font-semibold text-slate-500">Email:</span> {u.email}</p>
-                    <p><span className="font-semibold text-slate-500">Phone:</span> {u.phone}</p>
-                    <p><span className="font-semibold text-slate-500">Status:</span> {u.isActive ? 'Active' : 'Disabled'}</p>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-1.5">Effective Permissions:</p>
-                    <div className="grid grid-cols-2 gap-1 text-[11px]">
-                      <span className={u.permissions.canEditMasters ? 'text-emerald-700 font-semibold' : 'text-slate-400 line-through'}>• Edit Masters</span>
-                      <span className={u.permissions.canCreateJobCard ? 'text-emerald-700 font-semibold' : 'text-slate-400 line-through'}>• Intake & Job Card</span>
-                      <span className={u.permissions.canIssueBill ? 'text-emerald-700 font-semibold' : 'text-slate-400 line-through'}>• Issue Tax Bills</span>
-                      <span className={u.permissions.canManageInventory ? 'text-emerald-700 font-semibold' : 'text-slate-400 line-through'}>• Manage Spares</span>
-                      <span className={u.permissions.canViewFinancials ? 'text-emerald-700 font-semibold' : 'text-slate-400 line-through'}>• View Financials</span>
-                      <span className={u.permissions.canManageWarranty ? 'text-emerald-700 font-semibold' : 'text-slate-400 line-through'}>• Warranty Claims</span>
-                    </div>
+                  <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between text-[11px] text-[#64748B]">
+                    <span className="font-mono">ID: {u.id}</span>
+                    {isPrimaryAdmin ? (
+                      <span className="font-semibold text-[#0F3D5E]">Master Governance</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleUserActive(u)}
+                        className="font-semibold text-[#0284C7] hover:underline"
+                      >
+                        {u.isActive ? 'Disable Account' : 'Enable Account'}
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>User ID: {u.id}</span>
-                  {u.role === 'Admin' && <span className="font-semibold text-purple-600">Master Governance</span>}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -750,18 +823,36 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
         </div>
       )}
 
-      {/* MODAL: STAFF USER EDIT / NEW */}
+      {/* MODAL: STAFF USER EDIT / CREATE EXTRA USER (ADMIN ONLY) */}
       {isNewUserModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h4 className="text-sm font-bold text-slate-900">
-                {editingUser ? `Edit Staff: ${editingUser.name}` : 'Add New Staff Member'}
-              </h4>
-              <button onClick={() => setIsNewUserModal(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-[#E2E8F0] my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <div>
+                <h4 className="text-sm font-bold text-[#0F172A]">
+                  {editingUser ? `Edit User: ${editingUser.name}` : 'Create Extra User Account'}
+                </h4>
+                <p className="text-[11px] text-[#64748B]">
+                  Admin-controlled RBAC user provisioning
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewUserModal(false);
+                  setStaffFormError(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {staffFormError && (
+              <div className="mt-3 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[#DC2626] text-xs font-semibold">
+                {staffFormError}
+              </div>
+            )}
 
             <form
               onSubmit={(e) => {
@@ -769,17 +860,21 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
                 const form = e.currentTarget;
                 const getVal = (name: string, fallback = '') =>
                   ((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || fallback).trim();
-                const role = (getVal('role', 'Technician') as UserRole);
+                const role = (editingUser?.id === 'USR-01' ? 'Admin' : selectedModalRole);
                 const passwordVal = getVal('password');
+                if (!editingUser && passwordVal.length < 4) {
+                  setStaffFormError('Please enter a password of at least 4 characters for the new user.');
+                  return;
+                }
                 const updated: UserAccount = {
-                  id: editingUser?.id || `USR-${Date.now()}`,
+                  id: editingUser?.id || `USR-${Date.now().toString().slice(-4)}`,
                   name: getVal('name', 'Staff Member'),
-                  username: getVal('username', `user.${Date.now().toString().slice(-4)}`).toLowerCase(),
+                  username: getVal('username', `user.${Date.now().toString().slice(-4)}`).toLowerCase().replace(/\s+/g, '.'),
                   email: getVal('email', 'staff@workshop.np'),
                   phone: getVal('phone', '+977-9800000000'),
-                  role: role,
+                  role,
                   password: passwordVal || editingUser?.password || 'password123',
-                  isActive: true,
+                  isActive: editingUser ? editingUser.isActive : true,
                   permissions: getDefaultPermissionsForRole(role)
                 };
                 handleSaveUser(updated);
@@ -787,85 +882,120 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
               className="mt-4 space-y-3 text-xs"
             >
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Full Name</label>
+                <label className="block font-semibold text-[#0F172A] mb-1">Full Name *</label>
                 <input
                   name="name"
                   defaultValue={editingUser?.name || ''}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. Aayush Thapa"
+                  className="w-full border border-[#CBD5E1] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Username</label>
-                <input
-                  name="username"
-                  defaultValue={editingUser?.username || ''}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                  required
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Username *</label>
+                  <input
+                    name="username"
+                    defaultValue={editingUser?.username || ''}
+                    placeholder="e.g. aayush.advisor"
+                    className="w-full border border-[#CBD5E1] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9] font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">
+                    Password {editingUser ? '(Optional)' : '*'}
+                  </label>
+                  <input
+                    name="password"
+                    type="password"
+                    defaultValue=""
+                    placeholder={editingUser ? 'Leave blank to keep' : 'Min 4 characters'}
+                    className="w-full border border-[#CBD5E1] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9] font-mono"
+                    required={!editingUser}
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Password</label>
-                <input
-                  name="password"
-                  type="password"
-                  defaultValue={editingUser?.password || ''}
-                  placeholder={editingUser ? 'Leave blank to keep existing password' : 'Enter password (default: password123)'}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Role Assignment</label>
+                <label className="block font-semibold text-[#0F172A] mb-1">Defined Role Assignment *</label>
                 <select
                   name="role"
-                  defaultValue={editingUser?.role || 'Service Advisor'}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-semibold"
+                  value={editingUser?.id === 'USR-01' ? 'Admin' : selectedModalRole}
+                  disabled={editingUser?.id === 'USR-01'}
+                  onChange={(e) => setSelectedModalRole(e.target.value as UserRole)}
+                  className="w-full border border-[#CBD5E1] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9] bg-white font-semibold disabled:bg-slate-100"
                 >
-                  <option value="Admin">Admin (Full Control of all Masters & Settings)</option>
                   <option value="Service Advisor">Service Advisor (Intake, Job Cards, Garages)</option>
-                  <option value="Technician">Technician (Bay Tasks & Part Requisitions)</option>
+                  <option value="Technician">Technician (Bay Tasks &amp; Part Requisitions)</option>
                   <option value="Inventory Manager">Inventory Manager (Stock Master, Barcode, Sales)</option>
                   <option value="Cashier">Cashier / Accountant (Billing, Payments, VAT)</option>
+                  <option value="Admin">Admin (Full Control of Masters &amp; Settings)</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Phone</label>
-                <input
-                  name="phone"
-                  defaultValue={editingUser?.phone || '+977-'}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                />
+              {/* Live Role Permission Preview */}
+              {(() => {
+                const previewPerms = getDefaultPermissionsForRole(
+                  editingUser?.id === 'USR-01' ? 'Admin' : selectedModalRole
+                );
+                return (
+                  <div className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B] mb-1.5">
+                      Defined Access Rights for {editingUser?.id === 'USR-01' ? 'Admin' : selectedModalRole}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1 text-[11px]">
+                      <span className={previewPerms.canEditMasters ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Edit Masters &amp; RBAC</span>
+                      <span className={previewPerms.canCreateJobCard ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Intake &amp; Job Card</span>
+                      <span className={previewPerms.canIssueBill ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Issue Tax Bills</span>
+                      <span className={previewPerms.canManageInventory ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Manage Spares</span>
+                      <span className={previewPerms.canViewFinancials ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• View Financials</span>
+                      <span className={previewPerms.canManageWarranty ? 'text-[#16A34A] font-semibold' : 'text-slate-400 line-through'}>• Warranty Claims</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Phone *</label>
+                  <input
+                    name="phone"
+                    defaultValue={editingUser?.phone || '+977-'}
+                    className="w-full border border-[#CBD5E1] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#0F172A] mb-1">Work Email *</label>
+                  <input
+                    name="email"
+                    type="email"
+                    defaultValue={editingUser?.email || ''}
+                    placeholder="name@workshop.com.np"
+                    className="w-full border border-[#CBD5E1] rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                    required
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Email</label>
-                <input
-                  name="email"
-                  type="email"
-                  defaultValue={editingUser?.email || ''}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+              <div className="pt-3 border-t border-[#E2E8F0] flex justify-end space-x-2">
                 <button
                   type="button"
-                  onClick={() => setIsNewUserModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl hover:bg-slate-50 font-semibold"
+                  onClick={() => {
+                    setIsNewUserModal(false);
+                    setStaffFormError(null);
+                  }}
+                  className="px-4 py-2 border border-[#E2E8F0] text-[#0F172A] rounded-xl hover:bg-[#F1F5F9] font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold"
+                  className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-xl font-bold"
                 >
-                  Save Staff
+                  {editingUser ? 'Save Changes' : 'Create User Account'}
                 </button>
               </div>
             </form>

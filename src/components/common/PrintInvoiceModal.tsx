@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { GatePass, Invoice, JobCard, NepalPaymentMethod, WorkshopProfile } from '../../types';
-import { Printer, X, Share2, CheckCircle2, Shield, QrCode, Lock, RotateCcw, Scissors } from 'lucide-react';
+import { Printer, X, Percent, CheckCircle2, Shield, QrCode, Lock, RotateCcw, Scissors } from 'lucide-react';
 import { printElement, numberToWordsNPR, formatNPR } from '../../utils/printDocument';
 import { adToBs } from '../../utils/nepaliDate';
 import { formatAccountingNPR, round2 } from '../../utils/accountingEngine';
@@ -12,7 +12,11 @@ interface PrintInvoiceModalProps {
   gatePass?: GatePass;
   profile?: WorkshopProfile;
   onClose: () => void;
-  onWhatsAppShare?: (invoice: Invoice) => void;
+  onApplyDiscount?: (
+    invoice: Invoice,
+    discountType: 'percent' | 'amount',
+    discountValue: number
+  ) => void;
   onCreateCreditNote?: (
     originalInv: Invoice,
     refundTaxable: number,
@@ -27,7 +31,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   gatePass,
   profile,
   onClose,
-  onWhatsAppShare,
+  onApplyDiscount,
   onCreateCreditNote
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,13 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
   const [cnReason, setCnReason] = useState('Customer billing adjustment / service or part return');
   const [cnMethod, setCnMethod] = useState<NepalPaymentMethod>('Cash');
   const [cnSubmittedMsg, setCnSubmittedMsg] = useState<string | null>(null);
+
+  // Inline Add / Edit Discount Dialog State
+  const [isDiscountOpen, setIsDiscountOpen] = useState(false);
+  const [discType, setDiscType] = useState<'percent' | 'amount'>(invoice.discountType || 'percent');
+  const [discValue, setDiscValue] = useState<number>(
+    invoice.discountValue ?? Number(invoice.discountTotal ?? invoice.totalDiscount ?? 0)
+  );
 
   const workshopName = profile?.name || 'CONTINENTAL AUTO KRAFT';
   const legalEntity = profile?.legalEntityName || workshopName;
@@ -112,32 +123,27 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
     printElement(printAreaRef.current, `${docTitle.replace(/\s+/g, '-')}-${invoice.invoiceNumber}`);
   };
 
-  // ESC closes inner Credit Note dialog first, then the invoice preview; Ctrl/Cmd+P prints
+  // ESC closes inner dialogs first, then the invoice preview; Ctrl/Cmd+P prints
   useEscapeKey(true, onClose);
   useEscapeKey(isCnOpen, () => setIsCnOpen(false));
-  usePrintShortcut(!isCnOpen, handlePrint);
+  useEscapeKey(isDiscountOpen, () => setIsDiscountOpen(false));
+  usePrintShortcut(!isCnOpen && !isDiscountOpen, handlePrint);
 
   const gatePassNumber = gatePass?.passNumber || `GP-${invoice.invoiceNumber.replace(/^TAX-/, '')}`;
   const gatePassAuthBy = gatePass?.authorizedBy || 'Workshop Manager';
   const gatePassTime = gatePass?.issueTime || new Date(invoice.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const defaultWhatsApp = () => {
-    if (onWhatsAppShare) {
-      onWhatsAppShare(invoice);
-    } else {
-      const subjectLabel = isOtcInvoice
-        ? `OTC spares order ${otcOrderRef}`
-        : `vehicle ${invoice.vehicleReg}`;
-      const message = `Hello ${invoice.customerName}, your ${docTitle} #${invoice.invoiceNumber} from ${workshopName} for ${subjectLabel} is ready. Grand Total: NPR ${formatNPR(grandTotal)}. Thank you!`;
-      const cleanPhone = (invoice.customerPhone || '').replace(/[^0-9]/g, '');
-      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.click();
-    }
-  };
+  // Live preview numbers for the Add Discount dialog
+  const safeDiscVal = Math.max(0, Number(discValue) || 0);
+  const clampedDiscVal = discType === 'percent' ? Math.min(100, safeDiscVal) : Math.min(subTotal, safeDiscVal);
+  const previewDiscountAmt =
+    discType === 'percent'
+      ? round2((subTotal * clampedDiscVal) / 100)
+      : round2(clampedDiscVal);
+  const previewTaxable = round2(Math.max(0, subTotal - previewDiscountAmt));
+  const previewVat = round2(previewTaxable * (vatRate / 100));
+  const previewGrandTotal = round2(previewTaxable + previewVat);
+  const previewBalance = round2(Math.max(0, previewGrandTotal - paidAmount));
 
   return (
     <div className="print-modal-root fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 backdrop-blur-xs p-3 sm:p-5 overflow-y-auto">
@@ -169,14 +175,21 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                 <span>Add Credit Note</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={defaultWhatsApp}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>WhatsApp</span>
-            </button>
+            {!isCreditNote && onApplyDiscount && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDiscType(invoice.discountType || (discountTotal > 0 ? 'amount' : 'percent'));
+                  setDiscValue(invoice.discountValue ?? discountTotal);
+                  setIsDiscountOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#0F3D5E] hover:bg-[#0A2B43] text-white text-xs font-semibold rounded-lg transition"
+                title="Apply discount in Percent (%) or Amount (NPR) and automatically update bill"
+              >
+                <Percent className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                <span>{discountTotal > 0 ? 'Edit Discount' : 'Add Discount'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handlePrint}
@@ -340,8 +353,14 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       <div className="grid grid-cols-[90px_1fr] gap-y-0.5 text-[10px] leading-tight">
                         <span className="text-[#64748B]">Sale Channel:</span>
                         <span className="font-semibold text-[#0F3D5E]">Over-the-Counter Spares</span>
-                        <span className="text-[#64748B]">Pricing Tier:</span>
-                        <span className="font-medium text-[#0F172A]">{invoice.pricingTier || 'Retail'} Counter Rate</span>
+                        <span className="text-[#64748B]">Discount Applied:</span>
+                        <span className="font-medium text-[#0F172A]">
+                          {discountTotal > 0
+                            ? invoice.discountType === 'percent' && invoice.discountValue
+                              ? `${invoice.discountValue}% (NPR ${formatNPR(discountTotal)})`
+                              : `NPR ${formatNPR(discountTotal)}`
+                            : 'None'}
+                        </span>
                         <span className="text-[#64748B]">Items / Units:</span>
                         <span className="font-mono text-[#0F172A]">{items.length} SKU(s) · {totalPartsQty} unit(s)</span>
                         <span className="text-[#64748B]">Dispatch Status:</span>
@@ -493,7 +512,9 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     </div>
                     {discountTotal > 0 && (
                       <div className="flex justify-between px-3 py-1.5 print:py-1">
-                        <span className="text-[#64748B]">Less: Discount</span>
+                        <span className="text-[#64748B]">
+                          Less: Discount{invoice.discountType === 'percent' && invoice.discountValue ? ` (${invoice.discountValue}%)` : ''}
+                        </span>
                         <span className="font-mono font-semibold text-[#DC2626] tabular-nums">
                           - NPR {formatNPR(discountTotal)}
                         </span>
@@ -810,6 +831,160 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                   className="px-4 py-2 bg-[#DC2626] hover:bg-red-700 text-white rounded-lg font-semibold"
                 >
                   Issue Invoice Credit Note
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Add / Edit Discount Modal (% or Amount) */}
+      {isDiscountOpen && onApplyDiscount && (
+        <div className="print:hidden fixed inset-0 z-[70] flex items-center justify-center bg-[#0F172A]/65 backdrop-blur-xs p-4">
+          <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-md w-full border border-[#E2E8F0] overflow-hidden">
+            <div className="p-4 bg-[#0F3D5E] text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Percent className="w-4 h-4 text-[#0EA5E9]" />
+                <div>
+                  <h4 className="font-bold text-sm">Add Discount — {invoice.invoiceNumber}</h4>
+                  <p className="text-[11px] text-sky-200">
+                    Enter discount in Percent (%) or Amount (NPR) to update the bill
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDiscountOpen(false)}
+                className="text-sky-200 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onApplyDiscount(invoice, discType, clampedDiscVal);
+                setIsDiscountOpen(false);
+                setCnSubmittedMsg(
+                  previewDiscountAmt > 0
+                    ? `Discount of ${discType === 'percent' ? `${clampedDiscVal}%` : formatAccountingNPR(previewDiscountAmt)} applied — Discounted Bill Total: ${formatAccountingNPR(previewGrandTotal)} (incl. 13% VAT).`
+                    : `Discount cleared — Invoice restored to ${formatAccountingNPR(previewGrandTotal)}.`
+                );
+              }}
+              className="p-5 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block font-semibold text-[#0F172A] mb-1.5">Discount Basis</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiscType('percent');
+                      setDiscValue((v) => Math.min(100, Math.max(0, v)));
+                    }}
+                    className={`py-2 px-3 rounded-lg font-bold border transition ${
+                      discType === 'percent'
+                        ? 'bg-[#0F3D5E] text-white border-[#0F3D5E]'
+                        : 'bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    Percentage (%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiscType('amount')}
+                    className={`py-2 px-3 rounded-lg font-bold border transition ${
+                      discType === 'amount'
+                        ? 'bg-[#0F3D5E] text-white border-[#0F3D5E]'
+                        : 'bg-white text-[#64748B] border-[#E2E8F0] hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    Fixed Amount (NPR)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-[#0F172A]">
+                    {discType === 'percent' ? 'Discount Percentage (0 – 100%)' : `Discount Amount (Max NPR ${formatNPR(subTotal)})`}
+                  </label>
+                  {discValue > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setDiscValue(0)}
+                      className="text-[11px] font-semibold text-[#DC2626] hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  step="any"
+                  min={0}
+                  max={discType === 'percent' ? 100 : subTotal}
+                  value={discValue === 0 ? '' : discValue}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    if (isNaN(parsed) || parsed < 0) {
+                      setDiscValue(0);
+                    } else {
+                      setDiscValue(discType === 'percent' ? Math.min(100, parsed) : Math.min(subTotal, parsed));
+                    }
+                  }}
+                  placeholder={discType === 'percent' ? 'e.g. 10' : 'e.g. 500'}
+                  className="w-full font-mono font-bold text-sm border border-[#CBD5E1] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                  autoFocus
+                />
+              </div>
+
+              {/* Live Discounted Bill Preview */}
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-1.5 font-mono">
+                <div className="flex justify-between text-[#64748B]">
+                  <span className="font-sans">Gross Subtotal:</span>
+                  <span>NPR {formatNPR(subTotal)}</span>
+                </div>
+                <div className="flex justify-between text-[#DC2626] font-semibold">
+                  <span className="font-sans">
+                    Discount ({discType === 'percent' ? `${clampedDiscVal}%` : 'Fixed'}):
+                  </span>
+                  <span>- NPR {formatNPR(previewDiscountAmt)}</span>
+                </div>
+                <div className="flex justify-between text-[#0F172A]">
+                  <span className="font-sans">Revised Taxable Amount:</span>
+                  <span>NPR {formatNPR(previewTaxable)}</span>
+                </div>
+                <div className="flex justify-between text-[#0284C7]">
+                  <span className="font-sans">Revised VAT ({vatRate}%):</span>
+                  <span>+ NPR {formatNPR(previewVat)}</span>
+                </div>
+                <div className="flex justify-between text-[#0F3D5E] font-extrabold text-sm pt-2 border-t border-[#CBD5E1]">
+                  <span className="font-sans">Discounted Grand Total:</span>
+                  <span>NPR {formatNPR(previewGrandTotal)}</span>
+                </div>
+                {paidAmount > 0 && (
+                  <div className="flex justify-between text-[11px] text-[#16A34A] pt-1">
+                    <span className="font-sans">New Balance Due (Paid NPR {formatNPR(paidAmount)}):</span>
+                    <span className="font-bold">NPR {formatNPR(previewBalance)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-[#E2E8F0] flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDiscountOpen(false)}
+                  className="px-4 py-2 border border-[#E2E8F0] rounded-lg font-semibold text-[#0F172A] hover:bg-[#F1F5F9]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white rounded-lg font-bold"
+                >
+                  Apply Discount &amp; Update Bill
                 </button>
               </div>
             </form>

@@ -3,7 +3,6 @@ import {
   Cloud,
   ChevronDown,
   LogOut,
-  UserPlus,
   Menu,
   X,
   Bell,
@@ -25,7 +24,6 @@ interface NavbarProps {
   onMarkNotificationsRead?: () => void;
   onSwitchUser: (userId: string) => void;
   onLogout: () => void;
-  onOpenNewAccountModal?: () => void;
   isCloudSynced: boolean;
   lastSyncTime: string;
   onOpenCloudModal: () => void;
@@ -57,7 +55,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onMarkNotificationsRead,
   onSwitchUser,
   onLogout,
-  onOpenNewAccountModal,
   isCloudSynced,
   onOpenCloudModal,
   onOpenShortcuts,
@@ -243,34 +240,33 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>{isCloudSynced ? 'Synced' : 'Pending'}</span>
           </button>
 
-          {/* User Selector Dropdown */}
-          <div className="relative">
-            <select
-              aria-label="Switch User Role"
-              value={currentUser.id}
-              onChange={(e) => onSwitchUser(e.target.value)}
-              className="appearance-none bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] text-xs font-semibold rounded-lg pl-3 pr-8 py-2 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+          {/* Active User Indicator / Admin-Only Switcher when Extra Staff Exist */}
+          {currentUser.role === 'Admin' && (users || []).length > 1 ? (
+            <div className="relative">
+              <select
+                aria-label="Switch User Role"
+                value={currentUser.id}
+                onChange={(e) => onSwitchUser(e.target.value)}
+                className="appearance-none bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] text-xs font-semibold rounded-lg pl-3 pr-8 py-2 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+              >
+                {(users || []).map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} ({user.role})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-[#64748B] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          ) : (
+            <div
+              className="px-3 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs font-semibold text-[#0F172A] whitespace-nowrap"
+              title={`Signed in as ${currentUser.name} (${currentUser.role})`}
             >
-              {(users || []).map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name} ({user.role})
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-[#64748B] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-
-          {onOpenNewAccountModal && (
-            <button
-              id="navbar-btn-new-account"
-              type="button"
-              onClick={onOpenNewAccountModal}
-              className="hidden md:flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white text-[#0F3D5E] hover:bg-[#F8FAFC] border border-[#E2E8F0] transition whitespace-nowrap"
-              title="Create New User Account"
-            >
-              <UserPlus className="w-3.5 h-3.5 text-[#0EA5E9]" />
-              <span>New Account</span>
-            </button>
+              <span>{currentUser.name}</span>
+              <span className="ml-1.5 text-[10px] font-bold text-[#0284C7] uppercase">
+                {currentUser.role}
+              </span>
+            </div>
           )}
 
           <button

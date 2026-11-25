@@ -9,7 +9,8 @@ import {
   AlertCircle,
   AlertTriangle,
   Building2,
-  PackageCheck
+  PackageCheck,
+  Percent
 } from 'lucide-react';
 import {
   SparePart,
@@ -48,7 +49,8 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('walkin');
   const [walkinName, setWalkinName] = useState<string>('Walk-in Customer (Kathmandu)');
   const [walkinPhone, setWalkinPhone] = useState<string>('+977-98');
-  const [pricingTier, setPricingTier] = useState<'Retail' | 'Fleet' | 'Wholesale'>('Retail');
+  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [discountValue, setDiscountValue] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<NepalPaymentMethod | 'Credit'>('Cash');
 
   // Optional Corporate / Company Tax Invoice Billing
@@ -69,20 +71,6 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
   const [cartItems, setCartItems] = useState<PartsQuotationItem[]>([]);
 
   useEscapeKey(isOpen, onClose);
-
-  // Discount % based on tier
-  const getTierDiscountPercent = (tier: string) => {
-    switch (tier) {
-      case 'Fleet':
-        return 10;
-      case 'Wholesale':
-        return 15;
-      default:
-        return 0;
-    }
-  };
-
-  const discountPercent = getTierDiscountPercent(pricingTier);
 
   // Filtered spares search results prioritized by Part Number / SKU match
   const searchResults = useMemo(() => {
@@ -123,12 +111,6 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
 
   const handleCustomerChange = (custId: string) => {
     setSelectedCustomerId(custId);
-    if (custId !== 'walkin') {
-      const cust = customers.find((c) => c.id === custId);
-      if (cust?.pricingTier === 'Fleet' || cust?.pricingTier === 'Wholesale' || cust?.pricingTier === 'Retail') {
-        setPricingTier(cust.pricingTier);
-      }
-    }
   };
 
   const handleSearchParts = () => {
@@ -176,10 +158,8 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
       return;
     }
 
-    const basePrice = part.sellingPrice;
-    const unitDiscount = (basePrice * discountPercent) / 100;
-    const netUnitPrice = round2(Math.max(0, basePrice - unitDiscount));
-    const itemTotal = round2(netUnitPrice * reqQty);
+    const unitPrice = round2(part.sellingPrice);
+    const itemTotal = round2(unitPrice * reqQty);
     const existingIndex = cartItems.findIndex((item) => item.partId === part.id);
 
     if (existingIndex >= 0) {
@@ -203,8 +183,8 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
         partName: part.name,
         sku: part.partNumber || part.sku,
         quantity: reqQty,
-        unitPrice: netUnitPrice,
-        discount: round2(unitDiscount * reqQty),
+        unitPrice,
+        discount: 0,
         vatRate: 13,
         total: itemTotal
       };
@@ -220,8 +200,15 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     setCartItems(cartItems.filter((_, i) => i !== index));
   };
 
-  // Calculations
-  const subtotal = round2(cartItems.reduce((acc, item) => acc + item.total, 0));
+  // Calculations (Percent % or Amount NPR Discount Basis)
+  const grossSubtotal = round2(cartItems.reduce((acc, item) => acc + round2(item.unitPrice * item.quantity), 0));
+  const safeDiscountVal = Math.max(0, Number(discountValue) || 0);
+  const clampedDiscountVal = discountType === 'percent' ? Math.min(100, safeDiscountVal) : Math.min(grossSubtotal, safeDiscountVal);
+  const discountAmount =
+    discountType === 'percent'
+      ? round2((grossSubtotal * clampedDiscountVal) / 100)
+      : round2(clampedDiscountVal);
+  const subtotal = round2(Math.max(0, grossSubtotal - discountAmount));
   const vatAmount = round2(subtotal * 0.13);
   const grandTotal = round2(subtotal + vatAmount);
 
@@ -270,11 +257,14 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
       customerId: selectedCustomerId,
       customerName: billToCompany ? companyName.trim() : customerName,
       customerPhone: billToCompany ? companyPhone.trim() : customerPhone,
-      pricingTier,
       paymentMethod: isCreditSale ? 'Cash' : paymentMethod,
       paymentStatus: isCreditSale ? 'Unpaid' : 'Paid',
       date: todayStr,
       items: cartItems,
+      grossSubtotal,
+      discountType,
+      discountValue: clampedDiscountVal,
+      discountAmount,
       subtotal,
       vatAmount,
       grandTotal,
@@ -296,6 +286,8 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
     }
     onNotify(`OTC Order ${salesOrder.orderNumber} dispatched & IRD Tax Invoice generated.`);
     setCartItems([]);
+    setDiscountValue(0);
+    setDiscountType('percent');
     setPartSearchInput('');
     setPartSearchTerm('');
     setHasSearchedParts(false);
@@ -341,7 +333,7 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
             </div>
           )}
 
-          {/* Customer & Pricing Tier */}
+          {/* Customer & Discount Option (% or Amount) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
             <div>
               <label className="block font-semibold text-[#0F172A] mb-1">Customer Selection</label>
@@ -353,25 +345,63 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                 <option value="walkin">Walk-in Retail Buyer (Cash / Fonepay)</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.pricingTier || 'Retail'} Tier • {c.phone})
+                    {c.name} ({c.phone})
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-semibold text-[#0F172A] mb-1">
-                Pricing Tier / Discount Strategy
+              <label className="block font-semibold text-[#0F172A] mb-1 flex items-center space-x-1">
+                <Percent className="w-3.5 h-3.5 text-[#0284C7]" />
+                <span>Discount Option (Percent or Amount)</span>
               </label>
-              <select
-                value={pricingTier}
-                onChange={(e) => setPricingTier(e.target.value as 'Retail' | 'Fleet' | 'Wholesale')}
-                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 outline-none bg-[#FFFFFF] font-semibold text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9]"
-              >
-                <option value="Retail">Retail (Standard MRP • 0% Disc)</option>
-                <option value="Fleet">Fleet Customer (10% Commercial Disc)</option>
-                <option value="Wholesale">Wholesale Workshop Tier (15% Disc)</option>
-              </select>
+              <div className="flex items-stretch space-x-1.5">
+                <div className="inline-flex rounded-lg border border-[#CBD5E1] bg-white p-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiscountType('percent');
+                      setDiscountValue((v) => Math.min(100, Math.max(0, v)));
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                      discountType === 'percent'
+                        ? 'bg-[#0F3D5E] text-white'
+                        : 'text-[#64748B] hover:text-[#0F172A]'
+                    }`}
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiscountType('amount')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                      discountType === 'amount'
+                        ? 'bg-[#0F3D5E] text-white'
+                        : 'text-[#64748B] hover:text-[#0F172A]'
+                    }`}
+                  >
+                    NPR
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={discountType === 'percent' ? 100 : undefined}
+                  step="any"
+                  value={discountValue === 0 ? '' : discountValue}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    if (isNaN(parsed) || parsed < 0) {
+                      setDiscountValue(0);
+                    } else {
+                      setDiscountValue(discountType === 'percent' ? Math.min(100, parsed) : parsed);
+                    }
+                  }}
+                  placeholder={discountType === 'percent' ? '0% discount' : '0 NPR discount'}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-1.5 outline-none bg-[#FFFFFF] font-mono font-bold text-[#0F172A] focus:ring-2 focus:ring-[#0EA5E9]"
+                />
+              </div>
             </div>
 
             {selectedCustomerId === 'walkin' && (
@@ -539,9 +569,9 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                     Showing <strong className="text-[#0F172A]">{searchResults.length}</strong> matching spare part{searchResults.length !== 1 ? 's' : ''}
                     {partSearchTerm ? ` for "${partSearchTerm}"` : ' (all stock)'}
                   </span>
-                  {discountPercent > 0 && (
+                  {discountAmount > 0 && (
                     <span className="font-semibold text-[#16A34A]">
-                      {pricingTier} Tier (-{discountPercent}% Applied)
+                      Discount: {discountType === 'percent' ? `${clampedDiscountVal}%` : `NPR ${discountAmount.toLocaleString()}`} at Checkout
                     </span>
                   )}
                 </div>
@@ -557,8 +587,6 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
                     const isInsufficient = !isOut && (availableStock <= 0 || rowQty > availableStock);
                     const isLowWarn = !isOut && !isInsufficient && (remainingAfter <= minReorder || part.currentStock <= minReorder);
                     const canAdd = rowQty > 0 && !isOut && !isInsufficient;
-
-                    const netUnit = round2(Math.max(0, part.sellingPrice - (part.sellingPrice * discountPercent) / 100));
 
                     return (
                       <div
@@ -582,13 +610,8 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
 
                           <div className="flex flex-wrap items-center gap-2 text-[11px]">
                             <span className="font-mono font-bold text-[#0F172A]">
-                              NPR {netUnit.toLocaleString()} / {part.unit}
+                              NPR {part.sellingPrice.toLocaleString()} / {part.unit}
                             </span>
-                            {discountPercent > 0 && (
-                              <span className="text-[10px] text-[#64748B] line-through font-mono">
-                                NPR {part.sellingPrice.toLocaleString()}
-                              </span>
-                            )}
                             <span>·</span>
                             {isOut ? (
                               <span className="text-[#DC2626] font-bold inline-flex items-center space-x-1">
@@ -740,8 +763,20 @@ export const OtcOrderModal: React.FC<OtcOrderModalProps> = ({
           {cartItems.length > 0 && (
             <div className="p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-1.5 font-medium">
               <div className="flex justify-between text-[#64748B]">
+                <span>Gross Subtotal:</span>
+                <span className="font-mono">NPR {grossSubtotal.toLocaleString()}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-[#DC2626] font-semibold">
+                  <span>
+                    Less: Discount ({discountType === 'percent' ? `${clampedDiscountVal}%` : 'Fixed Amount'}):
+                  </span>
+                  <span className="font-mono">- NPR {discountAmount.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-[#64748B]">
                 <span>Taxable Subtotal:</span>
-                <span className="font-mono">NPR {subtotal.toLocaleString()}</span>
+                <span className="font-mono text-[#0F172A] font-semibold">NPR {subtotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-[#64748B]">
                 <span>Nepal VAT (13%):</span>

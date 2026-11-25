@@ -1131,13 +1131,11 @@ export const InventoryManagement: React.FC<InventoryManagementProps> = ({
               </div>
             </div>
 
-            {/* Pricing Tiers Ribbon */}
+            {/* Discount & Auto-Deduction Info Strip */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
               <div className="flex items-center space-x-1.5 text-[11px] text-slate-500">
-                <span className="font-semibold">OTC Pricing Tiers:</span>
-                <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-semibold">Retail</span>
-                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Fleet (-10%)</span>
-                <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">Wholesale (-15%)</span>
+                <span className="font-semibold text-[#0F3D5E]">OTC Billing:</span>
+                <span>Supports custom Percent (%) or Amount (NPR) discounts with automatic 13% IRD VAT calculation</span>
               </div>
               <span className="text-[11px] text-slate-400">Stock levels deduct automatically on dispatch</span>
             </div>

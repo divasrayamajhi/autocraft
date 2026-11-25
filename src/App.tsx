@@ -63,6 +63,7 @@ import {
   getNepalFiscalYear,
   getNextSequentialDocNumber,
   isCreditNoteInvoice,
+  recomputeGlBalancesFromJournal,
   round2,
   toNepalBsDate,
 } from './utils/accountingEngine';
@@ -72,7 +73,6 @@ import { Bell, Lock, MessageSquare, Send, Unlock, X } from 'lucide-react';
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => storage.isAuthenticated());
-  const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
@@ -104,7 +104,6 @@ export default function App() {
 
   // Register global ESC listener & close top-level overlays via LIFO stack
   useEscapeKey(isMobileNavOpen, () => setIsMobileNavOpen(false));
-  useEscapeKey(isNewAccountModalOpen, () => setIsNewAccountModalOpen(false));
   useEscapeKey(Boolean(printGatePass), () => setPrintGatePass(null));
 
   useEffect(() => {
@@ -186,19 +185,14 @@ export default function App() {
   const currentUser = db.currentUser;
 
   // --- AUTHENTICATION HANDLERS ---
-  const handleLoginSuccess = (user: UserAccount) => {
+  const handleLoginSuccess = (_user: UserAccount) => {
     setIsAuthenticated(true);
-    setIsNewAccountModalOpen(false);
     setDb(storage.getDatabase());
   };
 
   const handleLogout = () => {
     storage.logout();
     setIsAuthenticated(false);
-  };
-
-  const handleOpenNewAccountModal = () => {
-    setIsNewAccountModalOpen(true);
   };
 
   // Badges Calculation for Navigation
@@ -437,18 +431,34 @@ export default function App() {
       return;
     }
 
-    const partsSubtotal = rawParts.reduce(
-      (acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))),
-      0
+    const partsSubtotal = round2(
+      rawParts.reduce(
+        (acc, p) => acc + (p.totalAmount ?? ((p.quantity || 1) * (p.unitPrice || 0) - (p.discount || 0))),
+        0
+      )
     );
-    const laborSubtotal = rawLabor.reduce(
-      (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour ?? 0))),
-      0
+    const laborSubtotal = round2(
+      rawLabor.reduce(
+        (acc, l) => acc + (l.totalAmount ?? ((l.hours || 1) * (l.ratePerHour ?? 0))),
+        0
+      )
     );
-    const taxableAmount = round2(partsSubtotal + laborSubtotal);
+    const grossSubtotal = round2(partsSubtotal + laborSubtotal);
+    const optDiscType = options?.discountType || 'percent';
+    const rawOptDiscVal = Math.max(0, Number(options?.discountValue) || 0);
+    const clampedOptDiscVal =
+      optDiscType === 'percent' ? Math.min(100, rawOptDiscVal) : Math.min(grossSubtotal, rawOptDiscVal);
+    const appliedDiscount =
+      optDiscType === 'percent'
+        ? round2((grossSubtotal * clampedOptDiscVal) / 100)
+        : round2(clampedOptDiscVal);
+    const taxableAmount = round2(Math.max(0, grossSubtotal - appliedDiscount));
     const vatAmount = round2(taxableAmount * 0.13);
     const grandTotal = round2(taxableAmount + vatAmount);
     const isZeroDue = grandTotal <= 0.01;
+    const netRatio = grossSubtotal > 0 ? taxableAmount / grossSubtotal : 1;
+    const netLaborTaxable = round2(laborSubtotal * netRatio);
+    const netPartsTaxable = round2(taxableAmount - netLaborTaxable);
 
     const cb = options?.companyBilling;
     const isCompanyBill = Boolean(cb?.isCompanyBill && cb.companyName?.trim());
@@ -483,11 +493,18 @@ export default function App() {
       vehicleReg: jc.vehicle?.registrationNumber || 'BA 01 PA 0001',
       vehicleBrand: jc.vehicle?.brand || 'Generic',
       vehicleModel: jc.vehicle?.model || 'Model',
-      subTotal: taxableAmount,
+      subTotal: grossSubtotal,
       taxableAmount,
-      discountTotal: 0,
+      totalTaxableAmount: taxableAmount,
+      laborTaxableAmount: netLaborTaxable,
+      partsTaxableAmount: netPartsTaxable,
+      discountType: appliedDiscount > 0 ? optDiscType : undefined,
+      discountValue: appliedDiscount > 0 ? clampedOptDiscVal : 0,
+      discountTotal: appliedDiscount,
+      totalDiscount: appliedDiscount,
       vatRate: 13,
       vatAmount,
+      totalVatAmount: vatAmount,
       grandTotal,
       paidAmount: 0,
       amountPaid: 0,
@@ -832,6 +849,175 @@ export default function App() {
   const handleUpdateInvoice = (updatedInv: Invoice) => {
     const updated = db.invoices.map(i => i.id === updatedInv.id ? updatedInv : i);
     updateDb({ invoices: updated });
+  };
+
+  // Apply Discount (% or NPR Amount) on an Invoice & Automatically Reconcile Bill, Gate Pass, Customer, and GL/VAT
+  const handleApplyInvoiceDiscount = (
+    targetInv: Invoice,
+    discountType: 'percent' | 'amount',
+    discountValue: number
+  ) => {
+    const liveInv = (db.invoices || []).find((i) => i.id === targetInv.id) || targetInv;
+    if (isCreditNoteInvoice(liveInv)) return;
+
+    const items = liveInv.items || [];
+    const itemsSum = round2(
+      items.reduce(
+        (sum, it) => sum + Number(it.taxableAmount ?? Number(it.quantity || 1) * Number(it.unitPrice || 0)),
+        0
+      )
+    );
+    const grossSubTotal = round2(
+      Number(liveInv.subTotal ?? liveInv.subtotal ?? itemsSum) || itemsSum
+    );
+    const safeVal = Math.max(0, Number(discountValue) || 0);
+    const clampedVal =
+      discountType === 'percent' ? Math.min(100, safeVal) : Math.min(grossSubTotal, safeVal);
+    const newDiscount =
+      discountType === 'percent'
+        ? round2((grossSubTotal * clampedVal) / 100)
+        : round2(clampedVal);
+    const newTaxable = round2(Math.max(0, grossSubTotal - newDiscount));
+    const vatRate = Number(liveInv.vatRate ?? 13);
+    const newVat = round2(newTaxable * (vatRate / 100));
+    const newGrandTotal = round2(newTaxable + newVat);
+
+    // Proportional Labor / Parts revenue split for GL reconciliation
+    let rawLaborGross = 0;
+    let rawPartsGross = 0;
+    if (items.length > 0) {
+      items.forEach((it) => {
+        const amt = round2(Number(it.taxableAmount ?? Number(it.quantity || 1) * Number(it.unitPrice || 0)));
+        if (it.itemType === 'Labor') rawLaborGross = round2(rawLaborGross + amt);
+        else rawPartsGross = round2(rawPartsGross + amt);
+      });
+    } else {
+      rawLaborGross = round2(liveInv.laborTaxableAmount || 0);
+      rawPartsGross = round2(liveInv.partsTaxableAmount || grossSubTotal);
+    }
+    const rawSplitTotal = round2(rawLaborGross + rawPartsGross);
+    const netLaborTaxable =
+      rawSplitTotal > 0 ? round2((rawLaborGross / rawSplitTotal) * newTaxable) : 0;
+    const netPartsTaxable = round2(newTaxable - netLaborTaxable);
+    const netLaborVat = round2(netLaborTaxable * (vatRate / 100));
+    const netPartsVat = round2(newVat - netLaborVat);
+
+    const oldGrandTotal = round2(liveInv.grandTotal ?? 0);
+    const oldPaid = round2(liveInv.paidAmount ?? liveInv.amountPaid ?? 0);
+    const newPaid = round2(Math.min(oldPaid, newGrandTotal));
+    const newBalance = round2(Math.max(0, newGrandTotal - newPaid));
+    const newStatus: Invoice['status'] =
+      newGrandTotal <= 0.01 || newBalance <= 0.01
+        ? 'Paid'
+        : newPaid > 0.01
+          ? 'Partially Paid'
+          : 'Unpaid';
+
+    const updatedInv: Invoice = {
+      ...liveInv,
+      subTotal: grossSubTotal,
+      discountType: newDiscount > 0 ? discountType : undefined,
+      discountValue: newDiscount > 0 ? clampedVal : 0,
+      discountTotal: newDiscount,
+      totalDiscount: newDiscount,
+      taxableAmount: newTaxable,
+      totalTaxableAmount: newTaxable,
+      laborTaxableAmount: netLaborTaxable,
+      laborVatAmount: netLaborVat,
+      partsTaxableAmount: netPartsTaxable,
+      partsVatAmount: netPartsVat,
+      vatAmount: newVat,
+      totalVatAmount: newVat,
+      grandTotal: newGrandTotal,
+      paidAmount: newPaid,
+      amountPaid: newPaid,
+      balanceDue: newBalance <= 0.01 ? 0 : newBalance,
+      status: newStatus,
+      paymentStatus: newStatus
+    };
+
+    const updatedInvoices = (db.invoices || []).map((i) =>
+      i.id === updatedInv.id ? updatedInv : i
+    );
+
+    const updatedGatePasses = (db.gatePasses || []).map((gp) =>
+      gp.invoiceId === updatedInv.id || gp.invoiceNumber === updatedInv.invoiceNumber
+        ? { ...gp, totalInvoiceAmount: newGrandTotal, paymentStatus: newStatus }
+        : gp
+    );
+
+    const updatedJobCards = (db.jobCards || []).map((jc) => {
+      if (jc.id !== updatedInv.jobCardId && jc.jobCardNumber !== updatedInv.jobCardNumber) return jc;
+      if (!jc.invoiceHistory || jc.invoiceHistory.length === 0) return jc;
+      return {
+        ...jc,
+        invoiceHistory: jc.invoiceHistory.map((h) =>
+          h.invoiceId === updatedInv.id || h.invoiceNumber === updatedInv.invoiceNumber
+            ? { ...h, amount: newGrandTotal, status: newStatus }
+            : h
+        )
+      };
+    });
+
+    const grandDelta = round2(newGrandTotal - oldGrandTotal);
+    const updatedCustomers =
+      Math.abs(grandDelta) > 0.005
+        ? (db.customers || []).map((c) => {
+            const matches =
+              (updatedInv.customerId && c.id === updatedInv.customerId) ||
+              c.name.trim().toLowerCase() === (updatedInv.customerName || '').trim().toLowerCase();
+            if (!matches) return c;
+            return {
+              ...c,
+              totalSpent: Math.max(0, round2((c.totalSpent || 0) + grandDelta))
+            };
+          })
+        : db.customers || [];
+
+    // Rebuild corresponding Sales Journal Entry & recompute GL balances so Trial Balance stays balanced
+    const existingJournals = db.journalEntries || [];
+    const jvIndex = existingJournals.findIndex(
+      (j) =>
+        j.sourceDocument === updatedInv.invoiceNumber &&
+        (j.id.startsWith('JV-INV') || (j.narration || '').startsWith('Sales Invoice'))
+    );
+    let updatedJournalEntries = existingJournals;
+    if (jvIndex >= 0) {
+      const existingJv = existingJournals[jvIndex];
+      const wasBookedFullAr = (existingJv.lines || []).some(
+        (l) => l.accountCode === '1100' && Math.abs((l.debit || 0) - (existingJv.totalAmount || 0)) < 0.02
+      );
+      const invForJournal = wasBookedFullAr
+        ? { ...updatedInv, paidAmount: 0, amountPaid: 0 }
+        : updatedInv;
+      const rebuiltJv = buildInvoiceJournalEntry(invForJournal, jvIndex);
+      if (rebuiltJv) {
+        rebuiltJv.id = existingJv.id;
+        rebuiltJv.entryNumber = existingJv.entryNumber;
+        updatedJournalEntries = existingJournals.map((j, idx) =>
+          idx === jvIndex ? rebuiltJv : j
+        );
+      } else {
+        updatedJournalEntries = existingJournals.filter((_, idx) => idx !== jvIndex);
+      }
+    }
+    const updatedGlAccounts = recomputeGlBalancesFromJournal(
+      db.glAccounts || [],
+      updatedJournalEntries
+    );
+
+    updateDb({
+      invoices: updatedInvoices,
+      gatePasses: updatedGatePasses,
+      jobCards: updatedJobCards,
+      customers: updatedCustomers,
+      journalEntries: updatedJournalEntries,
+      glAccounts: updatedGlAccounts
+    });
+
+    if (printInvoice && printInvoice.id === updatedInv.id) {
+      setPrintInvoice(updatedInv);
+    }
   };
 
   const handleRecordPayment = (invoiceId: string, amount: number, method: NepalPaymentMethod, ref: string) => {
@@ -1235,7 +1421,6 @@ export default function App() {
       jobCardNumber: order.orderNumber,
       salesOrderId: order.id,
       salesOrderNumber: order.orderNumber,
-      pricingTier: order.pricingTier || 'Retail',
       customerId: order.customerId !== 'walkin' ? order.customerId : undefined,
       customerName: isOtcCompany ? otcCb!.companyName.trim() : order.customerName,
       customerPhone: resolvedPhone,
@@ -1272,7 +1457,11 @@ export default function App() {
           totalAmount: round2(lineTaxable + lineVat)
         };
       }),
-      subTotal: round2(order.subtotal),
+      subTotal: round2(order.grossSubtotal ?? order.subtotal),
+      discountType: (order.discountAmount ?? 0) > 0 ? order.discountType : undefined,
+      discountValue: (order.discountAmount ?? 0) > 0 ? (order.discountValue ?? 0) : 0,
+      discountTotal: round2(order.discountAmount ?? 0),
+      totalDiscount: round2(order.discountAmount ?? 0),
       taxableAmount: round2(order.subtotal),
       totalTaxableAmount: round2(order.subtotal),
       partsTaxableAmount: round2(order.subtotal),
@@ -1668,7 +1857,9 @@ export default function App() {
   };
 
   const handleUpdateUsers = (users: UserAccount[]) => {
-    updateDb({ users });
+    if (currentUser?.role !== 'Admin') return;
+    const updatedCurrent = users.find((u) => u.id === currentUser.id) || currentUser;
+    updateDb({ users, currentUser: updatedCurrent });
   };
 
   const handleUpdateTechnicians = (technicians: Technician[]) => {
@@ -1708,7 +1899,6 @@ export default function App() {
       <AuthScreen
         workshopProfile={db.profile}
         onLoginSuccess={handleLoginSuccess}
-        initialTab="login"
       />
     );
   }
@@ -1749,7 +1939,6 @@ export default function App() {
           onMarkNotificationsRead={handleMarkNotificationsRead}
           onSwitchUser={handleSwitchUser}
           onLogout={handleLogout}
-          onOpenNewAccountModal={handleOpenNewAccountModal}
           isCloudSynced={db.isCloudSynced}
           lastSyncTime={db.lastCloudSync}
           onOpenCloudModal={() => setIsCloudModalOpen(true)}
@@ -1868,6 +2057,7 @@ export default function App() {
               onCreateInvoice={handleCreateInvoice}
               onConvertJobCardToInvoice={handleConvertJobCardToInvoice}
               onUpdateInvoice={handleUpdateInvoice}
+              onApplyInvoiceDiscount={handleApplyInvoiceDiscount}
               onRecordPayment={handleRecordPayment}
               onCreateCreditNote={handleCreateCreditNote}
               onAddCashierVoucher={handleAddCashierVoucher}
@@ -1989,6 +2179,7 @@ export default function App() {
             )}
             profile={db.profile}
             onClose={() => setPrintInvoice(null)}
+            onApplyDiscount={handleApplyInvoiceDiscount}
             onCreateCreditNote={handleCreateCreditNote}
           />
         );
@@ -2095,19 +2286,6 @@ export default function App() {
               </a>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Quick Add User Account Modal (with Role Options) */}
-      {isNewAccountModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <AuthScreen
-            workshopProfile={db.profile}
-            onLoginSuccess={handleLoginSuccess}
-            initialTab="signup"
-            isModal={true}
-            onClose={() => setIsNewAccountModalOpen(false)}
-          />
         </div>
       )}
     </div>

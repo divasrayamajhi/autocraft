@@ -309,6 +309,10 @@ export interface PartsSalesOrder {
   paymentStatus?: 'Paid' | 'Unpaid';
   date: string;
   items: PartsQuotationItem[];
+  grossSubtotal?: number;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
+  discountAmount?: number;
   subtotal: number;
   vatAmount: number;
   grandTotal: number;
@@ -520,6 +524,8 @@ export interface Invoice {
   // Tax Computations per Nepal IRD
   subTotal?: number;
   taxableAmount?: number;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
   discountTotal?: number;
   vatRate?: number;
   vatAmount?: number;

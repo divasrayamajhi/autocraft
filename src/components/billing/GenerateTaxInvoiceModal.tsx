@@ -14,6 +14,7 @@ import {
   MapPin,
   Phone,
   Hash,
+  Percent,
 } from 'lucide-react';
 import { formatAccountingNPR, round2 } from '../../utils/accountingEngine';
 import { useEscapeKey } from '../../hooks/useKeyboardShortcuts';
@@ -24,6 +25,8 @@ export interface TaxInvoiceGenerationOptions {
   customerPan?: string;
   customerAddress?: string;
   onlyUnbilledItems?: boolean;
+  discountType?: 'percent' | 'amount';
+  discountValue?: number;
 }
 
 interface GenerateTaxInvoiceModalProps {
@@ -54,6 +57,8 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
   const [individualPan, setIndividualPan] = useState('');
   const [individualAddress, setIndividualAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<NepalPaymentMethod>('Fonepay');
+  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [discountValue, setDiscountValue] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -71,6 +76,8 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
     setIndividualPan(existingPan);
     setIndividualAddress(existingAddress);
     setPaymentMethod('Fonepay');
+    setDiscountType('percent');
+    setDiscountValue(0);
     setErrorMsg('');
   }, [isOpen, jobCard, customer]);
 
@@ -97,7 +104,15 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
       0
     )
   );
-  const taxableAmount = round2(partsSubtotal + laborSubtotal);
+  const grossSubtotal = round2(partsSubtotal + laborSubtotal);
+  const safeDiscVal = Math.max(0, Number(discountValue) || 0);
+  const clampedDiscVal =
+    discountType === 'percent' ? Math.min(100, safeDiscVal) : Math.min(grossSubtotal, safeDiscVal);
+  const discountAmount =
+    discountType === 'percent'
+      ? round2((grossSubtotal * clampedDiscVal) / 100)
+      : round2(clampedDiscVal);
+  const taxableAmount = round2(Math.max(0, grossSubtotal - discountAmount));
   const vatAmount = round2(taxableAmount * 0.13);
   const grandTotal = round2(taxableAmount + vatAmount);
 
@@ -133,6 +148,8 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
         },
         paymentMethod,
         onlyUnbilledItems,
+        discountType,
+        discountValue: clampedDiscVal,
       });
     } else {
       onConfirm(jobCard, {
@@ -147,6 +164,8 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
         customerAddress: individualAddress.trim() || undefined,
         paymentMethod,
         onlyUnbilledItems,
+        discountType,
+        discountValue: clampedDiscVal,
       });
     }
   };
@@ -211,6 +230,16 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
                 {formatAccountingNPR(grandTotal)}
               </span>
             </div>
+            {discountAmount > 0 && (
+              <div className="col-span-2 sm:col-span-4 pt-2 border-t border-[#CBD5E1] flex items-center justify-between text-[11px]">
+                <span className="text-[#DC2626] font-semibold">
+                  Discount Applied ({discountType === 'percent' ? `${clampedDiscVal}%` : 'Fixed Amount'}):
+                </span>
+                <span className="font-mono font-bold text-[#DC2626]">
+                  - {formatAccountingNPR(discountAmount)} (Taxable: {formatAccountingNPR(taxableAmount)})
+                </span>
+              </div>
+            )}
           </div>
 
           {grandTotal <= 0.01 && (
@@ -410,23 +439,78 @@ export const GenerateTaxInvoiceModal: React.FC<GenerateTaxInvoiceModalProps> = (
             </div>
           )}
 
-          {/* Payment Method Preference */}
-          <div>
-            <label className="block font-semibold text-[#0F172A] mb-1">
-              Expected / Preferred Payment Mode
-            </label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as NepalPaymentMethod)}
-              className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-medium text-[#0F172A] outline-none focus:ring-2 focus:ring-[#0EA5E9]"
-            >
-              <option value="Fonepay">Fonepay QR</option>
-              <option value="Cash">Cash</option>
-              <option value="NepalPay">NepalPay / connectIPS</option>
-              <option value="Bank Transfer">Bank Transfer / Cheque</option>
-              <option value="eSewa">eSewa</option>
-              <option value="Khalti">Khalti</option>
-            </select>
+          {/* Discount Option (% or Amount) & Payment Method Preference */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-[#0F172A] mb-1 flex items-center space-x-1">
+                <Percent className="w-3.5 h-3.5 text-[#0284C7]" />
+                <span>Invoice Discount (% or NPR)</span>
+              </label>
+              <div className="flex items-stretch space-x-1.5">
+                <div className="inline-flex rounded-lg border border-[#CBD5E1] bg-white p-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiscountType('percent');
+                      setDiscountValue((v) => Math.min(100, Math.max(0, v)));
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                      discountType === 'percent'
+                        ? 'bg-[#0F3D5E] text-white'
+                        : 'text-[#64748B] hover:text-[#0F172A]'
+                    }`}
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiscountType('amount')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                      discountType === 'amount'
+                        ? 'bg-[#0F3D5E] text-white'
+                        : 'text-[#64748B] hover:text-[#0F172A]'
+                    }`}
+                  >
+                    NPR
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={discountType === 'percent' ? 100 : undefined}
+                  step="any"
+                  value={discountValue === 0 ? '' : discountValue}
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    if (isNaN(parsed) || parsed < 0) {
+                      setDiscountValue(0);
+                    } else {
+                      setDiscountValue(discountType === 'percent' ? Math.min(100, parsed) : parsed);
+                    }
+                  }}
+                  placeholder={discountType === 'percent' ? '0%' : '0 NPR'}
+                  className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-mono font-bold text-[#0F172A] outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-[#0F172A] mb-1">
+                Expected / Preferred Payment Mode
+              </label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as NepalPaymentMethod)}
+                className="w-full px-3 py-2 bg-[#FFFFFF] border border-[#E2E8F0] rounded-lg font-medium text-[#0F172A] outline-none focus:ring-2 focus:ring-[#0EA5E9]"
+              >
+                <option value="Fonepay">Fonepay QR</option>
+                <option value="Cash">Cash</option>
+                <option value="NepalPay">NepalPay / connectIPS</option>
+                <option value="Bank Transfer">Bank Transfer / Cheque</option>
+                <option value="eSewa">eSewa</option>
+                <option value="Khalti">Khalti</option>
+              </select>
+            </div>
           </div>
 
           {/* Actions */}

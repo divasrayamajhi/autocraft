@@ -177,82 +177,6 @@ const INITIAL_USERS: UserAccount[] = [
       canViewFinancials: true,
       canManageWarranty: true
     }
-  },
-  {
-    id: 'USR-02',
-    name: 'Aayush Thapa (Advisor)',
-    username: 'aayush.advisor',
-    email: 'aayush.thapa@sagarmathaauto.com.np',
-    phone: '+977-9841223344',
-    role: 'Service Advisor',
-    password: 'password123',
-    isActive: true,
-    permissions: {
-      canEditMasters: false,
-      canCreateJobCard: true,
-      canEditJobCard: true,
-      canIssueBill: false,
-      canManageInventory: false,
-      canViewFinancials: false,
-      canManageWarranty: true
-    }
-  },
-  {
-    id: 'USR-03',
-    name: 'Bikram Tamang (Lead Tech)',
-    username: 'bikram.tech',
-    email: 'bikram.tamang@sagarmathaauto.com.np',
-    phone: '+977-9813445566',
-    role: 'Technician',
-    password: 'password123',
-    isActive: true,
-    permissions: {
-      canEditMasters: false,
-      canCreateJobCard: false,
-      canEditJobCard: false,
-      canIssueBill: false,
-      canManageInventory: false,
-      canViewFinancials: false,
-      canManageWarranty: false
-    }
-  },
-  {
-    id: 'USR-04',
-    name: 'Rajan Shrestha (Store)',
-    username: 'rajan.store',
-    email: 'rajan.store@sagarmathaauto.com.np',
-    phone: '+977-9801889900',
-    role: 'Inventory Manager',
-    password: 'password123',
-    isActive: true,
-    permissions: {
-      canEditMasters: false,
-      canCreateJobCard: false,
-      canEditJobCard: false,
-      canIssueBill: false,
-      canManageInventory: true,
-      canViewFinancials: false,
-      canManageWarranty: true
-    }
-  },
-  {
-    id: 'USR-05',
-    name: 'Pooja Gurung (Accounts)',
-    username: 'pooja.cashier',
-    email: 'pooja.accounts@sagarmathaauto.com.np',
-    phone: '+977-9849778899',
-    role: 'Cashier',
-    password: 'password123',
-    isActive: true,
-    permissions: {
-      canEditMasters: false,
-      canCreateJobCard: false,
-      canEditJobCard: false,
-      canIssueBill: true,
-      canManageInventory: false,
-      canViewFinancials: true,
-      canManageWarranty: false
-    }
   }
 ];
 
@@ -1749,47 +1673,6 @@ export class StorageService {
   public logout(): void {
     localStorage.setItem(AUTH_SESSION_KEY, 'false');
     localStorage.removeItem(ACTIVE_USER_KEY);
-  }
-
-  public register(userData: {
-    name: string;
-    username: string;
-    email: string;
-    phone: string;
-    role: UserRole;
-    password?: string;
-  }): { success: boolean; user?: UserAccount; error?: string } {
-    const usernameClean = (userData.username || '').trim().toLowerCase();
-    const emailClean = (userData.email || '').trim().toLowerCase();
-
-    const existing = this.db.users.find(u => 
-      (u.username || '').toLowerCase() === usernameClean || (u.email || '').toLowerCase() === emailClean
-    );
-
-    if (existing) {
-      return { success: false, error: 'An account with this username or email already exists.' };
-    }
-
-    const newUser: UserAccount = {
-      id: `USR-${Date.now().toString().slice(-4)}`,
-      name: userData.name.trim(),
-      username: usernameClean,
-      email: emailClean,
-      phone: userData.phone?.trim() || '+977-9800000000',
-      role: userData.role,
-      password: userData.password || 'password123',
-      isActive: true,
-      permissions: getDefaultPermissionsForRole(userData.role)
-    };
-
-    const updatedUsers = [...this.db.users, newUser];
-    this.db.users = updatedUsers;
-    this.db.currentUser = newUser;
-    localStorage.setItem(AUTH_SESSION_KEY, 'true');
-    localStorage.setItem(ACTIVE_USER_KEY, newUser.username);
-    this.saveToStorage(this.db);
-
-    return { success: true, user: newUser };
   }
 
   public switchUser(userId: string): UserAccount | null {
