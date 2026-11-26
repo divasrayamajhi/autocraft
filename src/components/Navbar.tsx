@@ -13,11 +13,13 @@ import {
   Keyboard,
 } from 'lucide-react';
 import { ReadyNotificationLog, UserAccount, WorkshopProfile } from '../types';
+import { APP_ROOT_DOMAIN, TenantInfo } from '../services/apiClient';
 import { adToBs, formatAdDateReadable, getTodayAd } from '../utils/nepaliDate';
 import { useEscapeKey } from '../hooks/useKeyboardShortcuts';
 
 interface NavbarProps {
   profile: WorkshopProfile;
+  activeTenant?: TenantInfo | null;
   currentUser: UserAccount;
   users: UserAccount[];
   readyNotifications?: ReadyNotificationLog[];
@@ -49,6 +51,7 @@ const TAB_TITLES: Record<string, string> = {
 
 export const Navbar: React.FC<NavbarProps> = ({
   profile,
+  activeTenant,
   currentUser,
   users = [],
   readyNotifications = [],
@@ -91,23 +94,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               {pageTitle}
             </h2>
             <p className="text-xs text-[#64748B] hidden sm:flex items-center space-x-2 truncate mt-0.5">
-              <span className="font-semibold text-[#0284C7]">AutoCraft Pro</span>
-              <span>·</span>
-              <span className="font-medium text-[#0F3D5E]">{profile.name}</span>
+              <span className="font-semibold text-[#0F3D5E]">{profile.name}</span>
+              {activeTenant?.subdomain && (
+                <>
+                  <span>·</span>
+                  <span className="font-mono text-[#0284C7]">{activeTenant.subdomain}.{APP_ROOT_DOMAIN}</span>
+                </>
+              )}
               <span>·</span>
               <span>
                 FY <span className="font-mono">{profile.fiscalYear}</span>
               </span>
               <span className="hidden md:inline">·</span>
               <span className="hidden md:inline">
-                PAN <span className="font-mono">{profile.panVatNumber}</span>
+                PAN/VAT <span className="font-mono">{profile.panVatNumber}</span>
               </span>
             </p>
           </div>
         </div>
 
-        {/* Right: Dual BS/AD Calendar, Notifications Bell, Sync, Role Switcher, Account & Logout */}
+        {/* Right: Calendar, Notifications Bell, Sync, Role Switcher, Account & Logout */}
         <div className="flex items-center space-x-2 flex-shrink-0">
+
           {/* Synchronized Live Nepal B.S. & A.D. Date Indicator */}
           <div
             className="hidden xl:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-[#F1F5F9] border border-[#E2E8F0] text-[11px]"

@@ -15,6 +15,7 @@ import {
 import { Customer, SparePart } from '../../types';
 import {
   apiClient,
+  APP_ROOT_DOMAIN,
   ApiCustomerRow,
   ApiIntegrationItem,
   ApiInventoryRow,
@@ -24,12 +25,14 @@ import {
 interface TenantSaasSettingsPanelProps {
   customers: Customer[];
   parts: SparePart[];
+  targetOwnerUid?: string;
   onNotify: (msg: string) => void;
 }
 
 export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = ({
   customers,
   parts,
+  targetOwnerUid,
   onNotify,
 }) => {
   const [dashboard, setDashboard] = useState<TenantDashboardResponse | null>(null);
@@ -57,10 +60,10 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
     setErrorMsg(null);
     try {
       const [dashRes, intRes, custRes, invRes] = await Promise.all([
-        apiClient.getDashboard(),
-        apiClient.listIntegrations(),
-        apiClient.listCustomers({ page: customerPage, limit: 10, search: customerSearch }),
-        apiClient.listInventory({ page: invPage, limit: 10, search: invSearch }),
+        apiClient.getDashboard(targetOwnerUid),
+        apiClient.listIntegrations(targetOwnerUid),
+        apiClient.listCustomers({ page: customerPage, limit: 10, search: customerSearch }, targetOwnerUid),
+        apiClient.listInventory({ page: invPage, limit: 10, search: invSearch }, targetOwnerUid),
       ]);
       setDashboard(dashRes);
       setIntegrations(intRes.items || []);
@@ -75,7 +78,7 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
     } finally {
       setIsLoading(false);
     }
-  }, [customerPage, customerSearch, invPage, invSearch]);
+  }, [customerPage, customerSearch, invPage, invSearch, targetOwnerUid]);
 
   useEffect(() => {
     void loadAll();
@@ -85,7 +88,7 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const res = await apiClient.seedTenantFromWorkspace();
+      const res = await apiClient.seedTenantFromWorkspace(targetOwnerUid);
       onNotify(
         `Synced ${res.customersSynced} customers and ${res.inventorySynced} inventory SKUs to Cloud Firestore.`
       );
@@ -112,7 +115,8 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
           apiKey: credentialApiKey.trim(),
           endpoint: credentialEndpoint.trim(),
         },
-        true
+        true,
+        targetOwnerUid
       );
       setCredentialApiKey('');
       setCredentialEndpoint('');
@@ -129,7 +133,7 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      await apiClient.deleteIntegration(provider);
+      await apiClient.deleteIntegration(provider, targetOwnerUid);
       onNotify(`Removed integration "${provider}".`);
       await loadAll();
     } catch (err) {
@@ -154,7 +158,7 @@ export const TenantSaasSettingsPanel: React.FC<TenantSaasSettingsPanelProps> = (
               </h3>
               <p className="text-xs text-[#64748B] font-mono flex items-center space-x-1.5">
                 <Globe className="w-3.5 h-3.5 text-[#0284C7]" />
-                <span>{dashboard ? `${dashboard.tenant.subdomain}.autocraftpro.com` : 'Resolving subdomain...'}</span>
+                <span>{dashboard ? `${dashboard.tenant.subdomain}.${APP_ROOT_DOMAIN}` : 'Resolving subdomain...'}</span>
                 {dashboard?.user.role && (
                   <span className="px-2 py-0.5 rounded bg-sky-50 text-[#0F3D5E] font-sans font-bold text-[10px]">
                     Role: {dashboard.user.role}

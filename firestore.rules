@@ -25,11 +25,13 @@ service cloud.firestore {
       return isVerifiedUser() && request.auth.token.email == 'divasrayamajhi2@gmail.com';
     }
 
-    // Full Admin check (bootstrapped Admin OR trusted /admins/{uid} document)
+    // Full Admin check (bootstrapped Admin OR active trusted /admins/{uid} document)
     function isAdmin() {
       return isBootstrappedAdmin() || (
         isVerifiedUser() &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        (!('isActive' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data) ||
+          get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true)
       );
     }
 
@@ -39,6 +41,11 @@ service cloud.firestore {
 
     function existing() {
       return resource.data;
+    }
+
+    // Safe ownership check for single-document get (handles non-existent docs cleanly)
+    function canGetOwnedDoc() {
+      return resource == null || existing().ownerUid == request.auth.uid || isAdmin();
     }
 
     function isValidId(id) {
@@ -89,22 +96,48 @@ service cloud.firestore {
     // =========================================================================
     function isValidAdminUser(data, adminId) {
       return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'name', 'role', 'isActive', 'createdAt', 'updatedAt'])
         && isValidId(data.uid)
         && data.uid == adminId
         && isValidString(data.email, 3, 254)
+        && isValidOptionalString(data, 'name', 120)
+        && (!('role' in data) || data.role in ['Super Developer', 'Platform Engineer', 'Support Engineer'])
+        && (!('isActive' in data) || data.isActive is bool)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
     function isValidTenantWorkspace(data, tenantId) {
       return data.keys().hasAll(['id', 'subdomain', 'companyName', 'isActive', 'ownerUid', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'subdomain', 'companyName', 'isActive', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'subdomain', 'companyName', 'adminEmail', 'panVatNumber',
+          'city', 'address', 'contactNumber', 'fiscalYear', 'plan',
+          'storageQuotaMb', 'bandwidthQuotaGb', 'storageUsedBytes',
+          'bandwidthUsedBytes', 'networkRequestsCount', 'readOpsCount',
+          'writeOpsCount', 'docCount', 'activeUsersCount',
+          'isActive', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
         && isValidSubdomain(data.id)
         && isValidSubdomain(data.subdomain)
         && data.id == tenantId
         && data.subdomain == tenantId
         && isValidString(data.companyName, 2, 160)
+        && (!('adminEmail' in data) || isValidString(data.adminEmail, 3, 254))
+        && isValidOptionalString(data, 'panVatNumber', 40)
+        && isValidOptionalString(data, 'city', 100)
+        && isValidOptionalString(data, 'address', 240)
+        && isValidOptionalString(data, 'contactNumber', 80)
+        && isValidOptionalString(data, 'fiscalYear', 30)
+        && (!('plan' in data) || data.plan in ['Starter', 'Professional', 'Enterprise'])
+        && (!('storageQuotaMb' in data) || (isValidNumber(data.storageQuotaMb) && data.storageQuotaMb >= 1 && data.storageQuotaMb <= 102400))
+        && (!('bandwidthQuotaGb' in data) || (isValidNumber(data.bandwidthQuotaGb) && data.bandwidthQuotaGb >= 1 && data.bandwidthQuotaGb <= 10240))
+        && (!('storageUsedBytes' in data) || (isValidNumber(data.storageUsedBytes) && data.storageUsedBytes >= 0))
+        && (!('bandwidthUsedBytes' in data) || (isValidNumber(data.bandwidthUsedBytes) && data.bandwidthUsedBytes >= 0))
+        && (!('networkRequestsCount' in data) || (isValidNumber(data.networkRequestsCount) && data.networkRequestsCount >= 0))
+        && (!('readOpsCount' in data) || (isValidNumber(data.readOpsCount) && data.readOpsCount >= 0))
+        && (!('writeOpsCount' in data) || (isValidNumber(data.writeOpsCount) && data.writeOpsCount >= 0))
+        && (!('docCount' in data) || (isValidNumber(data.docCount) && data.docCount >= 0))
+        && (!('activeUsersCount' in data) || (isValidNumber(data.activeUsersCount) && data.activeUsersCount >= 0))
         && data.isActive is bool
         && isValidId(data.ownerUid)
         && data.createdAt is timestamp
@@ -381,55 +414,95 @@ service cloud.firestore {
     // 4. COLLECTION RULES (15 Hardened Collections)
     // =========================================================================
 
-    // 4.1 Trusted Admin Registry (Bootstrapped Admin Only)
+    // 4.1 Trusted Platform Developer Registry
     match /admins/{adminId} {
-      allow get: if isValidId(adminId) && isBootstrappedAdmin();
-      allow list: if isBootstrappedAdmin();
+      allow get: if isValidId(adminId) && isVerifiedUser()
+        && (
+          resource == null ||
+          isBootstrappedAdmin() ||
+          existing().uid == request.auth.uid ||
+          existing().email == request.auth.token.email ||
+          isAdmin()
+        );
+      allow list: if isVerifiedUser()
+        && (
+          isBootstrappedAdmin() ||
+          resource.data.uid == request.auth.uid ||
+          resource.data.email == request.auth.token.email
+        );
       allow create: if isValidId(adminId)
-        && isBootstrappedAdmin()
+        && isAdmin()
         && isValidAdminUser(incoming(), adminId)
         && hasValidCreateTimestamps(incoming());
       allow update: if isValidId(adminId)
-        && isBootstrappedAdmin()
+        && isAdmin()
         && isValidAdminUser(incoming(), adminId)
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
-      allow delete: if isValidId(adminId) && isBootstrappedAdmin();
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'name', 'role', 'isActive', 'updatedAt']);
+      allow delete: if isValidId(adminId) && isAdmin();
     }
 
-    // 4.2 Multi-Tenant Company Workspaces (Owner-Isolated)
+    // 4.2 Multi-Tenant Company Workspaces (Developer-Provisioned, Tenant-Isolated)
     match /tenants/{tenantId} {
       allow get: if isValidSubdomain(tenantId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+        && (
+          resource == null ||
+          existing().ownerUid == request.auth.uid ||
+          ('adminEmail' in existing() && existing().adminEmail == request.auth.token.email) ||
+          isAdmin()
+        );
       allow list: if isVerifiedUser()
-        && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
+        && (
+          resource.data.ownerUid == request.auth.uid ||
+          ('adminEmail' in resource.data && resource.data.adminEmail == request.auth.token.email) ||
+          isBootstrappedAdmin()
+        );
+      // Strictly Developer / Platform Admin only can onboard new company tenants
       allow create: if isValidSubdomain(tenantId)
         && isVerifiedUser()
         && isValidTenantWorkspace(incoming(), tenantId)
         && hasValidCreateTimestamps(incoming())
-        && hasValidOwnerOnCreate(incoming());
+        && isAdmin();
       allow update: if isValidSubdomain(tenantId)
         && isVerifiedUser()
         && isValidTenantWorkspace(incoming(), tenantId)
-        && hasImmutableBaseFields()
+        && incoming().id == existing().id
         && incoming().subdomain == existing().subdomain
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
         && (
+          // Tier 1: Platform Developer Super Admin has full tenant lifecycle control
           isAdmin() ||
+          // Tier 2a: Provisioned Tenant Admin claiming placeholder ownerUid on first verified sign-in
           (
-            isOwner(existing().ownerUid)
-            && incoming().diff(existing()).affectedKeys().hasOnly(['companyName', 'isActive', 'updatedAt'])
+            existing().isActive == true
+            && 'adminEmail' in existing()
+            && existing().adminEmail == request.auth.token.email
+            && existing().ownerUid.matches('^tenant_[a-z0-9_\\-]+$')
+            && incoming().ownerUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['ownerUid', 'updatedAt'])
+          ) ||
+          // Tier 2b: Active Tenant Admin updating profile metadata & telemetry counters (cannot alter quotas, plan, or isActive)
+          (
+            existing().isActive == true
+            && isOwner(existing().ownerUid)
+            && incoming().ownerUid == existing().ownerUid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'companyName', 'panVatNumber', 'city', 'address', 'contactNumber', 'fiscalYear',
+              'storageUsedBytes', 'bandwidthUsedBytes', 'networkRequestsCount',
+              'readOpsCount', 'writeOpsCount', 'docCount', 'activeUsersCount', 'updatedAt'
+            ])
           )
         );
-      allow delete: if isValidSubdomain(tenantId) && isVerifiedUser()
-        && (isOwner(existing().ownerUid) || isAdmin());
+      // Strictly Developer / Platform Admin only can delete tenants
+      allow delete: if isValidSubdomain(tenantId) && isVerifiedUser() && isAdmin();
     }
 
     // 4.3 Per-Tenant Integration Settings (Masked Hints Only, Owner-Isolated)
     match /tenant_integrations/{integrationId} {
-      allow get: if isValidId(integrationId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(integrationId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(integrationId)
@@ -456,8 +529,7 @@ service cloud.firestore {
 
     // 4.4 Workshop Profiles (PII-Isolated)
     match /workshop_profiles/{profileId} {
-      allow get: if isValidId(profileId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(profileId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(profileId)
@@ -485,8 +557,7 @@ service cloud.firestore {
 
     // 4.5 Staff Accounts & RBAC (PII-Isolated)
     match /staff_accounts/{staffId} {
-      allow get: if isValidId(staffId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(staffId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(staffId)
@@ -513,8 +584,7 @@ service cloud.firestore {
 
     // 4.6 Workshop Master Items (Service Price Book, Bays, Technicians)
     match /workshop_masters/{masterId} {
-      allow get: if isValidId(masterId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(masterId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(masterId)
@@ -540,8 +610,7 @@ service cloud.firestore {
 
     // 4.7 Customers & Vehicle Garages (PII-Isolated)
     match /customers/{customerId} {
-      allow get: if isValidId(customerId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(customerId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(customerId)
@@ -569,8 +638,7 @@ service cloud.firestore {
 
     // 4.8 Spare Parts Inventory Master
     match /spare_parts/{partId} {
-      allow get: if isValidId(partId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(partId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(partId)
@@ -602,8 +670,7 @@ service cloud.firestore {
 
     // 4.9 Workshop Job Cards (Terminal State Lock on Closed Job Cards)
     match /job_cards/{jobCardId} {
-      allow get: if isValidId(jobCardId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(jobCardId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(jobCardId)
@@ -638,8 +705,7 @@ service cloud.firestore {
 
     // 4.10 Service Appointments (Terminal State Lock on Cancelled)
     match /appointments/{appointmentId} {
-      allow get: if isValidId(appointmentId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(appointmentId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(appointmentId)
@@ -667,8 +733,7 @@ service cloud.firestore {
 
     // 4.11 IRD Tax Invoices, OTC Invoices & Credit Notes (Action-Based Updates)
     match /invoices/{invoiceId} {
-      allow get: if isValidId(invoiceId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(invoiceId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(invoiceId)
@@ -701,8 +766,7 @@ service cloud.firestore {
 
     // 4.12 Vehicle Gate Passes (Terminal State Lock on Exited)
     match /gate_passes/{gatePassId} {
-      allow get: if isValidId(gatePassId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(gatePassId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(gatePassId)
@@ -728,8 +792,7 @@ service cloud.firestore {
 
     // 4.13 Parts Operations (Quotations, OTC Sales Orders, Returns, Purchase Orders)
     match /parts_operations/{opId} {
-      allow get: if isValidId(opId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(opId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(opId)
@@ -757,8 +820,7 @@ service cloud.firestore {
 
     // 4.14 Accounting Records (GL Accounts, Journal Vouchers, VAT Ledger, Cashier Vouchers)
     match /accounting_records/{recordId} {
-      allow get: if isValidId(recordId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(recordId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(recordId)
@@ -786,8 +848,7 @@ service cloud.firestore {
 
     // 4.15 Warranty & Pickup Notifications
     match /warranty_and_notifications/{itemId} {
-      allow get: if isValidId(itemId) && isVerifiedUser()
-        && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow get: if isValidId(itemId) && isVerifiedUser() && canGetOwnedDoc();
       allow list: if isVerifiedUser()
         && (resource.data.ownerUid == request.auth.uid || isBootstrappedAdmin());
       allow create: if isValidId(itemId)

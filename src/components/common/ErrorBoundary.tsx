@@ -33,7 +33,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     try {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.error === 'string') {
-        readable = parsed.error;
+        const opCtx =
+          parsed.operationType && parsed.path
+            ? ` (${parsed.operationType} on ${parsed.path})`
+            : '';
+        readable = `${parsed.error}${opCtx}`;
       }
     } catch {
       // Non-JSON error message

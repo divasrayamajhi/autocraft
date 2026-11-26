@@ -67,13 +67,18 @@ const VALID_GATE_PASS_STATUSES = new Set(['Cleared for Exit', 'Exited', 'On Hold
 
 /**
  * Verbatim enforcement of blueprint pattern `^[a-zA-Z0-9_\\-]+$` and maxLength 128.
+ * Prefixes new documents with the user's UID segment so two accounts never collide
+ * on shared demo IDs (e.g. CUST-01, USR-01, PART-01).
  */
-export const toSafeDocId = (prefix: string, rawId: string): string => {
+export const toSafeDocId = (prefix: string, rawId: string, uid?: string): string => {
   const cleaned = String(rawId || 'item')
     .trim()
     .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .slice(0, 96);
-  const combined = `${prefix}_${cleaned || 'doc'}`;
+    .slice(0, 80);
+  const uidPart = uid
+    ? `u_${uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}_`
+    : '';
+  const combined = `${uidPart}${prefix}_${cleaned || 'doc'}`;
   return combined.slice(0, 128);
 };
 
@@ -81,6 +86,11 @@ const clampString = (value: unknown, maxLen: number, fallback = ''): string => {
   const str = typeof value === 'string' ? value.trim() : String(value ?? '').trim();
   const effective = str.length > 0 ? str : fallback;
   return effective.slice(0, maxLen);
+};
+
+const clampEmail = (value: unknown, fallback: string): string => {
+  const str = typeof value === 'string' ? value.trim() : '';
+  return str.length >= 3 ? str.slice(0, 254) : fallback.slice(0, 254);
 };
 
 const toSafeNumber = (value: unknown, fallback = 0): number => {
@@ -118,15 +128,30 @@ interface PreparedDoc {
   docId: string;
   fields: Record<string, unknown>; // Excludes ownerUid, createdAt, updatedAt
   fingerprint: string;
+  isTerminal?: boolean;
 }
 
-const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] => {
+const buildAllPreparedDocs = (
+  uid: string,
+  state: AppDatabase,
+  existingKeys: Set<string>
+): PreparedDoc[] => {
   const docs: PreparedDoc[] = [];
+
+  // Prefer an already-loaded legacy docId if this user already owns it; otherwise use UID-scoped docId
+  const resolveDocId = (collectionName: CollectionName, prefix: string, rawId: string): string => {
+    const legacyId = toSafeDocId(prefix, rawId);
+    if (existingKeys.has(`${collectionName}/${legacyId}`)) {
+      return legacyId;
+    }
+    return toSafeDocId(prefix, rawId, uid);
+  };
 
   const pushDoc = (
     collectionName: CollectionName,
     docId: string,
-    fields: Record<string, unknown>
+    fields: Record<string, unknown>,
+    isTerminal = false
   ) => {
     const sanitized = sanitizeForFirestore(fields) as Record<string, unknown>;
     docs.push({
@@ -134,6 +159,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
       docId,
       fields: sanitized,
       fingerprint: JSON.stringify(sanitized),
+      isTerminal,
     });
   };
 
@@ -149,7 +175,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
       address: clampString(p.address, 240, 'Kathmandu'),
       city: clampString(p.city, 100, 'Kathmandu'),
       contactNumber: clampString(p.contactNumber, 80, '+977-1-0000000'),
-      email: clampString(p.email, 254, 'admin@autocraftpro.np'),
+      email: clampEmail(p.email, 'admin@autocraftpro.np'),
       fiscalYear: clampString(p.fiscalYear, 30, '2081/2082'),
       defaultVatRate: Math.min(100, Math.max(0, toSafeNumber(p.defaultVatRate, 13))),
       data: p,
@@ -162,13 +188,13 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
       .trim()
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .slice(0, 128) || 'USR-01';
-    const docId = toSafeDocId('staff', cleanUserId);
+    const docId = resolveDocId(COLLECTIONS.staffAccounts, 'staff', cleanUserId);
     const role = VALID_ROLES.has(u.role) ? u.role : 'Service Advisor';
     const fields: Record<string, unknown> = {
       id: cleanUserId,
       name: clampString(u.name, 120, 'Workshop Staff'),
       username: clampString(u.username, 64, 'staff'),
-      email: clampString(u.email, 254, `${u.username || 'staff'}@autocraftpro.np`),
+      email: clampEmail(u.email, `${u.username || 'staff'}@autocraftpro.np`),
       phone: clampString(u.phone, 40, ''),
       role,
       isActive: Boolean(u.isActive),
@@ -179,7 +205,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
 
   // 3. Workshop Masters (Service Price Book, Bays, Technicians)
   (state.servicePriceBook || []).forEach((srv) => {
-    const safeId = toSafeDocId('srv', srv.id || srv.code);
+    const safeId = resolveDocId(COLLECTIONS.workshopMasters, 'srv', srv.id || srv.code);
     pushDoc(COLLECTIONS.workshopMasters, safeId, {
       id: safeId,
       masterType: 'service_price',
@@ -188,7 +214,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.bays || []).forEach((bay) => {
-    const safeId = toSafeDocId('bay', bay.id || bay.bayNumber);
+    const safeId = resolveDocId(COLLECTIONS.workshopMasters, 'bay', bay.id || bay.bayNumber);
     pushDoc(COLLECTIONS.workshopMasters, safeId, {
       id: safeId,
       masterType: 'bay',
@@ -197,7 +223,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.technicians || []).forEach((tech) => {
-    const safeId = toSafeDocId('tech', tech.id || tech.name);
+    const safeId = resolveDocId(COLLECTIONS.workshopMasters, 'tech', tech.id || tech.name);
     pushDoc(COLLECTIONS.workshopMasters, safeId, {
       id: safeId,
       masterType: 'technician',
@@ -208,7 +234,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
 
   // 4. Customers
   (state.customers || []).forEach((c) => {
-    const safeId = toSafeDocId('cust', c.id);
+    const safeId = resolveDocId(COLLECTIONS.customers, 'cust', c.id);
     const totalVisits = (c.vehicles || []).reduce(
       (sum, v) => sum + toSafeNumber(v?.totalServiceCount, 0),
       0
@@ -229,7 +255,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
 
   // 5. Spare Parts
   (state.parts || []).forEach((part) => {
-    const safeId = toSafeDocId('part', part.id || part.partNumber);
+    const safeId = resolveDocId(COLLECTIONS.spareParts, 'part', part.id || part.partNumber);
     pushDoc(COLLECTIONS.spareParts, safeId, {
       id: safeId,
       partNumber: clampString(part.partNumber, 80, safeId),
@@ -244,7 +270,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
 
   // 6. Job Cards
   (state.jobCards || []).forEach((jc) => {
-    const safeId = toSafeDocId('jc', jc.id || jc.jobCardNumber);
+    const safeId = resolveDocId(COLLECTIONS.jobCards, 'jc', jc.id || jc.jobCardNumber);
     const laborTotal = (jc.laborItems || []).reduce(
       (s, l) => s + toSafeNumber(l.totalAmount ?? toSafeNumber(l.hours ?? l.hoursEstimated, 1) * toSafeNumber(l.ratePerHour, 0), 0),
       0
@@ -253,34 +279,46 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
       (s, p) => s + toSafeNumber(p.totalAmount ?? toSafeNumber(p.quantity, 0) * toSafeNumber(p.unitPrice, 0), 0),
       0
     );
-    pushDoc(COLLECTIONS.jobCards, safeId, {
-      id: safeId,
-      jobCardNumber: clampString(jc.jobCardNumber, 80, safeId),
-      status: clampString(jc.status, 80, 'Received'),
-      customerName: clampString(jc.customerName, 160, 'Customer'),
-      vehicleReg: clampString(jc.vehicle?.registrationNumber, 60, 'UNREGISTERED'),
-      isClosed: Boolean(jc.isLocked && jc.status === 'Delivered'),
-      grandTotal: Math.round((laborTotal + partsTotal) * 100) / 100,
-      data: jc,
-    });
+    const isClosed = Boolean(jc.isLocked && jc.status === 'Delivered');
+    pushDoc(
+      COLLECTIONS.jobCards,
+      safeId,
+      {
+        id: safeId,
+        jobCardNumber: clampString(jc.jobCardNumber, 80, safeId),
+        status: clampString(jc.status, 80, 'Received'),
+        customerName: clampString(jc.customerName, 160, 'Customer'),
+        vehicleReg: clampString(jc.vehicle?.registrationNumber, 60, 'UNREGISTERED'),
+        isClosed,
+        grandTotal: Math.round((laborTotal + partsTotal) * 100) / 100,
+        data: jc,
+      },
+      isClosed
+    );
   });
 
   // 7. Appointments
   (state.appointments || []).forEach((apt) => {
-    const safeId = toSafeDocId('apt', apt.id);
-    pushDoc(COLLECTIONS.appointments, safeId, {
-      id: safeId,
-      customerName: clampString(apt.customerName, 160, 'Customer'),
-      vehicleReg: clampString(apt.vehicleReg, 60, 'UNREGISTERED'),
-      scheduledDate: clampString(apt.scheduledDate, 40, new Date().toISOString().slice(0, 10)),
-      status: clampString(apt.status, 60, 'Scheduled'),
-      data: apt,
-    });
+    const safeId = resolveDocId(COLLECTIONS.appointments, 'apt', apt.id);
+    const status = clampString(apt.status, 60, 'Scheduled');
+    pushDoc(
+      COLLECTIONS.appointments,
+      safeId,
+      {
+        id: safeId,
+        customerName: clampString(apt.customerName, 160, 'Customer'),
+        vehicleReg: clampString(apt.vehicleReg, 60, 'UNREGISTERED'),
+        scheduledDate: clampString(apt.scheduledDate, 40, new Date().toISOString().slice(0, 10)),
+        status,
+        data: apt,
+      },
+      status === 'Cancelled'
+    );
   });
 
   // 8. Invoices
   (state.invoices || []).forEach((inv) => {
-    const safeId = toSafeDocId('inv', inv.id || inv.invoiceNumber);
+    const safeId = resolveDocId(COLLECTIONS.invoices, 'inv', inv.id || inv.invoiceNumber);
     const rawStatus = inv.status || inv.paymentStatus || 'Unpaid';
     const status = VALID_INVOICE_STATUSES.has(rawStatus) ? rawStatus : 'Unpaid';
     const fields: Record<string, unknown> = {
@@ -300,26 +338,31 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     if (inv.discountValue !== undefined && Number.isFinite(Number(inv.discountValue))) {
       fields.discountValue = Number(inv.discountValue);
     }
-    pushDoc(COLLECTIONS.invoices, safeId, fields);
+    pushDoc(COLLECTIONS.invoices, safeId, fields, String(status) === 'Voided');
   });
 
   // 9. Gate Passes
   (state.gatePasses || []).forEach((gp) => {
-    const safeId = toSafeDocId('gp', gp.id || gp.passNumber);
+    const safeId = resolveDocId(COLLECTIONS.gatePasses, 'gp', gp.id || gp.passNumber);
     const status = VALID_GATE_PASS_STATUSES.has(gp.status) ? gp.status : 'Cleared for Exit';
-    pushDoc(COLLECTIONS.gatePasses, safeId, {
-      id: safeId,
-      passNumber: clampString(gp.passNumber, 80, safeId),
-      invoiceNumber: clampString(gp.invoiceNumber, 80, 'N/A'),
-      vehicleReg: clampString(gp.vehicleReg, 60, 'UNREGISTERED'),
-      status,
-      data: gp,
-    });
+    pushDoc(
+      COLLECTIONS.gatePasses,
+      safeId,
+      {
+        id: safeId,
+        passNumber: clampString(gp.passNumber, 80, safeId),
+        invoiceNumber: clampString(gp.invoiceNumber, 80, 'N/A'),
+        vehicleReg: clampString(gp.vehicleReg, 60, 'UNREGISTERED'),
+        status,
+        data: gp,
+      },
+      status === 'Exited'
+    );
   });
 
   // 10. Parts Operations (Quotations, OTC Sales Orders, Sales Returns, Purchase Orders)
   (state.partsQuotations || []).forEach((qt) => {
-    const safeId = toSafeDocId('qt', qt.id || qt.quotationNumber);
+    const safeId = resolveDocId(COLLECTIONS.partsOperations, 'qt', qt.id || qt.quotationNumber);
     pushDoc(COLLECTIONS.partsOperations, safeId, {
       id: safeId,
       opType: 'quotation',
@@ -330,7 +373,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.partsSalesOrders || []).forEach((so) => {
-    const safeId = toSafeDocId('otc', so.id || so.orderNumber);
+    const safeId = resolveDocId(COLLECTIONS.partsOperations, 'otc', so.id || so.orderNumber);
     pushDoc(COLLECTIONS.partsOperations, safeId, {
       id: safeId,
       opType: 'otc_order',
@@ -341,7 +384,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.partsSalesReturns || []).forEach((ret) => {
-    const safeId = toSafeDocId('ret', ret.id || ret.creditNoteNumber);
+    const safeId = resolveDocId(COLLECTIONS.partsOperations, 'ret', ret.id || ret.creditNoteNumber);
     pushDoc(COLLECTIONS.partsOperations, safeId, {
       id: safeId,
       opType: 'sales_return',
@@ -352,7 +395,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.purchaseOrders || []).forEach((po) => {
-    const safeId = toSafeDocId('po', po.id || po.poNumber);
+    const safeId = resolveDocId(COLLECTIONS.partsOperations, 'po', po.id || po.poNumber);
     pushDoc(COLLECTIONS.partsOperations, safeId, {
       id: safeId,
       opType: 'purchase_order',
@@ -365,7 +408,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
 
   // 11. Accounting Records (GL Accounts, Journal Entries, VAT Ledger, Cashier Vouchers)
   (state.glAccounts || []).forEach((gl) => {
-    const safeId = toSafeDocId('gl', gl.accountCode || gl.id || gl.accountName);
+    const safeId = resolveDocId(COLLECTIONS.accountingRecords, 'gl', gl.accountCode || gl.id || gl.accountName);
     pushDoc(COLLECTIONS.accountingRecords, safeId, {
       id: safeId,
       recordType: 'gl_account',
@@ -376,7 +419,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.journalEntries || []).forEach((jv) => {
-    const safeId = toSafeDocId('jv', jv.id || jv.entryNumber);
+    const safeId = resolveDocId(COLLECTIONS.accountingRecords, 'jv', jv.id || jv.entryNumber);
     pushDoc(COLLECTIONS.accountingRecords, safeId, {
       id: safeId,
       recordType: 'journal_entry',
@@ -387,7 +430,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.vatLedger || []).forEach((vat) => {
-    const safeId = toSafeDocId('vat', vat.id || vat.invoiceNumber);
+    const safeId = resolveDocId(COLLECTIONS.accountingRecords, 'vat', vat.id || vat.invoiceNumber);
     pushDoc(COLLECTIONS.accountingRecords, safeId, {
       id: safeId,
       recordType: 'vat_ledger',
@@ -398,7 +441,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.cashierVouchers || []).forEach((cv) => {
-    const safeId = toSafeDocId('cv', cv.id || cv.voucherNumber);
+    const safeId = resolveDocId(COLLECTIONS.accountingRecords, 'cv', cv.id || cv.voucherNumber);
     pushDoc(COLLECTIONS.accountingRecords, safeId, {
       id: safeId,
       recordType: 'cashier_voucher',
@@ -411,7 +454,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
 
   // 12. Warranty Records, Warranty Claims, Insurance Claims, Ready Notifications
   (state.warrantyRecords || []).forEach((wr) => {
-    const safeId = toSafeDocId('wr', wr.id);
+    const safeId = resolveDocId(COLLECTIONS.warrantyAndNotifications, 'wr', wr.id);
     pushDoc(COLLECTIONS.warrantyAndNotifications, safeId, {
       id: safeId,
       itemType: 'warranty_record',
@@ -420,7 +463,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.warrantyClaims || []).forEach((wc) => {
-    const safeId = toSafeDocId('wc', wc.id || wc.claimNumber);
+    const safeId = resolveDocId(COLLECTIONS.warrantyAndNotifications, 'wc', wc.id || wc.claimNumber);
     pushDoc(COLLECTIONS.warrantyAndNotifications, safeId, {
       id: safeId,
       itemType: 'warranty_claim',
@@ -429,7 +472,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.insuranceClaims || []).forEach((ic) => {
-    const safeId = toSafeDocId('ic', ic.id || ic.claimNumber);
+    const safeId = resolveDocId(COLLECTIONS.warrantyAndNotifications, 'ic', ic.id || ic.claimNumber);
     pushDoc(COLLECTIONS.warrantyAndNotifications, safeId, {
       id: safeId,
       itemType: 'insurance_claim',
@@ -438,7 +481,7 @@ const buildAllPreparedDocs = (uid: string, state: AppDatabase): PreparedDoc[] =>
     });
   });
   (state.readyNotifications || []).forEach((rn) => {
-    const safeId = toSafeDocId('rn', rn.id);
+    const safeId = resolveDocId(COLLECTIONS.warrantyAndNotifications, 'rn', rn.id);
     pushDoc(COLLECTIONS.warrantyAndNotifications, safeId, {
       id: safeId,
       itemType: 'ready_notification',
@@ -767,7 +810,7 @@ class FirestoreSyncService {
     options: { allowDeletes?: boolean; forceAll?: boolean } = {}
   ): Promise<{ written: number; deleted: number; timestamp: string }> {
     const { allowDeletes = true, forceAll = false } = options;
-    const prepared = buildAllPreparedDocs(uid, nextDb);
+    const prepared = buildAllPreparedDocs(uid, nextDb, this.existingKeys);
     const nextKeys = new Set<string>();
 
     interface PendingOp {
@@ -794,7 +837,7 @@ class FirestoreSyncService {
           fields: item.fields,
           fingerprint: item.fingerprint,
         });
-      } else if (forceAll || prevFp !== item.fingerprint) {
+      } else if (prevFp !== item.fingerprint || (forceAll && !item.isTerminal)) {
         ops.push({
           type: 'update',
           collectionName: item.collectionName,

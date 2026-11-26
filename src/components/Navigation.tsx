@@ -12,9 +12,11 @@ import {
   X,
   Cloud,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  Globe
 } from 'lucide-react';
 import { UserRole, WorkshopProfile, UserAccount } from '../types';
+import { APP_ROOT_DOMAIN, TenantInfo } from '../services/apiClient';
 
 export type TabType =
   | 'dashboard'
@@ -39,6 +41,7 @@ export interface NavigationProps {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
   userRole: UserRole;
+  activeTenant?: TenantInfo | null;
   badges?: NavigationBadges;
   profile?: WorkshopProfile;
   currentUser?: UserAccount;
@@ -64,6 +67,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onTabChange,
   userRole,
+  activeTenant,
   badges,
   profile,
   currentUser,
@@ -179,14 +183,22 @@ export const Navigation: React.FC<NavigationProps> = ({
           )}
         </div>
 
-        {/* Fiscal Year & PAN/VAT */}
-        <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-sky-100/75">
-          <span>
-            FY <strong className="text-white font-mono">{profile?.fiscalYear || '2081/82'}</strong>
-          </span>
-          <span>
-            PAN <strong className="text-white font-mono">{profile?.panVatNumber || '609812453'}</strong>
-          </span>
+        {/* Active Tenant Link, Fiscal Year & PAN/VAT (Visible Only Post-Sign-In) */}
+        <div className="mt-3 pt-2.5 border-t border-white/10 space-y-1.5 text-[11px] text-sky-100/80">
+          {activeTenant?.subdomain && (
+            <div className="flex items-center space-x-1.5 text-sky-200 font-mono truncate">
+              <Globe className="w-3 h-3 text-[#0EA5E9] shrink-0" />
+              <span className="truncate">{activeTenant.subdomain}.{APP_ROOT_DOMAIN}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span>
+              FY <strong className="text-white font-mono">{profile?.fiscalYear || '2081/82'}</strong>
+            </span>
+            <span>
+              PAN <strong className="text-white font-mono">{profile?.panVatNumber || '609812453'}</strong>
+            </span>
+          </div>
         </div>
       </div>
 

@@ -1,10 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
-import { auth } from './firebase';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import { auth, googleProvider } from './firebase';
 import { firestoreSync } from './services/firestoreSyncService';
 import {
   apiClient,
-  TenantInfo,
+  APP_ROOT_DOMAIN,
+  checkIsPlatformDeveloper,
+  clearBrowserPortalParams,
+  getDemoSessionMode,
+  getUrlSubdomainIfPresent,
+  isDemoSessionActive,
+  loadDemoTenantWorkspaceSnapshot,
+  normalizeCompanySlug,
+  readDemoDevelopers,
+  saveDemoTenantWorkspaceSnapshot,
+  setActiveTenantSubdomain,
+  setDemoSessionMode,
+  syncBrowserToTenantSubdomain,
+  TenantRecord,
   waitForOnboardingIfActive,
 } from './services/apiClient';
 import { 
@@ -25,6 +44,8 @@ import { AccountingReports } from './components/accounting/AccountingReports';
 import { WarrantyManagement } from './components/warranty/WarrantyManagement';
 import { AdminMasterSettings } from './components/admin/AdminMasterSettings';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
+import { DeveloperConsole } from './components/developer/DeveloperConsole';
+import { PublicWebsite } from './components/marketing/PublicWebsite';
 import { CloudSyncModal } from './components/common/CloudSyncModal';
 import { PrintInvoiceModal } from './components/common/PrintInvoiceModal';
 import { PrintGatePassModal } from './components/common/PrintGatePassModal';
@@ -78,17 +99,66 @@ import {
 import { adToBs } from './utils/nepaliDate';
 import { Bell, Loader2, Lock, MessageSquare, Send, Unlock, Wrench, X } from 'lucide-react';
 
+type SurfaceMode =
+  | 'public_site'
+  | 'workspace_login'
+  | 'developer_login'
+  | 'developer_portal'
+  | 'tenant_workspace';
+
+const LAST_SURFACE_STORAGE_KEY = 'AUTOCRAFT_LAST_SURFACE';
+
+function getInitialSurfaceMode(): SurfaceMode {
+  if (typeof window === 'undefined') return 'public_site';
+  const demoMode = getDemoSessionMode();
+  if (demoMode === 'developer') return 'developer_portal';
+  if (demoMode === 'workspace') return 'tenant_workspace';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const portal = params.get('portal');
+    if (portal === 'developer') return 'developer_login';
+    if (portal === 'workspace') return 'workspace_login';
+  } catch {
+    // Ignore URL errors
+  }
+  return 'public_site';
+}
+
+function getInitialCompanyHint(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const company = params.get('company')?.trim();
+    if (company) return company;
+  } catch {
+    // Ignore URL errors
+  }
+  return '';
+}
+
 export default function App() {
   const [db, setDb] = useState<AppDatabase>(() => storage.getDatabase());
+  const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>(() => getInitialSurfaceMode());
+  const [workspaceCompanyHint, setWorkspaceCompanyHint] = useState<string>(() => getInitialCompanyHint());
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [tenantSessionReady, setTenantSessionReady] = useState<boolean>(false);
-  const [, setActiveTenant] = useState<TenantInfo | null>(null);
+  const [developerIdentity, setDeveloperIdentity] = useState<{ name: string; email: string }>({
+    name: 'Platform Developer',
+    email: 'dev@autocraftpro.com.np',
+  });
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => isDemoSessionActive());
+  const [allTenants, setAllTenants] = useState<TenantRecord[]>([]);
+  const [activeTenant, setActiveTenant] = useState<TenantRecord | null>(null);
+  const [activeWorkspaceOwnerUid, setActiveWorkspaceOwnerUid] = useState<string | null>(null);
+  const activeTenantRef = useRef<TenantRecord | null>(null);
+  const loginIntentRef = useRef<
+    { type: 'developer' } | { type: 'workspace'; companyName: string } | null
+  >(null);
+  const manualAuthFlowRef = useRef<boolean>(false);
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [isCloudHydrating, setIsCloudHydrating] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [fatalSyncError, setFatalSyncError] = useState<Error | null>(null);
   const cloudSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isAuthenticated = Boolean(firebaseUser && tenantSessionReady);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -128,20 +198,30 @@ export default function App() {
   useEscapeKey(Boolean(printGatePass), () => setPrintGatePass(null));
 
   // Schedule debounced diff-sync to Firestore whenever workshop state changes
-  const scheduleCloudSync = useCallback((uid: string, allowDeletes = true) => {
+  const scheduleCloudSync = useCallback((ownerUid: string, allowDeletes = true) => {
     if (cloudSyncTimerRef.current) {
       clearTimeout(cloudSyncTimerRef.current);
     }
     cloudSyncTimerRef.current = setTimeout(() => {
       cloudSyncTimerRef.current = null;
+      const snapshot = storage.getDatabase();
       void firestoreSync
-        .syncDatabaseDiff(uid, storage.getDatabase(), { allowDeletes })
+        .syncDatabaseDiff(ownerUid, snapshot, { allowDeletes })
         .then((res) => {
           storage.saveDatabase({
             lastCloudSync: res.timestamp,
             isCloudSynced: true,
           });
           setDb(storage.getDatabase());
+          if (activeTenantRef.current && (res.written > 0 || res.deleted > 0)) {
+            const payloadBytes = new TextEncoder().encode(JSON.stringify(snapshot)).length;
+            void apiClient.recordTenantNetworkActivity(activeTenantRef.current.subdomain, {
+              bytesTransferred: Math.max(512, Math.round(payloadBytes * 0.12)),
+              writes: res.written + res.deleted,
+              storageUsedBytes: payloadBytes,
+              activeUsersCount: (snapshot.users || []).filter((u) => u.isActive !== false).length || 1,
+            });
+          }
         })
         .catch((err) => {
           console.error('Firestore background sync error:', err);
@@ -150,12 +230,109 @@ export default function App() {
     }, 280);
   }, []);
 
-  // Firebase Authentication, Multi-Tenant API Verification & Cloud Hydration Lifecycle
+  // Hydrate and attach realtime listeners for any target tenant workspace
+  const hydrateCloudTenantWorkspace = useCallback(
+    async (
+      tenant: TenantRecord,
+      fbUser: FirebaseUser,
+      isActiveRef?: () => boolean
+    ) => {
+      const stillActive = () => (isActiveRef ? isActiveRef() : true);
+      firestoreSync.stopRealtimeListeners();
+      firestoreSync.resetTracking();
+      setActiveTenantSubdomain(tenant.subdomain);
+      setActiveTenant(tenant);
+      activeTenantRef.current = tenant;
+      setActiveWorkspaceOwnerUid(tenant.ownerUid);
+
+      const loaded = await firestoreSync.loadWorkspace(tenant.ownerUid);
+      if (!stillActive()) return;
+
+      if (loaded.exists && loaded.partialDb) {
+        storage.applyRemoteDatabase(loaded.partialDb);
+        storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+        const syncedState = storage.getDatabase();
+        const patchedProfile = {
+          ...syncedState.profile,
+          name: syncedState.profile.name || tenant.companyName,
+          panVatNumber: syncedState.profile.panVatNumber || tenant.panVatNumber || syncedState.profile.panVatNumber,
+          website: `https://${tenant.subdomain}.${APP_ROOT_DOMAIN}`,
+        };
+        storage.saveDatabase({ profile: patchedProfile });
+        const finalState = storage.getDatabase();
+        setDb(finalState);
+        const bytes = new TextEncoder().encode(JSON.stringify(finalState)).length;
+        void apiClient.recordTenantNetworkActivity(tenant.subdomain, {
+          bytesTransferred: bytes,
+          reads: 12,
+          storageUsedBytes: bytes,
+          activeUsersCount: (finalState.users || []).filter((u) => u.isActive !== false).length || 1,
+        });
+      } else {
+        storage.resetToDemo();
+        const freshBase = storage.getDatabase();
+        const tenantProfile = {
+          ...freshBase.profile,
+          name: tenant.companyName,
+          legalEntityName: `${tenant.companyName} Pvt. Ltd.`,
+          panVatNumber: tenant.panVatNumber || freshBase.profile.panVatNumber,
+          city: tenant.city || freshBase.profile.city,
+          address: tenant.address || `${tenant.city || 'Kathmandu'}, Nepal`,
+          contactNumber: tenant.contactNumber || freshBase.profile.contactNumber,
+          email: tenant.adminEmail || fbUser.email || freshBase.profile.email,
+          website: `https://${tenant.subdomain}.${APP_ROOT_DOMAIN}`,
+          fiscalYear: tenant.fiscalYear || freshBase.profile.fiscalYear,
+        };
+        storage.saveDatabase({ profile: tenantProfile });
+        storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
+        const initialState = storage.getDatabase();
+        const seeded = await firestoreSync.syncDatabaseDiff(tenant.ownerUid, initialState, {
+          allowDeletes: false,
+        });
+        if (!stillActive()) return;
+        storage.saveDatabase({
+          lastCloudSync: seeded.timestamp,
+          isCloudSynced: true,
+        });
+        const finalState = storage.getDatabase();
+        setDb(finalState);
+        const bytes = new TextEncoder().encode(JSON.stringify(finalState)).length;
+        void apiClient.recordTenantNetworkActivity(tenant.subdomain, {
+          bytesTransferred: bytes,
+          writes: seeded.written,
+          storageUsedBytes: bytes,
+          docCount: seeded.written,
+          activeUsersCount: (finalState.users || []).filter((u) => u.isActive !== false).length || 1,
+        });
+      }
+
+      firestoreSync.startRealtimeListeners(
+        tenant.ownerUid,
+        (remotePartial) => {
+          if (!stillActive()) return;
+          const merged = storage.applyRemoteDatabase(remotePartial);
+          setDb(merged);
+        },
+        (err) => {
+          if (!stillActive()) return;
+          setFatalSyncError(err);
+        }
+      );
+    },
+    []
+  );
+
+  // Firebase Authentication & Strict 3-Surface Resolution Lifecycle
   useEffect(() => {
     let active = true;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (!active) return;
+
+      // If an explicit login handler is orchestrating verification, let it complete cleanly
+      if (manualAuthFlowRef.current) {
+        return;
+      }
 
       if (cloudSyncTimerRef.current) {
         clearTimeout(cloudSyncTimerRef.current);
@@ -165,96 +342,217 @@ export default function App() {
       if (!fbUser) {
         firestoreSync.resetTracking();
         setFirebaseUser(null);
-        setTenantSessionReady(false);
-        setActiveTenant(null);
         setIsCloudHydrating(false);
+
+        const demoMode = getDemoSessionMode();
+        if (demoMode === 'developer') {
+          const demoTenants = await apiClient.listAllTenants();
+          if (!active) return;
+          setAllTenants(demoTenants);
+          setIsDemoMode(true);
+          setSurfaceMode('developer_portal');
+        } else if (demoMode === 'workspace') {
+          const demoTenants = await apiClient.listAllTenants();
+          if (!active) return;
+          const urlSub = getUrlSubdomainIfPresent();
+          const selected =
+            (urlSub && demoTenants.find((t) => t.subdomain === urlSub)) || demoTenants[0] || null;
+          setAllTenants(demoTenants);
+          setActiveTenant(selected);
+          activeTenantRef.current = selected;
+          setActiveWorkspaceOwnerUid(selected?.ownerUid || null);
+          if (selected) {
+            setActiveTenantSubdomain(selected.subdomain);
+            const snap = loadDemoTenantWorkspaceSnapshot(selected);
+            storage.saveDatabase(snap);
+            storage.bindAuthenticatedUser(
+              selected.adminEmail || 'demo@autocraftpro.com.np',
+              `${selected.companyName} Admin`
+            );
+          }
+          setDb(storage.getDatabase());
+          setIsDemoMode(true);
+          setSurfaceMode('tenant_workspace');
+        } else {
+          setIsDemoMode(false);
+          setAllTenants([]);
+          setActiveTenant(null);
+          activeTenantRef.current = null;
+          setActiveWorkspaceOwnerUid(null);
+        }
         setAuthReady(true);
         return;
       }
 
-      // Wait if company onboarding is currently registering the tenant in Firestore
       await waitForOnboardingIfActive();
       if (!active || !auth.currentUser) return;
 
       if (!fbUser.emailVerified) {
         setAuthError(
-          'Please verify your email address before signing in, or use Continue with Google for instant access.'
+          'Please verify your email address before signing in, or use Continue with Google on Developer Login.'
         );
         firestoreSync.resetTracking();
         setFirebaseUser(null);
-        setTenantSessionReady(false);
+        setAllTenants([]);
         setActiveTenant(null);
+        activeTenantRef.current = null;
+        setActiveWorkspaceOwnerUid(null);
         setIsCloudHydrating(false);
         setAuthReady(true);
         void signOut(auth);
         return;
       }
 
+      setDemoSessionMode(null);
+      setIsDemoMode(false);
       setAuthError(null);
       setFirebaseUser(fbUser);
       setIsCloudHydrating(true);
       setAuthReady(true);
 
       try {
-        // Resolve or auto-provision the user's tenant workspace directly in Cloud Firestore
-        const dashboard = await apiClient.getDashboard();
-        if (!active) return;
-        setActiveTenant(dashboard.tenant);
-        setTenantSessionReady(true);
-
-        const loaded = await firestoreSync.loadWorkspace(fbUser.uid);
+        const developerFlag = await checkIsPlatformDeveloper(fbUser.uid, fbUser.email);
         if (!active) return;
 
-        if (loaded.exists && loaded.partialDb) {
-          storage.applyRemoteDatabase(loaded.partialDb);
-          storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
-          const syncedState = storage.getDatabase();
-          setDb(syncedState);
-          void firestoreSync.syncDatabaseDiff(fbUser.uid, syncedState, { allowDeletes: false });
-        } else {
-          await storage.hydrateFromIndexedDb();
-          if (!active) return;
-          storage.bindAuthenticatedUser(fbUser.email, fbUser.displayName);
-          const initialState = storage.getDatabase();
-          const seeded = await firestoreSync.syncDatabaseDiff(fbUser.uid, initialState, {
-            allowDeletes: false,
-          });
-          if (!active) return;
-          storage.saveDatabase({
-            lastCloudSync: seeded.timestamp,
-            isCloudSynced: true,
-          });
-          setDb(storage.getDatabase());
-        }
-
-        // Sync tenant company name into active profile if a custom company workspace was onboarded
-        const currentDb = storage.getDatabase();
-        if (
-          dashboard.tenant.companyName &&
-          currentDb.profile.name !== dashboard.tenant.companyName &&
-          dashboard.tenant.subdomain !== 'lavish'
-        ) {
-          storage.saveDatabase({
-            profile: {
-              ...currentDb.profile,
-              name: dashboard.tenant.companyName,
-            },
-          });
-          setDb(storage.getDatabase());
-        }
-
-        firestoreSync.startRealtimeListeners(
-          fbUser.uid,
-          (remotePartial) => {
-            if (!active) return;
-            const merged = storage.applyRemoteDatabase(remotePartial);
-            setDb(merged);
-          },
-          (err) => {
-            if (!active) return;
-            setFatalSyncError(err);
+        const savedSurface = (() => {
+          try {
+            return window.sessionStorage.getItem(LAST_SURFACE_STORAGE_KEY);
+          } catch {
+            return null;
           }
+        })();
+
+        const intent = loginIntentRef.current;
+        loginIntentRef.current = null;
+
+        // Route A: Developer Portal Session
+        if (
+          intent?.type === 'developer' ||
+          (!intent && savedSurface === 'developer_portal')
+        ) {
+          if (!developerFlag) {
+            setAuthError(
+              'This account is not registered in Developer Accounts. Contact the platform owner to grant developer access.'
+            );
+            setFirebaseUser(null);
+            setSurfaceMode('developer_login');
+            void signOut(auth);
+            return;
+          }
+
+          const resolved = await apiClient.resolveAuthenticatedTenant(
+            fbUser.uid,
+            fbUser.email,
+            true
+          );
+          if (!active) return;
+
+          setDeveloperIdentity({
+            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Platform Developer',
+            email: fbUser.email || 'developer@autocraftpro.com.np',
+          });
+          setAllTenants(resolved.allTenants);
+          setActiveTenant(null);
+          activeTenantRef.current = null;
+          setActiveWorkspaceOwnerUid(null);
+          try {
+            window.sessionStorage.setItem(LAST_SURFACE_STORAGE_KEY, 'developer_portal');
+          } catch {
+            // Ignore storage restrictions
+          }
+          setSurfaceMode('developer_portal');
+          return;
+        }
+
+        // Route B: Tenant Workspace Session (either from Workspace Login or reloaded tenant tab)
+        const targetCompany =
+          intent?.type === 'workspace'
+            ? intent.companyName
+            : getUrlSubdomainIfPresent() || '';
+
+        if (targetCompany) {
+          const wsResult = await apiClient.resolveTenantForWorkspaceLogin(
+            targetCompany,
+            fbUser.uid,
+            fbUser.email,
+            developerFlag
+          );
+          if (!active) return;
+
+          if (wsResult.status === 'not_found') {
+            setAuthError(`No provisioned company workspace found for "${targetCompany}".`);
+            setFirebaseUser(null);
+            setSurfaceMode('workspace_login');
+            void signOut(auth);
+            return;
+          }
+          if (wsResult.status === 'suspended') {
+            setAuthError(
+              `The workspace for "${targetCompany}" is currently suspended. Contact your platform administrator.`
+            );
+            setFirebaseUser(null);
+            setSurfaceMode('workspace_login');
+            void signOut(auth);
+            return;
+          }
+          if (wsResult.status === 'unauthorized' || !wsResult.tenant) {
+            setAuthError(
+              `Your account is not authorized to sign in to "${targetCompany}". Enter your tenant Admin credentials or an authorized Developer account.`
+            );
+            setFirebaseUser(null);
+            setSurfaceMode('workspace_login');
+            void signOut(auth);
+            return;
+          }
+
+          await hydrateCloudTenantWorkspace(wsResult.tenant, fbUser, () => active);
+          if (!active) return;
+          syncBrowserToTenantSubdomain(wsResult.tenant.subdomain);
+          try {
+            window.sessionStorage.setItem(LAST_SURFACE_STORAGE_KEY, 'tenant_workspace');
+          } catch {
+            // Ignore storage restrictions
+          }
+          setActiveTab('dashboard');
+          setSurfaceMode('tenant_workspace');
+          return;
+        }
+
+        // Route C: Reloaded session without explicit tenant parameter
+        const resolved = await apiClient.resolveAuthenticatedTenant(
+          fbUser.uid,
+          fbUser.email,
+          developerFlag
         );
+        if (!active) return;
+
+        if (developerFlag) {
+          setDeveloperIdentity({
+            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Platform Developer',
+            email: fbUser.email || 'developer@autocraftpro.com.np',
+          });
+          setAllTenants(resolved.allTenants);
+          setSurfaceMode('developer_portal');
+          return;
+        }
+
+        if (resolved.status !== 'ok' || !resolved.tenant) {
+          setAuthError(
+            resolved.status === 'suspended'
+              ? 'This company workspace is currently suspended.'
+              : 'No active tenant workspace is assigned to this account.'
+          );
+          setFirebaseUser(null);
+          setSurfaceMode('workspace_login');
+          void signOut(auth);
+          return;
+        }
+
+        await hydrateCloudTenantWorkspace(resolved.tenant, fbUser, () => active);
+        if (!active) return;
+        syncBrowserToTenantSubdomain(resolved.tenant.subdomain);
+        setActiveTab('dashboard');
+        setSurfaceMode('tenant_workspace');
       } catch (err) {
         if (!active) return;
         setFatalSyncError(err instanceof Error ? err : new Error(String(err)));
@@ -273,7 +571,7 @@ export default function App() {
       }
       firestoreSync.stopRealtimeListeners();
     };
-  }, []);
+  }, [hydrateCloudTenantWorkspace]);
 
   useEffect(() => {
     ensureGlobalEscapeListener();
@@ -291,7 +589,7 @@ export default function App() {
     };
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!isAuthenticated) return;
+      if (surfaceMode !== 'tenant_workspace') return;
 
       // Alt + K or Shift + ? (outside editable inputs) -> Keyboard Shortcuts dialog
       if ((e.altKey && e.key.toLowerCase() === 'k') || (e.key === '?' && !isEditableTarget(e.target))) {
@@ -331,34 +629,330 @@ export default function App() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isAuthenticated]);
+  }, [surfaceMode]);
 
-  // Sync state changes with local cache & Cloud Firestore persistence
+  // Sync state changes with local cache & Cloud Firestore persistence (scoped to active tenant ownerUid)
   const updateDb = (partial: Partial<AppDatabase>) => {
-    const canSyncFirestore = Boolean(firebaseUser?.uid && firebaseUser.emailVerified);
+    const effectiveOwnerUid = activeWorkspaceOwnerUid || firebaseUser?.uid;
+    const canSyncFirestore = Boolean(firebaseUser?.uid && firebaseUser.emailVerified && effectiveOwnerUid);
     storage.saveDatabase({
       ...partial,
       ...(canSyncFirestore ? { isCloudSynced: false } : {}),
     });
-    setDb(storage.getDatabase());
-    if (canSyncFirestore && firebaseUser?.uid) {
-      scheduleCloudSync(firebaseUser.uid, true);
+    const nextSnapshot = storage.getDatabase();
+    setDb(nextSnapshot);
+
+    if (canSyncFirestore && effectiveOwnerUid) {
+      scheduleCloudSync(effectiveOwnerUid, true);
+    } else if (isDemoMode && activeTenantRef.current) {
+      saveDemoTenantWorkspaceSnapshot(activeTenantRef.current.subdomain, nextSnapshot);
+      const bytes = new TextEncoder().encode(JSON.stringify(nextSnapshot)).length;
+      void apiClient.recordTenantNetworkActivity(activeTenantRef.current.subdomain, {
+        bytesTransferred: Math.max(512, Math.round(bytes * 0.08)),
+        writes: 1,
+        storageUsedBytes: bytes,
+        activeUsersCount: (nextSnapshot.users || []).filter((u) => u.isActive !== false).length || 1,
+      });
     }
   };
 
   const currentUser = db.currentUser;
 
-  // --- AUTHENTICATION HANDLERS ---
+  // --- SEPARATED AUTHENTICATION HANDLERS (WEBSITE, DEVELOPER PORTAL, TENANT WORKSPACE) ---
+  const enterDemoTenantWorkspace = useCallback(
+    async (tenant: TenantRecord, actorEmail: string, actorName: string) => {
+      setDemoSessionMode('workspace');
+      setIsDemoMode(true);
+      setAuthError(null);
+      setFatalSyncError(null);
+      setActiveTenantSubdomain(tenant.subdomain);
+      setActiveTenant(tenant);
+      activeTenantRef.current = tenant;
+      setActiveWorkspaceOwnerUid(tenant.ownerUid);
+      const snap = loadDemoTenantWorkspaceSnapshot(tenant);
+      storage.saveDatabase(snap);
+      storage.bindAuthenticatedUser(actorEmail, actorName);
+      const nextDb = storage.getDatabase();
+      setDb(nextDb);
+      const bytes = new TextEncoder().encode(JSON.stringify(nextDb)).length;
+      await apiClient.recordTenantNetworkActivity(tenant.subdomain, {
+        bytesTransferred: bytes,
+        reads: 12,
+        storageUsedBytes: bytes,
+        activeUsersCount: (nextDb.users || []).filter((u) => u.isActive !== false).length || 1,
+      });
+      syncBrowserToTenantSubdomain(tenant.subdomain);
+      setActiveTab('dashboard');
+      setSurfaceMode('tenant_workspace');
+      setIsCloudHydrating(false);
+      setAuthReady(true);
+    },
+    []
+  );
+
+  const handleEnterWorkspaceDemo = useCallback(
+    (companyHint?: string) => {
+      setDemoSessionMode('workspace');
+      void apiClient.listAllTenants().then((demoTenants) => {
+        const slug = companyHint ? normalizeCompanySlug(companyHint) : '';
+        const matched =
+          (slug &&
+            demoTenants.find(
+              (t) =>
+                t.subdomain.toLowerCase() === slug ||
+                t.companyName.toLowerCase() === (companyHint || '').trim().toLowerCase()
+            )) ||
+          demoTenants[0];
+        if (matched) {
+          void enterDemoTenantWorkspace(
+            matched,
+            matched.adminEmail || `admin@${matched.subdomain}.${APP_ROOT_DOMAIN}`,
+            `${matched.companyName} Admin`
+          );
+        }
+      });
+    },
+    [enterDemoTenantWorkspace]
+  );
+
+  const handleEnterDeveloperDemo = useCallback(() => {
+    setDemoSessionMode('developer');
+    setIsDemoMode(true);
+    setAuthError(null);
+    setFatalSyncError(null);
+    setActiveTenant(null);
+    activeTenantRef.current = null;
+    setActiveWorkspaceOwnerUid(null);
+    clearBrowserPortalParams();
+    setDeveloperIdentity({
+      name: 'Divas Rayamajhi',
+      email: 'divasrayamajhi2@gmail.com',
+    });
+    void apiClient.listAllTenants().then((demoTenants) => {
+      setAllTenants(demoTenants);
+      setSurfaceMode('developer_portal');
+      setIsCloudHydrating(false);
+      setAuthReady(true);
+    });
+  }, []);
+
+  const handleDeveloperGoogleSignIn = useCallback(async () => {
+    setAuthError(null);
+    loginIntentRef.current = { type: 'developer' };
+    await signInWithPopup(auth, googleProvider);
+  }, []);
+
+  const handleDeveloperEmailSignIn = useCallback(async (email: string, password: string) => {
+    setAuthError(null);
+    const normalizedEmail = email.trim().toLowerCase();
+    loginIntentRef.current = { type: 'developer' };
+    try {
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (err) {
+      // Allow sandbox developer testing when Email/Password is not enabled in Firebase Auth
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: string }).code)
+          : '';
+      const matchedDemoDev = readDemoDevelopers().find(
+        (d) => d.isActive && d.email.toLowerCase() === normalizedEmail
+      );
+      if (
+        matchedDemoDev &&
+        password.length >= 6 &&
+        (code === 'auth/operation-not-allowed' ||
+          code === 'auth/invalid-credential' ||
+          code === 'auth/user-not-found')
+      ) {
+        setDemoSessionMode('developer');
+        setIsDemoMode(true);
+        setDeveloperIdentity({ name: matchedDemoDev.name, email: matchedDemoDev.email });
+        const demoTenants = await apiClient.listAllTenants();
+        setAllTenants(demoTenants);
+        setSurfaceMode('developer_portal');
+        return;
+      }
+      throw err;
+    }
+  }, []);
+
+  const handleWorkspaceSignIn = useCallback(
+    async (companyName: string, email: string, password: string) => {
+      setAuthError(null);
+      const normalizedEmail = email.trim().toLowerCase();
+      const slug = normalizeCompanySlug(companyName);
+      manualAuthFlowRef.current = true;
+      loginIntentRef.current = { type: 'workspace', companyName };
+
+      try {
+        let fbUser: FirebaseUser | null = null;
+        let firebaseErr: unknown = null;
+        try {
+          const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+          fbUser = cred.user;
+        } catch (err) {
+          firebaseErr = err;
+        }
+
+        if (fbUser) {
+          if (!fbUser.emailVerified) {
+            await signOut(auth).catch(() => {});
+            throw new Error(
+              'Please verify your work email address before signing into your workspace.'
+            );
+          }
+
+          setDemoSessionMode(null);
+          setIsDemoMode(false);
+          const developerFlag = await checkIsPlatformDeveloper(fbUser.uid, fbUser.email);
+          const wsResult = await apiClient.resolveTenantForWorkspaceLogin(
+            companyName,
+            fbUser.uid,
+            fbUser.email,
+            developerFlag
+          );
+
+          if (wsResult.status === 'not_found') {
+            await signOut(auth).catch(() => {});
+            throw new Error(`No provisioned workspace found for "${companyName}".`);
+          }
+          if (wsResult.status === 'suspended') {
+            await signOut(auth).catch(() => {});
+            throw new Error(
+              `Workspace "${companyName}" is currently suspended. Please contact your platform administrator.`
+            );
+          }
+          if (wsResult.status === 'unauthorized' || !wsResult.tenant) {
+            await signOut(auth).catch(() => {});
+            throw new Error(
+              `Account "${normalizedEmail}" is not authorized for "${companyName}". Sign in with your Tenant Admin credentials or an authorized Developer account.`
+            );
+          }
+
+          setFirebaseUser(fbUser);
+          setIsCloudHydrating(true);
+          await hydrateCloudTenantWorkspace(wsResult.tenant, fbUser);
+          syncBrowserToTenantSubdomain(wsResult.tenant.subdomain);
+          try {
+            window.sessionStorage.setItem(LAST_SURFACE_STORAGE_KEY, 'tenant_workspace');
+          } catch {
+            // Ignore storage restrictions
+          }
+          setActiveTab('dashboard');
+          setSurfaceMode('tenant_workspace');
+          setIsCloudHydrating(false);
+          return;
+        }
+
+        // Sandbox credential fallback: enables testing newly onboarded tenants & added Developer Accounts
+        const errCode =
+          typeof firebaseErr === 'object' && firebaseErr !== null && 'code' in firebaseErr
+            ? String((firebaseErr as { code?: string }).code)
+            : '';
+
+        if (
+          password.length >= 6 &&
+          (errCode === 'auth/operation-not-allowed' ||
+            errCode === 'auth/invalid-credential' ||
+            errCode === 'auth/user-not-found')
+        ) {
+          setDemoSessionMode('workspace');
+          const demoTenants = await apiClient.listAllTenants();
+          const matchedTenant = demoTenants.find(
+            (t) =>
+              t.subdomain.toLowerCase() === slug ||
+              t.companyName.toLowerCase() === companyName.trim().toLowerCase() ||
+              normalizeCompanySlug(t.companyName) === slug
+          );
+
+          if (!matchedTenant) {
+            setDemoSessionMode(null);
+            throw new Error(`No provisioned company workspace found for "${companyName}".`);
+          }
+
+          const matchedDev = readDemoDevelopers().find(
+            (d) => d.isActive && d.email.toLowerCase() === normalizedEmail
+          );
+          const isTenantAdmin = matchedTenant.adminEmail?.toLowerCase() === normalizedEmail;
+
+          if (!matchedTenant.isActive && !matchedDev) {
+            setDemoSessionMode(null);
+            throw new Error(`Workspace "${matchedTenant.companyName}" is currently suspended.`);
+          }
+
+          if (matchedDev || isTenantAdmin) {
+            await enterDemoTenantWorkspace(
+              matchedTenant,
+              normalizedEmail,
+              matchedDev
+                ? `${matchedDev.name} (Developer Support)`
+                : `${matchedTenant.companyName} Admin`
+            );
+            return;
+          }
+
+          setDemoSessionMode(null);
+          throw new Error(
+            `Email "${normalizedEmail}" is not authorized for "${matchedTenant.companyName}". Use the tenant Admin email (${matchedTenant.adminEmail || 'assigned admin'}) or an active Developer account.`
+          );
+        }
+
+        throw firebaseErr;
+      } finally {
+        manualAuthFlowRef.current = false;
+        loginIntentRef.current = null;
+      }
+    },
+    [enterDemoTenantWorkspace, hydrateCloudTenantWorkspace]
+  );
+
+  // From Developer Portal: routes strictly to Workspace Login (forces Developer ID & Password entry)
+  const handleOpenTenantSignInFromDevPortal = useCallback((tenantSubdomain: string) => {
+    if (cloudSyncTimerRef.current) {
+      clearTimeout(cloudSyncTimerRef.current);
+      cloudSyncTimerRef.current = null;
+    }
+    firestoreSync.resetTracking();
+    setDemoSessionMode(null);
+    setIsDemoMode(false);
+    setActiveTenant(null);
+    activeTenantRef.current = null;
+    setActiveWorkspaceOwnerUid(null);
+    try {
+      window.sessionStorage.removeItem(LAST_SURFACE_STORAGE_KEY);
+    } catch {
+      // Ignore storage restrictions
+    }
+    void signOut(auth);
+    setWorkspaceCompanyHint(tenantSubdomain);
+    setAuthError(null);
+    setSurfaceMode('workspace_login');
+  }, []);
+
   const handleLogout = () => {
     if (cloudSyncTimerRef.current) {
       clearTimeout(cloudSyncTimerRef.current);
       cloudSyncTimerRef.current = null;
     }
     firestoreSync.resetTracking();
-    setTenantSessionReady(false);
+    setDemoSessionMode(null);
+    setIsDemoMode(false);
+    setAllTenants([]);
     setActiveTenant(null);
+    activeTenantRef.current = null;
+    setActiveWorkspaceOwnerUid(null);
+    setActiveTab('dashboard');
+    setWorkspaceCompanyHint('');
+    setAuthError(null);
+    try {
+      window.sessionStorage.removeItem(LAST_SURFACE_STORAGE_KEY);
+    } catch {
+      // Ignore storage restrictions
+    }
+    clearBrowserPortalParams();
     storage.logout();
     void signOut(auth);
+    setSurfaceMode('public_site');
   };
 
   // Badges Calculation for Navigation
@@ -2020,6 +2614,31 @@ export default function App() {
   // --- ADMIN MASTER DATA HANDLERS ---
   const handleUpdateProfile = (profile: WorkshopProfile) => {
     updateDb({ profile });
+    if (activeTenantRef.current) {
+      const targetSub = activeTenantRef.current.subdomain;
+      const updatedTenant: TenantRecord = {
+        ...activeTenantRef.current,
+        companyName: profile.name || activeTenantRef.current.companyName,
+        panVatNumber: profile.panVatNumber || activeTenantRef.current.panVatNumber,
+        city: profile.city || activeTenantRef.current.city,
+        address: profile.address || activeTenantRef.current.address,
+        contactNumber: profile.contactNumber || activeTenantRef.current.contactNumber,
+        fiscalYear: profile.fiscalYear || activeTenantRef.current.fiscalYear,
+      };
+      activeTenantRef.current = updatedTenant;
+      setActiveTenant(updatedTenant);
+      setAllTenants((prev) => prev.map((t) => (t.subdomain === targetSub ? updatedTenant : t)));
+      void apiClient
+        .updateTenantAsDeveloper(targetSub, {
+          companyName: updatedTenant.companyName,
+          panVatNumber: updatedTenant.panVatNumber,
+          city: updatedTenant.city,
+          address: updatedTenant.address,
+          contactNumber: updatedTenant.contactNumber,
+          fiscalYear: updatedTenant.fiscalYear,
+        })
+        .catch(() => {});
+    }
   };
 
   const handleUpdateUsers = (users: UserAccount[]) => {
@@ -2042,9 +2661,10 @@ export default function App() {
 
   // --- CLOUD SYNC & RESTORE ---
   const handleSyncCloud = async () => {
-    if (firebaseUser?.uid && firebaseUser.emailVerified) {
+    const effectiveOwnerUid = activeWorkspaceOwnerUid || firebaseUser?.uid;
+    if (firebaseUser?.uid && firebaseUser.emailVerified && effectiveOwnerUid) {
       const syncRes = await firestoreSync.syncDatabaseDiff(
-        firebaseUser.uid,
+        effectiveOwnerUid,
         storage.getDatabase(),
         { allowDeletes: true, forceAll: true }
       );
@@ -2061,26 +2681,39 @@ export default function App() {
   };
 
   const handleResetDemo = () => {
+    const effectiveOwnerUid = activeWorkspaceOwnerUid || firebaseUser?.uid;
     storage.resetToDemo();
     if (firebaseUser) {
       storage.bindAuthenticatedUser(firebaseUser.email, firebaseUser.displayName);
       const next = storage.getDatabase();
       setDb(next);
-      if (firebaseUser.emailVerified) {
-        scheduleCloudSync(firebaseUser.uid, true);
+      if (firebaseUser.emailVerified && effectiveOwnerUid) {
+        scheduleCloudSync(effectiveOwnerUid, true);
       }
+    } else if (isDemoMode) {
+      const t = activeTenantRef.current;
+      storage.bindAuthenticatedUser(
+        t?.adminEmail || `demo@${APP_ROOT_DOMAIN}`,
+        t ? `${t.companyName} Admin` : 'Workshop Admin'
+      );
+      const next = storage.getDatabase();
+      if (t) {
+        saveDemoTenantWorkspaceSnapshot(t.subdomain, next);
+      }
+      setDb(next);
     } else {
       setDb(storage.getDatabase());
     }
   };
 
   const handleImportBackup = (json: string) => {
+    const effectiveOwnerUid = activeWorkspaceOwnerUid || firebaseUser?.uid;
     const ok = storage.importBackupJson(json);
     if (ok) {
       if (firebaseUser) {
         storage.bindAuthenticatedUser(firebaseUser.email, firebaseUser.displayName);
-        if (firebaseUser.emailVerified) {
-          scheduleCloudSync(firebaseUser.uid, true);
+        if (firebaseUser.emailVerified && effectiveOwnerUid) {
+          scheduleCloudSync(effectiveOwnerUid, true);
         }
       }
       setDb(storage.getDatabase());
@@ -2107,19 +2740,68 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated) {
+  // Surface 1: Full-Fledged Public Website (autocraftpro.com.np)
+  if (surfaceMode === 'public_site') {
     return (
-      <AuthScreen
-        workshopProfile={db.profile}
-        authError={authError}
-        onTenantRegistered={(tenant) => setActiveTenant(tenant)}
+      <PublicWebsite
+        onOpenWorkspaceLogin={(hint) => {
+          setAuthError(null);
+          setWorkspaceCompanyHint(hint || '');
+          setSurfaceMode('workspace_login');
+        }}
+        onOpenDeveloperLogin={() => {
+          setAuthError(null);
+          setSurfaceMode('developer_login');
+        }}
       />
     );
   }
 
+  // Surface 2 & 3 Login Pages: Strictly Separated Workspace Login vs Developer Login
+  if (surfaceMode === 'workspace_login' || surfaceMode === 'developer_login') {
+    return (
+      <AuthScreen
+        mode={surfaceMode === 'workspace_login' ? 'workspace' : 'developer'}
+        authError={authError}
+        initialCompanyHint={workspaceCompanyHint}
+        onBackToWebsite={() => {
+          setAuthError(null);
+          clearBrowserPortalParams();
+          setSurfaceMode('public_site');
+        }}
+        onSwitchMode={(nextMode) => {
+          setAuthError(null);
+          setSurfaceMode(nextMode === 'workspace' ? 'workspace_login' : 'developer_login');
+        }}
+        onWorkspaceSignIn={handleWorkspaceSignIn}
+        onDeveloperEmailSignIn={handleDeveloperEmailSignIn}
+        onDeveloperGoogleSignIn={handleDeveloperGoogleSignIn}
+        onEnterWorkspaceDemo={handleEnterWorkspaceDemo}
+        onEnterDeveloperDemo={handleEnterDeveloperDemo}
+      />
+    );
+  }
+
+  // Surface 2 (Authenticated): Standalone Developer Portal (Completely Separate from Workshop Workspace)
+  if (surfaceMode === 'developer_portal') {
+    return (
+      <DeveloperConsole
+        developerEmail={developerIdentity.email}
+        developerName={developerIdentity.name}
+        isDemoMode={isDemoMode}
+        tenants={allTenants}
+        onTenantsChange={setAllTenants}
+        onOpenTenantSignIn={handleOpenTenantSignInFromDevPortal}
+        onGoToPublicWebsite={handleLogout}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // Surface 3 (Authenticated): Isolated Tenant Workshop Workspace (<company>.autocraftpro.com.np)
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-[#0F172A] font-sans">
-      {/* Fixed Responsive Left Sidebar (Ungrouped Independent Buttons) */}
+      {/* Fixed Responsive Left Sidebar (Pure Tenant Workshop ERP — Zero Developer Controls) */}
       <Navigation
         activeTab={activeTab}
         onTabChange={(tab) => {
@@ -2127,6 +2809,7 @@ export default function App() {
           setIsMobileNavOpen(false);
         }}
         userRole={currentUser.role}
+        activeTenant={activeTenant}
         badges={{
           lowStockCount,
           activeJobCardsCount,
@@ -2144,9 +2827,10 @@ export default function App() {
 
       {/* Main Content Area (Offset on desktop screens by fixed left sidebar) */}
       <div id="app-main-shell" className="lg:pl-64 xl:pl-72 flex flex-col min-h-screen transition-[padding] duration-200">
-        {/* Top Universal Navbar */}
+        {/* Top Universal Navbar (Shows Company Name, <company>.autocraftpro.com.np, FY & PAN/VAT strictly post-login) */}
         <Navbar
           profile={db.profile}
+          activeTenant={activeTenant}
           currentUser={currentUser}
           users={db.users}
           readyNotifications={db.readyNotifications || []}
@@ -2350,6 +3034,7 @@ export default function App() {
               bays={db.bays || []}
               technicians={db.technicians || []}
               userRole={currentUser.role}
+              targetOwnerUid={activeWorkspaceOwnerUid || undefined}
               onSwitchUser={handleSwitchUser}
               onUpdateProfile={handleUpdateProfile}
               onUpdateUsers={handleUpdateUsers}

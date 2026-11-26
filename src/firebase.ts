@@ -14,10 +14,18 @@ const resolvedFirebaseConfig = {
   projectId: envMeta.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
 };
 
+const isCustomProjectOverride =
+  Boolean(envMeta.VITE_FIREBASE_PROJECT_ID) &&
+  envMeta.VITE_FIREBASE_PROJECT_ID !== firebaseAppletConfig.projectId;
+
+const resolvedDatabaseId = isCustomProjectOverride
+  ? envMeta.VITE_FIREBASE_DATABASE_ID || undefined
+  : firebaseAppletConfig.firestoreDatabaseId;
+
 const app = initializeApp(resolvedFirebaseConfig);
 
-// CRITICAL: Always pass firebaseAppletConfig.firestoreDatabaseId so Firestore targets the provisioned database
-export const db = getFirestore(app, firebaseAppletConfig.firestoreDatabaseId);
+// CRITICAL: Pass firebaseAppletConfig.firestoreDatabaseId when targeting the provisioned database
+export const db = resolvedDatabaseId ? getFirestore(app, resolvedDatabaseId) : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

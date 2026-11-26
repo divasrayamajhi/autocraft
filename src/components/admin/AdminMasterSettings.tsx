@@ -41,6 +41,7 @@ interface AdminMasterSettingsProps {
   bays?: WorkshopBay[];
   technicians?: Technician[];
   userRole?: UserRole;
+  targetOwnerUid?: string;
   onSwitchUser?: (userId: string) => void;
   onUpdateProfile: (profile: WorkshopProfile) => void;
   onUpdateUsers: (users: UserAccount[]) => void;
@@ -62,6 +63,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
   bays = [],
   technicians = [],
   userRole = 'Admin',
+  targetOwnerUid,
   onSwitchUser,
   onUpdateProfile,
   onUpdateUsers,
@@ -830,6 +832,7 @@ export const AdminMasterSettings: React.FC<AdminMasterSettingsProps> = ({
         <TenantSaasSettingsPanel
           customers={safeCustomers}
           parts={safeParts}
+          targetOwnerUid={targetOwnerUid}
           onNotify={showNotification}
         />
       )}

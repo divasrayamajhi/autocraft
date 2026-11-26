@@ -2,7 +2,7 @@
   "entities": {
     "AdminUser": {
       "title": "AdminUser",
-      "description": "Authorized workshop administrator record verified by Firebase UID.",
+      "description": "Authorized platform developer account record verified by Firebase UID or email.",
       "type": "object",
       "properties": {
         "uid": {
@@ -16,6 +16,18 @@
           "format": "email",
           "minLength": 3,
           "maxLength": 254
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Super Developer", "Platform Engineer", "Support Engineer"]
+        },
+        "isActive": {
+          "type": "boolean"
         },
         "createdAt": {
           "type": "string",
@@ -366,12 +378,28 @@
     },
     "TenantWorkspace": {
       "title": "TenantWorkspace",
-      "description": "Multi-tenant company subdomain workspace metadata scoped by ownerUid.",
+      "description": "Multi-tenant company subdomain workspace provisioned by the platform developer, including quotas and storage/bandwidth/network telemetry.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "minLength": 2, "maxLength": 63, "pattern": "^[a-z0-9](?:[a-z0-9\\-]{0,61}[a-z0-9])?$" },
         "subdomain": { "type": "string", "minLength": 2, "maxLength": 63, "pattern": "^[a-z0-9](?:[a-z0-9\\-]{0,61}[a-z0-9])?$" },
         "companyName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "adminEmail": { "type": "string", "format": "email", "minLength": 3, "maxLength": 254 },
+        "panVatNumber": { "type": "string", "maxLength": 40 },
+        "city": { "type": "string", "maxLength": 100 },
+        "address": { "type": "string", "maxLength": 240 },
+        "contactNumber": { "type": "string", "maxLength": 80 },
+        "fiscalYear": { "type": "string", "maxLength": 30 },
+        "plan": { "type": "string", "enum": ["Starter", "Professional", "Enterprise"] },
+        "storageQuotaMb": { "type": "number" },
+        "bandwidthQuotaGb": { "type": "number" },
+        "storageUsedBytes": { "type": "number" },
+        "bandwidthUsedBytes": { "type": "number" },
+        "networkRequestsCount": { "type": "number" },
+        "readOpsCount": { "type": "number" },
+        "writeOpsCount": { "type": "number" },
+        "docCount": { "type": "number" },
+        "activeUsersCount": { "type": "number" },
         "isActive": { "type": "boolean" },
         "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "createdAt": { "type": "string", "format": "date-time" },

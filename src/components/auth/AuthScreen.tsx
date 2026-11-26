@@ -1,97 +1,69 @@
 import React, { useEffect, useState } from 'react';
 import {
-  LogIn,
-  ShieldCheck,
-  Wrench,
-  CheckCircle2,
   AlertCircle,
-  Lock,
-  Loader2,
+  ArrowLeft,
+  ArrowRight,
   Building2,
-  Globe,
-  Mail,
-  KeyRound,
   Eye,
   EyeOff,
-  ArrowRight,
+  KeyRound,
+  Loader2,
+  Lock,
+  LogIn,
+  Mail,
+  Play,
+  Server,
+  ShieldCheck,
+  Wrench,
 } from 'lucide-react';
 import {
-  createUserWithEmailAndPassword,
-  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
-import { WorkshopProfile } from '../../types';
 import { auth, googleProvider } from '../../firebase';
-import {
-  apiClient,
-  beginOnboarding,
-  endOnboarding,
-  getActiveTenantSubdomain,
-  isPreviewOrLocalHost,
-  setActiveTenantSubdomain,
-  TenantInfo,
-} from '../../services/apiClient';
+import { APP_ROOT_DOMAIN, normalizeCompanySlug } from '../../services/apiClient';
+
+export type AuthScreenMode = 'workspace' | 'developer';
 
 interface AuthScreenProps {
-  workshopProfile: WorkshopProfile;
+  mode: AuthScreenMode;
   authError?: string | null;
-  onTenantRegistered?: (tenant: TenantInfo) => void;
+  initialCompanyHint?: string;
+  onBackToWebsite: () => void;
+  onSwitchMode: (nextMode: AuthScreenMode) => void;
+  onWorkspaceSignIn: (companyName: string, email: string, password: string) => Promise<void>;
+  onDeveloperEmailSignIn: (email: string, password: string) => Promise<void>;
+  onDeveloperGoogleSignIn: () => Promise<void>;
+  onEnterWorkspaceDemo: (companyHint?: string) => void;
+  onEnterDeveloperDemo: () => void;
 }
 
-type AuthTab = 'signin' | 'onboarding';
-
 export const AuthScreen: React.FC<AuthScreenProps> = ({
-  workshopProfile,
+  mode,
   authError,
-  onTenantRegistered,
+  initialCompanyHint = '',
+  onBackToWebsite,
+  onSwitchMode,
+  onWorkspaceSignIn,
+  onDeveloperEmailSignIn,
+  onDeveloperGoogleSignIn,
+  onEnterWorkspaceDemo,
+  onEnterDeveloperDemo,
 }) => {
-  const [activeTab, setActiveTab] = useState<AuthTab>('signin');
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
-  // Tenant resolution state
-  const [subdomainInput, setSubdomainInput] = useState<string>(() => getActiveTenantSubdomain());
-  const [resolvedTenant, setResolvedTenant] = useState<TenantInfo | null>(null);
-  const [tenantLookupError, setTenantLookupError] = useState<string | null>(null);
-
-  // Sign-In Form State (Email/Password)
+  // Form State
+  const [companyName, setCompanyName] = useState(initialCompanyHint);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Company Onboarding State
-  const [companyName, setCompanyName] = useState('');
-  const [newSubdomain, setNewSubdomain] = useState('');
-  const [ownerEmail, setOwnerEmail] = useState('');
-  const [ownerPassword, setOwnerPassword] = useState('');
-
-  const canSelectSubdomain = isPreviewOrLocalHost();
-
   useEffect(() => {
-    let active = true;
-    const target = subdomainInput.trim().toLowerCase() || 'lavish';
-    setTenantLookupError(null);
-    void apiClient
-      .resolveTenant(target)
-      .then((info) => {
-        if (active) {
-          setResolvedTenant(info);
-          setActiveTenantSubdomain(info.subdomain);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setResolvedTenant(null);
-          setTenantLookupError(err instanceof Error ? err.message : 'Tenant Not Found');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [subdomainInput]);
+    setCompanyName(initialCompanyHint);
+    setErrorMessage(null);
+  }, [initialCompanyHint, mode]);
 
   const mapFirebaseAuthError = (err: unknown): string => {
     const code =
@@ -105,27 +77,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return 'Pop-up was blocked by your browser. Please allow pop-ups for this site and try again.';
     }
     if (code === 'auth/operation-not-allowed') {
-      return 'Email/Password sign-in is not yet enabled in your Firebase Console (Authentication → Sign-in method). Enable it there or use Continue with Google.';
+      return mode === 'developer'
+        ? 'Email/Password sign-in is not yet enabled in Firebase Authentication. Use Continue with Google or enable Email/Password in Firebase Console.'
+        : 'Email/Password sign-in is not yet enabled in Firebase Authentication. Enable Email/Password in Firebase Console or launch the 1-Click Interactive Demo.';
     }
     if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-      return 'Invalid email or password. Please verify your credentials.';
-    }
-    if (code === 'auth/email-already-in-use') {
-      return 'This email already has a Firebase account. Sign in first or use Continue with Google.';
-    }
-    if (code === 'auth/weak-password') {
-      return 'Password should be at least 6 characters long.';
+      return 'Invalid credentials. Please verify your email and password.';
     }
     return err instanceof Error ? err.message : 'Authentication failed. Please try again.';
   };
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
-    setInfoMessage(null);
     setIsBusy(true);
     try {
-      setActiveTenantSubdomain(subdomainInput || 'lavish');
-      await signInWithPopup(auth, googleProvider);
+      await onDeveloperGoogleSignIn();
     } catch (err) {
       setErrorMessage(mapFirebaseAuthError(err));
     } finally {
@@ -133,18 +99,48 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  const handleEmailSignIn = async (e: React.FormEvent) => {
+  const handleWorkspaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    setInfoMessage(null);
+
+    const trimmedCompany = companyName.trim();
+    const trimmedEmail = email.trim();
+
+    if (!trimmedCompany || normalizeCompanySlug(trimmedCompany).length < 2) {
+      setErrorMessage('Please enter your Company Name to locate your workspace subdomain.');
+      return;
+    }
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setErrorMessage('Please enter a valid work email address.');
+      return;
+    }
+    if (!password) {
+      setErrorMessage('Please enter your password.');
+      return;
+    }
+
+    setIsBusy(true);
+    try {
+      await onWorkspaceSignIn(trimmedCompany, trimmedEmail, password);
+    } catch (err) {
+      setErrorMessage(mapFirebaseAuthError(err));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDeveloperEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
     if (!email.trim() || !password) {
-      setErrorMessage('Please enter both your work email and password.');
+      setErrorMessage('Please enter both your developer email and password.');
       return;
     }
+
     setIsBusy(true);
     try {
-      setActiveTenantSubdomain(subdomainInput || 'lavish');
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await onDeveloperEmailSignIn(email.trim(), password);
     } catch (err) {
       setErrorMessage(mapFirebaseAuthError(err));
     } finally {
@@ -152,246 +148,287 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  const completeTenantRegistration = async (preferredEmail?: string) => {
-    const cleanSub = newSubdomain.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    const cleanCompany = companyName.trim();
-    const res = await apiClient.registerTenant({
-      companyName: cleanCompany,
-      subdomain: cleanSub,
-      email: preferredEmail,
-    });
-    setSubdomainInput(res.tenant.subdomain);
-    setResolvedTenant(res.tenant);
-    if (onTenantRegistered) {
-      onTenantRegistered(res.tenant);
-    }
-    setInfoMessage(`Company "${res.tenant.companyName}" (${res.tenant.subdomain}.autocraftpro.com) provisioned.`);
-  };
-
-  const handleEmailOnboarding = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleWorkspaceDemoClick = async () => {
     setErrorMessage(null);
-    setInfoMessage(null);
-
-    const cleanSub = newSubdomain.trim().toLowerCase();
-    if (companyName.trim().length < 2) {
-      setErrorMessage('Please enter your company or workshop name.');
-      return;
-    }
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(cleanSub)) {
-      setErrorMessage('Subdomain must use lowercase letters, digits, or internal hyphens (e.g., lavish).');
-      return;
-    }
-    if (!ownerEmail.trim() || ownerPassword.length < 6) {
-      setErrorMessage('Please enter an owner email and a password of at least 6 characters.');
-      return;
-    }
-
     setIsBusy(true);
-    beginOnboarding();
     try {
-      const cred = await createUserWithEmailAndPassword(auth, ownerEmail.trim(), ownerPassword);
-      setActiveTenantSubdomain(cleanSub);
-      if (!cred.user.emailVerified) {
-        await sendEmailVerification(cred.user);
-        await signOut(auth).catch(() => {});
-        setInfoMessage(
-          `Verification link sent to ${ownerEmail.trim()}. Please verify your email and sign in to activate "${cleanSub}.autocraftpro.com", or use Google Sign-In for instant access.`
-        );
-        return;
+      const metaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+      const demoEmail = metaEnv?.VITE_DEMO_EMAIL?.trim();
+      const demoPassword = metaEnv?.VITE_DEMO_PASSWORD?.trim();
+
+      if (demoEmail && demoPassword) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, demoEmail, demoPassword);
+          if (cred.user.emailVerified) {
+            return;
+          }
+          await signOut(auth).catch(() => {});
+        } catch {
+          // Fall back cleanly to instant interactive workspace demo
+        }
       }
-      await completeTenantRegistration(ownerEmail.trim());
-    } catch (err) {
-      setErrorMessage(mapFirebaseAuthError(err));
-      await signOut(auth).catch(() => {});
+
+      onEnterWorkspaceDemo(companyName.trim() || undefined);
     } finally {
-      endOnboarding();
       setIsBusy(false);
     }
   };
 
-  const handleGoogleOnboarding = async () => {
+  const handleDeveloperGoogleDirect = async () => {
     setErrorMessage(null);
-    setInfoMessage(null);
-
-    const cleanSub = newSubdomain.trim().toLowerCase();
-    if (companyName.trim().length < 2) {
-      setErrorMessage('Please enter your company name before onboarding with Google.');
-      return;
-    }
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(cleanSub)) {
-      setErrorMessage('Subdomain must use lowercase letters, digits, or internal hyphens (e.g., lavish).');
-      return;
-    }
-
     setIsBusy(true);
-    beginOnboarding();
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
-      await completeTenantRegistration(cred.user.email || undefined);
+      await signInWithPopup(auth, googleProvider);
+      await onDeveloperGoogleSignIn();
     } catch (err) {
       setErrorMessage(mapFirebaseAuthError(err));
-      await signOut(auth).catch(() => {});
     } finally {
-      endOnboarding();
       setIsBusy(false);
     }
   };
 
   const displayedError = errorMessage || authError || null;
+  const typedSlug = companyName.trim() ? normalizeCompanySlug(companyName) : '';
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] text-[#0F172A] flex flex-col justify-between font-sans selection:bg-[#0EA5E9] selection:text-white">
-      {/* Top Brand Header */}
-      <header className="bg-[#0F3D5E] text-white border-b border-white/10 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-lg bg-[#0EA5E9] text-white flex items-center justify-center shadow-sm">
-            <Wrench className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight">
-              AutoCraft Pro{' '}
-              <span className="text-sky-200/80 font-medium text-xs">
-                · {resolvedTenant?.companyName || workshopProfile.name}
-              </span>
-            </h1>
-            <p className="text-xs text-sky-200/80">
-              {resolvedTenant ? `${resolvedTenant.subdomain}.autocraftpro.com` : `${workshopProfile.address}, ${workshopProfile.city}`} · PAN/VAT: {workshopProfile.panVatNumber}
-            </p>
-          </div>
+      {/* Clean Platform-Only Header (Zero Tenant, Link, or VAT Exposure Prior to Sign-In) */}
+      <header className="bg-[#0F3D5E] text-white border-b border-white/10 px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        <div className="flex items-center space-x-3 min-w-0">
+          <button
+            type="button"
+            onClick={onBackToWebsite}
+            className="flex items-center space-x-2.5 text-left hover:opacity-90 transition cursor-pointer"
+          >
+            <div className="w-9 h-9 rounded-lg bg-[#0EA5E9] text-white flex items-center justify-center shadow-sm shrink-0">
+              <Wrench className="w-4 h-4" />
+            </div>
+            <span className="text-base font-bold text-white tracking-tight whitespace-nowrap">
+              AutoCraft Pro
+            </span>
+          </button>
         </div>
 
-        <div className="flex items-center space-x-3 text-xs text-sky-100">
-          <span className="font-mono font-semibold bg-white/10 px-2.5 py-1 rounded border border-white/15">
-            FY {workshopProfile.fiscalYear} B.S.
-          </span>
-          <span className="hidden sm:inline-flex items-center text-sky-200">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-[#16A34A]" />
-            IRD 13% VAT Ready
-          </span>
+        <div className="flex items-center space-x-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => onSwitchMode(mode === 'workspace' ? 'developer' : 'workspace')}
+            className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/10 text-xs font-medium text-sky-100 transition cursor-pointer whitespace-nowrap"
+          >
+            {mode === 'workspace' ? (
+              <>
+                <Server className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                <span>Developer Login</span>
+              </>
+            ) : (
+              <>
+                <Building2 className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                <span>Workspace Login</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onBackToWebsite}
+            className="inline-flex items-center space-x-1.5 text-xs font-medium text-sky-200 hover:text-white transition cursor-pointer whitespace-nowrap"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to {APP_ROOT_DOMAIN}</span>
+          </button>
         </div>
       </header>
 
-      {/* Main Sign-In & Company Onboarding Card */}
+      {/* Main Sign-In Card */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-md bg-[#FFFFFF] text-[#0F172A] rounded-2xl shadow-xl border border-[#E2E8F0] overflow-hidden">
-          {/* Card Header */}
-          <div className="bg-[#0F3D5E] text-white px-6 py-5">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-[#0EA5E9]/20 border border-[#0EA5E9]/40 flex items-center justify-center">
-                {activeTab === 'signin' ? (
+        {mode === 'workspace' ? (
+          /* =====================================================================
+             SURFACE A: WORKSPACE ACCOUNT LOGIN (NO GOOGLE BUTTON, COMPANY + EMAIL + PASSWORD + 1-CLICK DEMO)
+             ===================================================================== */
+          <div className="w-full max-w-md bg-[#FFFFFF] text-[#0F172A] rounded-2xl shadow-lg border border-[#E2E8F0] overflow-hidden">
+            {/* Card Header */}
+            <div className="bg-[#0F3D5E] text-white px-6 py-5">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0EA5E9]/20 border border-[#0EA5E9]/40 flex items-center justify-center shrink-0">
                   <LogIn className="w-5 h-5 text-[#0EA5E9]" />
-                ) : (
-                  <Building2 className="w-5 h-5 text-[#0EA5E9]" />
-                )}
-              </div>
-              <div>
-                <h2 className="text-base font-bold tracking-tight">
-                  {activeTab === 'signin' ? 'Sign In to AutoCraft Pro' : 'Company Workspace Onboarding'}
-                </h2>
-                <p className="text-[11px] text-sky-200">
-                  {activeTab === 'signin'
-                    ? 'Multi-Tenant Automotive Workshop DMS & ERP'
-                    : 'Provision an isolated company subdomain & owner account'}
-                </p>
+                </div>
+                <div>
+                  <h1 className="text-base font-bold tracking-tight">Workspace Account Sign In</h1>
+                  <p className="text-xs text-sky-200/90 mt-0.5">
+                    Enter your company name and credentials to open your subdomain
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Mode Switcher */}
-            <div className="grid grid-cols-2 gap-1.5 mt-4 p-1 bg-white/10 rounded-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('signin');
-                  setErrorMessage(null);
-                }}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  activeTab === 'signin'
-                    ? 'bg-white text-[#0F3D5E] shadow-sm'
-                    : 'text-sky-100 hover:bg-white/10'
-                }`}
-              >
-                Workspace Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('onboarding');
-                  setErrorMessage(null);
-                }}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  activeTab === 'onboarding'
-                    ? 'bg-white text-[#0F3D5E] shadow-sm'
-                    : 'text-sky-100 hover:bg-white/10'
-                }`}
-              >
-                Onboard Company
-              </button>
-            </div>
-          </div>
-
-          {/* Alerts */}
-          {displayedError && (
-            <div className="m-5 mb-0 p-3.5 rounded-xl bg-red-50 border border-red-200 text-[#DC2626] text-xs flex items-start space-x-2.5">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Authentication Notice</p>
-                <p>{displayedError}</p>
+            {displayedError && (
+              <div className="m-6 mb-0 p-3.5 rounded-xl bg-red-50 border border-red-200 text-[#DC2626] text-xs flex items-start space-x-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Sign-In Notice</p>
+                  <p className="mt-0.5 leading-relaxed">{displayedError}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {infoMessage && (
-            <div className="m-5 mb-0 p-3.5 rounded-xl bg-green-50 border border-green-200 text-[#16A34A] text-xs flex items-start space-x-2.5">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <p className="font-semibold">{infoMessage}</p>
-            </div>
-          )}
-
-          {activeTab === 'signin' ? (
             <div className="p-6 space-y-4">
-              {/* Active Tenant Subdomain Banner */}
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-[#0F172A] flex items-center space-x-1.5">
-                    <Globe className="w-3.5 h-3.5 text-[#0284C7]" />
-                    <span>Company Workspace</span>
-                  </span>
-                  {resolvedTenant ? (
-                    <span className="text-[11px] font-semibold text-[#16A34A]">
-                      {resolvedTenant.companyName}
+              {/* Company Name + Work Email + Password Form */}
+              <form onSubmit={handleWorkspaceSubmit} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] mb-1">
+                    Company Name
+                  </label>
+                  <div className="flex items-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden focus-within:ring-2 focus-within:ring-[#0EA5E9] focus-within:bg-white transition">
+                    <div className="pl-3 text-[#64748B]">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="workspace-company-input"
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Enter your company name"
+                      autoComplete="organization"
+                      className="flex-1 bg-transparent px-2.5 py-2.5 text-xs text-[#0F172A] focus:outline-none min-w-0"
+                    />
+                    <span className="px-2.5 py-2.5 text-[11px] font-mono text-[#64748B] bg-[#F1F5F9] border-l border-[#E2E8F0] shrink-0">
+                      .{APP_ROOT_DOMAIN}
                     </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-[#DC2626]">
-                      {tenantLookupError || 'Not Found'}
-                    </span>
+                  </div>
+                  {typedSlug.length >= 2 && (
+                    <p className="mt-1 text-[11px] text-[#64748B] font-mono">
+                      Workspace URL: <span className="text-[#0284C7]">{typedSlug}.{APP_ROOT_DOMAIN}</span>
+                    </p>
                   )}
                 </div>
 
-                {canSelectSubdomain && (
-                  <div className="flex items-center rounded-lg border border-[#CBD5E1] bg-white overflow-hidden focus-within:ring-2 focus-within:ring-[#0EA5E9]">
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] mb-1">Work Email</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
-                      type="text"
-                      value={subdomainInput}
-                      onChange={(e) => setSubdomainInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                      placeholder="lavish"
-                      className="flex-1 px-2.5 py-1.5 text-xs font-mono text-[#0F172A] outline-none"
-                      aria-label="Company subdomain"
+                      id="workspace-email-input"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@company.com.np"
+                      autoComplete="email"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
                     />
-                    <span className="px-2.5 py-1.5 text-[11px] font-mono text-[#64748B] bg-[#F1F5F9] border-l border-[#E2E8F0]">
-                      .autocraftpro.com
-                    </span>
                   </div>
-                )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#0F172A] mb-1">Password</label>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      id="workspace-password-input"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-9 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] p-1 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  id="btn-workspace-signin"
+                  type="submit"
+                  disabled={isBusy}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#0F3D5E] hover:bg-[#0c314c] disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {isBusy ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-[#0EA5E9]" />
+                      <span>Signing In...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-[#0EA5E9]" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="relative flex items-center py-1">
+                <div className="flex-grow border-t border-[#E2E8F0]" />
+                <span className="flex-shrink mx-3 text-[11px] font-semibold text-[#64748B]">
+                  or Explore Live Sandbox
+                </span>
+                <div className="flex-grow border-t border-[#E2E8F0]" />
               </div>
 
-              {/* Primary Google Sign-In */}
+              {/* Launch 1-Click Interactive Demo */}
               <button
-                id="btn-google-signin"
+                id="btn-demo-login"
                 type="button"
-                onClick={handleGoogleSignIn}
+                onClick={handleWorkspaceDemoClick}
                 disabled={isBusy}
-                className="w-full py-2.5 px-4 rounded-xl bg-[#0F3D5E] hover:bg-[#0c314c] disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center space-x-3 shadow-sm transition-all cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 border border-[#0EA5E9]/40 disabled:opacity-60 text-[#0F3D5E] text-xs font-bold flex items-center justify-center space-x-2 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Play className="w-3.5 h-3.5 text-[#0284C7] fill-[#0284C7]" />
+                <span>Launch 1-Click Interactive Demo</span>
+              </button>
+            </div>
+
+            {/* Governance Footer */}
+            <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-5 py-3.5 text-center text-[11px] text-[#64748B] flex items-center justify-center space-x-2">
+              <Lock className="w-3.5 h-3.5 text-[#0F3D5E] shrink-0" />
+              <span>
+                Workspaces open on your dedicated <span className="font-mono">&lt;company&gt;.{APP_ROOT_DOMAIN}</span> subdomain after sign-in.
+              </span>
+            </div>
+          </div>
+        ) : (
+          /* =====================================================================
+             SURFACE B: DEVELOPER LOGIN (CONTINUE WITH GOOGLE + EMAIL & PASSWORD + DEV DEMO)
+             ===================================================================== */
+          <div className="w-full max-w-md bg-[#FFFFFF] text-[#0F172A] rounded-2xl shadow-lg border border-[#E2E8F0] overflow-hidden">
+            {/* Card Header */}
+            <div className="bg-[#0F3D5E] text-white px-6 py-5">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0EA5E9]/20 border border-[#0EA5E9]/40 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-[#0EA5E9]" />
+                </div>
+                <div>
+                  <h1 className="text-base font-bold tracking-tight">Developer Portal Sign In</h1>
+                  <p className="text-xs text-sky-200/90 mt-0.5">
+                    Platform governance, tenant onboarding &amp; resource telemetry
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {displayedError && (
+              <div className="m-6 mb-0 p-3.5 rounded-xl bg-red-50 border border-red-200 text-[#DC2626] text-xs flex items-start space-x-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Developer Access Notice</p>
+                  <p className="mt-0.5 leading-relaxed">{displayedError}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="p-6 space-y-4">
+              {/* Continue with Google (Developer Portal) */}
+              <button
+                id="btn-dev-google-signin"
+                type="button"
+                onClick={onDeveloperGoogleSignIn ? handleGoogleSignIn : handleDeveloperGoogleDirect}
+                disabled={isBusy}
+                className="w-full py-2.5 px-4 rounded-xl bg-[#0F3D5E] hover:bg-[#0c314c] disabled:opacity-60 text-white text-sm font-bold flex items-center justify-center space-x-3 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
               >
                 {isBusy ? (
                   <>
@@ -426,23 +463,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <div className="relative flex items-center py-1">
                 <div className="flex-grow border-t border-[#E2E8F0]" />
                 <span className="flex-shrink mx-3 text-[11px] font-semibold text-[#64748B]">
-                  or Email &amp; Password
+                  or Developer Email &amp; Password
                 </span>
                 <div className="flex-grow border-t border-[#E2E8F0]" />
               </div>
 
-              {/* Firebase Email / Password Sign In */}
-              <form onSubmit={handleEmailSignIn} className="space-y-3">
+              {/* Developer Email / Password Form */}
+              <form onSubmit={handleDeveloperEmailSubmit} className="space-y-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-[#0F172A] mb-1">Work Email</label>
+                  <label className="block text-xs font-bold text-[#0F172A] mb-1">
+                    Developer Email
+                  </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
+                      id="dev-email-input"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="owner@lavishmobility.com"
-                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
+                      placeholder="developer@autocraftpro.com.np"
+                      autoComplete="email"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-3 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
                     />
                   </div>
                 </div>
@@ -452,16 +493,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
+                      id="dev-password-input"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
-                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-9 py-2 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
+                      autoComplete="current-password"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-9 pr-9 py-2.5 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] p-1"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A] p-1 cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
@@ -469,138 +513,43 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </div>
 
                 <button
+                  id="btn-dev-email-signin"
                   type="submit"
                   disabled={isBusy}
-                  className="w-full py-2.5 px-4 rounded-xl bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition cursor-pointer"
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <span>Sign In with Email</span>
+                  <span>Sign In to Developer Portal</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </form>
-            </div>
-          ) : (
-            <div className="p-6 space-y-4">
-              <form onSubmit={handleEmailOnboarding} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#0F172A] mb-1">
-                    Company / Workshop Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={companyName}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCompanyName(val);
-                      if (!newSubdomain) {
-                        setNewSubdomain(
-                          val
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]+/g, '-')
-                            .replace(/^-+|-+$/g, '')
-                            .slice(0, 32)
-                        );
-                      }
-                    }}
-                    placeholder="e.g. Lavish Mobility"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
-                    required
-                  />
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#0F172A] mb-1">
-                    Tenant Subdomain *
-                  </label>
-                  <div className="flex items-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden focus-within:ring-2 focus-within:ring-[#0EA5E9] focus-within:bg-white">
-                    <input
-                      type="text"
-                      value={newSubdomain}
-                      onChange={(e) =>
-                        setNewSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
-                      }
-                      placeholder="lavish"
-                      className="flex-1 px-3 py-2 text-xs font-mono text-[#0F172A] bg-transparent outline-none"
-                      required
-                    />
-                    <span className="px-2.5 py-2 text-[11px] font-mono text-[#64748B] bg-[#F1F5F9] border-l border-[#E2E8F0]">
-                      .autocraftpro.com
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#0F172A] mb-1">
-                      Owner Email *
-                    </label>
-                    <input
-                      type="email"
-                      value={ownerEmail}
-                      onChange={(e) => setOwnerEmail(e.target.value)}
-                      placeholder="owner@company.com"
-                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#0F172A] mb-1">
-                      Owner Password *
-                    </label>
-                    <input
-                      type="password"
-                      value={ownerPassword}
-                      onChange={(e) => setOwnerPassword(e.target.value)}
-                      placeholder="Min 6 characters"
-                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:bg-white transition"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isBusy}
-                  className="w-full py-2.5 px-4 rounded-xl bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition cursor-pointer"
-                >
-                  {isBusy ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="w-4 h-4" />
-                  )}
-                  <span>Create Company Tenant (Email/Password)</span>
-                </button>
-              </form>
-
-              <div className="relative flex items-center py-0.5">
-                <div className="flex-grow border-t border-[#E2E8F0]" />
-                <span className="flex-shrink mx-3 text-[11px] font-semibold text-[#64748B]">or</span>
-                <div className="flex-grow border-t border-[#E2E8F0]" />
-              </div>
-
+              {/* Developer Portal Sandbox Preview */}
               <button
+                id="btn-dev-demo-login"
                 type="button"
-                onClick={handleGoogleOnboarding}
+                onClick={onEnterDeveloperDemo}
                 disabled={isBusy}
-                className="w-full py-2.5 px-4 rounded-xl bg-[#0F3D5E] hover:bg-[#0c314c] disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] disabled:opacity-60 text-[#0F3D5E] text-xs font-semibold flex items-center justify-center space-x-2 transition-colors cursor-pointer whitespace-nowrap"
               >
-                <Building2 className="w-4 h-4 text-[#0EA5E9]" />
-                <span>Provision Company Tenant with Google</span>
+                <Server className="w-3.5 h-3.5 text-[#0284C7]" />
+                <span>Open Developer Portal Sandbox</span>
               </button>
             </div>
-          )}
 
-          {/* Card Footer: Admin-Only Governance Notice */}
-          <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-5 py-3 text-center text-[11px] text-[#64748B] flex items-center justify-center space-x-1.5">
-            <Lock className="w-3 h-3 text-[#0F3D5E] shrink-0" />
-            <span>
-              Internal staff accounts are managed exclusively by your company Admin under{' '}
-              <strong>Master Settings → Staff &amp; RBAC</strong>.
-            </span>
+            {/* Developer Boundary Notice */}
+            <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-5 py-3.5 text-center text-[11px] text-[#64748B] flex items-center justify-center space-x-2">
+              <Lock className="w-3.5 h-3.5 text-[#0F3D5E] shrink-0" />
+              <span>
+                Restricted to authorized AutoCraft Pro platform developers. To enter a client workspace, authenticate on the Workspace Sign-In portal with your developer credentials.
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
-      {/* Subtle Bottom Footer */}
+      {/* Quiet Platform Footer */}
       <footer className="text-center py-3 text-xs text-[#64748B] border-t border-[#E2E8F0] bg-[#FFFFFF]">
-        AutoCraft Pro · Multi-Tenant Automotive Workshop SaaS · Nepal IRD 13% VAT Compliant
+        AutoCraft Pro · {APP_ROOT_DOMAIN}
       </footer>
     </div>
   );
